@@ -829,7 +829,7 @@ export interface ElectronAPI {
     errorCode: number | null;
     errorMessage: string | null;
   }) => void;
-  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }> }) => void) => () => void;
+  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean; initialScan?: boolean }> }) => void) => () => void;
   onWatchedFilesRemoved: (callback: (data: WatchedFileRemovalPayload) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }

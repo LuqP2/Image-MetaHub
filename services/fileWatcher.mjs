@@ -172,7 +172,9 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
 
     sendWatcherDebug(mainWindow, `[FileWatcher] Watcher created for ${directoryId} - waiting for ready event...`);
 
+    let initialScan = true;
     watcher.on('ready', () => {
+      initialScan = false;
       clearTimeout(readyTimeout);
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
       observers.onReady?.({ useFsEvents: watcher.options.useFsEvents === true, usePolling: watcher.options.usePolling === true });
@@ -180,16 +182,15 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
 
     let batchChain = Promise.resolve();
     const enqueueMedia = (mediaPath, forceReindex = false, provenanceBytesChanged = true) => {
-      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${mediaPath}`);
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${mediaPath}`);
       const pendingMap = pendingFiles.get(directoryId);
       const existing = pendingMap.get(mediaPath);
       pendingMap.set(mediaPath, {
         forceReindex: Boolean(existing?.forceReindex || forceReindex),
         provenanceBytesChanged: Boolean(existing?.provenanceBytesChanged || provenanceBytesChanged),
+        initialScan: (existing?.initialScan ?? true) && initialScan && provenanceBytesChanged,
       });
 
       if (processingTimeouts.has(directoryId)) {
@@ -386,6 +387,7 @@ async function processBatch(directoryId, dirPath, mainWindow, watcher, observers
         type: path.extname(filePath).slice(1),
         forceReindex: pendingInfo.forceReindex === true,
         provenanceBytesChanged: pendingInfo.provenanceBytesChanged !== false,
+          initialScan: pendingInfo.initialScan === true,
         relativePath: toRelativePath(dirPath, filePath),
       };
     } catch (err) {
