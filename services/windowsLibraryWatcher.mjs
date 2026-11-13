@@ -94,8 +94,13 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
           notify(path.dirname(logicalPath), path.basename(logicalPath));
           return;
         }
-        if (!closed) events.emit('unlinkDir', root);
-        fail(new Error('The watched library folder is no longer available.', { cause: error }));
+        void probe(root).then(kind => {
+          if (closed) return;
+          if (kind === null) events.emit('unlinkDir', root);
+          fail(kind === null
+            ? new Error('The watched library folder is no longer available.', { cause: error })
+            : error);
+        }).catch(fail);
         return;
       }
       fail(error);
@@ -319,8 +324,8 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
           stable(child.target, 'add');
         } else if (event === 'unknown' ||
             (previous.actual && child.actual && keyFor(previous.actual) !== keyFor(child.actual)) ||
-            (duringStartup && event === 'rename' && target !== root)) {
-          // A retained logical path may now resolve under a different junction target.
+            (event === 'rename' && target !== root)) {
+          // A replacement directory can contain different files at the same paths.
           stable(child.target, 'change');
         }
       }

@@ -200,6 +200,72 @@ it.runIf(process.platform === 'win32').each([false, true])(
   },
 );
 
+it.each([false, true])('confirms root absence before emitting unlinkDir (deleted: %s)', async deleted => {
+  const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
+  const root = path.join(temp, 'library');
+  const handle = Object.assign(new EventEmitter(), { close: vi.fn() });
+  let watcher;
+  try {
+    await fs.promises.mkdir(root);
+    watcher = createWindowsLibraryWatcher(root, { ignorePermissionErrors: true }, {
+      watch: () => handle,
+      promises: {
+        ...fs.promises,
+        stat: target => deleted ? fs.promises.stat(target) :
+          Promise.reject(Object.assign(new Error('Access denied'), { code: 'EPERM' })),
+      },
+    });
+    const removed = vi.fn();
+    watcher.on('unlinkDir', removed);
+    await once(watcher, 'ready');
+    if (deleted) await fs.promises.rmdir(root);
+    const failed = once(watcher, 'error');
+    handle.emit('error', Object.assign(new Error('Watch ended'), { code: 'EPERM' }));
+    await failed;
+    expect(removed.mock.calls).toEqual(deleted ? [[root]] : []);
+    expect(handle.close).toHaveBeenCalledOnce();
+  } finally {
+    watcher?.close();
+    await fs.promises.rm(temp, { recursive: true, force: true });
+  }
+});
+
+it('reports retained files as changed after replacing a directory at the same path', async () => {
+  const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
+  const root = path.join(temp, 'library');
+  const album = path.join(root, 'album');
+  const replacement = path.join(temp, 'replacement');
+  let watcher;
+  let notify;
+  try {
+    await fs.promises.mkdir(album, { recursive: true });
+    await fs.promises.mkdir(replacement);
+    await fs.promises.writeFile(path.join(album, 'same.png'), 'old');
+    await fs.promises.writeFile(path.join(replacement, 'same.png'), 'new');
+    watcher = createWindowsLibraryWatcher(root, {
+      awaitWriteFinish: { pollInterval: 10, stabilityThreshold: 30 },
+    }, {
+      watch: (_folder, _options, callback) => {
+        notify = callback;
+        return Object.assign(new EventEmitter(), { close: vi.fn() });
+      },
+      promises: fs.promises,
+    });
+    const changed = vi.fn();
+    watcher.on('change', changed);
+    await once(watcher, 'ready');
+    await fs.promises.rename(album, path.join(temp, 'old'));
+    await fs.promises.rename(replacement, album);
+    notify('rename', 'album');
+    notify('rename', 'album');
+    await until(() => changed.mock.calls.length > 0);
+    expect(changed.mock.calls).toEqual([[path.join(album, 'same.png')]]);
+  } finally {
+    watcher?.close();
+    await fs.promises.rm(temp, { recursive: true, force: true });
+  }
+});
+
 it.runIf(process.platform === 'win32')('reports retained files as changed when a junction is retargeted', async () => {
   const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
   const root = path.join(temp, 'library');
