@@ -2257,6 +2257,7 @@ interface PhaseProfileSample {
 }
 
 interface ProcessFilesOptions {
+  asyncHeadReads?: boolean;
   cacheWriter?: IncrementalCacheWriter | null;
   concurrency?: number;
   flushChunkSize?: number;
@@ -3369,7 +3370,9 @@ export async function processFiles(
 
         const readStart = performance.now();
         const readResult = useHeadRead
-          ? await (window as any).electronAPI.readFilesHeadBatch({ filePaths, maxBytes: HEAD_READ_MAX_BYTES })
+          ? await (window as any).electronAPI.readFilesHeadBatch({
+              filePaths, maxBytes: HEAD_READ_MAX_BYTES, asynchronous: options.asyncHeadReads,
+            })
           : await (window as any).electronAPI.readFilesBatch(filePaths);
         const readDuration = performance.now() - readStart;
 

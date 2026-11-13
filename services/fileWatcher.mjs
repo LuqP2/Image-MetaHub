@@ -13,6 +13,7 @@ const pendingFiles = new Map();
 const pendingRemovals = new Map();
 const processingTimeouts = new Map();
 const removalTimeouts = new Map();
+const sidecarDirectoryReads = new Map();
 
 const WATCHER_READY_TIMEOUT_MS = 10000;
 
@@ -63,12 +64,18 @@ export const sidecarMatchesMediaFile = (sidecarFileName, mediaFileName) => {
   return mediaFileName.slice(0, -mediaExt.length) === sidecarBaseName;
 };
 
-export const findMediaFilesForSidecar = (sidecarPath) => {
+export const findMediaFilesForSidecar = async (sidecarPath) => {
   const sidecarFileName = path.basename(sidecarPath);
   const sidecarDir = path.dirname(sidecarPath);
 
   try {
-    return fs.readdirSync(sidecarDir, { withFileTypes: true })
+    let read = sidecarDirectoryReads.get(sidecarDir);
+    if (!read) {
+      read = fs.promises.readdir(sidecarDir, { withFileTypes: true })
+        .finally(() => sidecarDirectoryReads.delete(sidecarDir));
+      sidecarDirectoryReads.set(sidecarDir, read);
+    }
+    return (await read)
       .filter((entry) => entry.isFile() || entry.isSymbolicLink())
       .map((entry) => entry.name)
       .filter((fileName) => sidecarMatchesMediaFile(sidecarFileName, fileName))
@@ -151,6 +158,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       persistent: true,
       ignoreInitial: true,
       ignorePermissionErrors: true,
+      isRelevantFile: filePath => isMediaFile(filePath) || path.extname(filePath).toLowerCase() === '.json',
       awaitWriteFinish: {
         stabilityThreshold: 2000,
         pollInterval: 100
@@ -165,23 +173,25 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
 
     sendWatcherDebug(mainWindow, `[FileWatcher] Watcher created for ${directoryId} - waiting for ready event...`);
 
+    let initialScan = watcher.options.backend !== 'windows-recursive';
     watcher.on('ready', () => {
+      initialScan = false;
       clearTimeout(readyTimeout);
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
       observers.onReady?.({ useFsEvents: watcher.options.useFsEvents === true, usePolling: watcher.options.usePolling === true });
     });
 
+    let batchChain = Promise.resolve();
     const enqueueMedia = (mediaPath, forceReindex = false, provenanceBytesChanged = true) => {
-      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${mediaPath}`);
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${mediaPath}`);
       const pendingMap = pendingFiles.get(directoryId);
       const existing = pendingMap.get(mediaPath);
       pendingMap.set(mediaPath, {
         forceReindex: Boolean(existing?.forceReindex || forceReindex),
         provenanceBytesChanged: Boolean(existing?.provenanceBytesChanged || provenanceBytesChanged),
+        initialScan: (existing?.initialScan ?? true) && initialScan && provenanceBytesChanged,
       });
 
       if (processingTimeouts.has(directoryId)) {
@@ -189,19 +199,23 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       }
 
       processingTimeouts.set(directoryId, setTimeout(() => {
-        processBatch(directoryId, dirPath, mainWindow, observers);
+        batchChain = batchChain.then(() => processBatch(directoryId, dirPath, mainWindow, watcher, observers))
+          .catch(error => console.error('[FileWatcher] Batch failed:', error));
       }, 500));
+    };
+
+    const enqueueSidecar = (filePath) => {
+      void findMediaFilesForSidecar(filePath).then(matches => {
+        if (activeWatchers.get(directoryId) !== watcher) return;
+        matches.forEach(match => enqueueMedia(match, true, false));
+      });
     };
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
 
       if (ext === '.json') {
-        const matches = findMediaFilesForSidecar(filePath);
-        if (matches.length === 0) {
-          return;
-        }
-        matches.forEach((match) => enqueueMedia(match, true, false));
+        enqueueSidecar(filePath);
         return;
       }
 
@@ -216,7 +230,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       const ext = path.extname(filePath).toLowerCase();
 
       if (ext === '.json') {
-        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true, false));
+        enqueueSidecar(filePath);
         return;
       }
 
@@ -255,7 +269,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
 
     watcher.on('unlink', (filePath) => {
       if (path.extname(filePath).toLowerCase() === '.json') {
-        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true, false));
+        enqueueSidecar(filePath);
         return;
       }
       if (!isMediaFile(filePath)) {
@@ -269,12 +283,17 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
     });
 
     watcher.on('error', (error) => {
-      if (isPermissionError(error)) {
+      const nativeWatcherFailed = watcher.options.backend === 'windows-recursive';
+      if (nativeWatcherFailed && pendingRemovals.has(directoryId)) {
+        clearTimeout(removalTimeouts.get(directoryId));
+        processRemovalBatch(directoryId, dirPath, mainWindow, observers);
+      }
+      if (!nativeWatcherFailed && isPermissionError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
         return;
       }
 
-      if (isTransientVanishError(error)) {
+      if (!nativeWatcherFailed && isTransientVanishError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Ignoring transient watcher vanish error for ${directoryId}: ${error.message || error}`);
         return;
       }
@@ -345,18 +364,25 @@ export function getWatcherStatus(directoryId) {
 /**
  * Process a batch of detected files.
  */
-function processBatch(directoryId, dirPath, mainWindow, observers = {}) {
+async function processBatch(directoryId, dirPath, mainWindow, watcher, observers = {}) {
+  if (activeWatchers.get(directoryId) !== watcher) return;
   const files = pendingFiles.get(directoryId);
 
   if (!files || files.size === 0) return;
+  pendingFiles.delete(directoryId);
+  processingTimeouts.delete(directoryId);
 
   sendWatcherDebug(mainWindow, `[FileWatcher] Processing batch for ${directoryId}, ${files.size} files`);
 
   const filePaths = Array.from(files.keys());
 
-  const fileInfos = filePaths.map(filePath => {
+  const fileInfos = [];
+  // Bound concurrent stat requests so watcher batches leave room for other IPC.
+  for (let offset = 0; offset < filePaths.length; offset += 4) {
+    if (activeWatchers.get(directoryId) !== watcher) return;
+    const results = await Promise.all(filePaths.slice(offset, offset + 4).map(async filePath => {
     try {
-      const stats = fs.statSync(filePath);
+      const stats = await fs.promises.stat(filePath);
       const pendingInfo = files.get(filePath) || {};
       return {
         name: path.basename(filePath),
@@ -367,6 +393,7 @@ function processBatch(directoryId, dirPath, mainWindow, observers = {}) {
         type: path.extname(filePath).slice(1),
         forceReindex: pendingInfo.forceReindex === true,
         provenanceBytesChanged: pendingInfo.provenanceBytesChanged !== false,
+          initialScan: pendingInfo.initialScan === true,
         relativePath: toRelativePath(dirPath, filePath),
       };
     } catch (err) {
@@ -377,9 +404,11 @@ function processBatch(directoryId, dirPath, mainWindow, observers = {}) {
       console.error(`Error getting stats for ${filePath}:`, err);
       return null;
     }
-  }).filter(Boolean);
+    }));
+    fileInfos.push(...results.filter(Boolean));
+  }
 
-  if (fileInfos.length > 0) {
+  if (fileInfos.length > 0 && activeWatchers.get(directoryId) === watcher) {
     sendWatcherDebug(mainWindow, `[FileWatcher] Sending ${fileInfos.length} files to renderer for directory ${directoryId}`);
     sendToRenderer(mainWindow, 'new-images-detected', {
       directoryId,
@@ -390,8 +419,6 @@ function processBatch(directoryId, dirPath, mainWindow, observers = {}) {
       .catch((error) => console.warn('[FileWatcher] Provenance observation failed:', error));
   }
 
-  pendingFiles.delete(directoryId);
-  processingTimeouts.delete(directoryId);
 }
 
 function processRemovalBatch(directoryId, dirPath, mainWindow, observers = {}) {

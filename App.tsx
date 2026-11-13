@@ -1513,11 +1513,14 @@ export default function App() {
 
   // Restore auto-watchers on app start
   useEffect(() => {
-    if (!window.electronAPI || directories.length === 0) return;
+    if (isStartupHydrating || !window.electronAPI || directories.length === 0) return;
+
+    let cancelled = false;
 
     const restoreWatchers = async () => {
       console.log('[App] Restoring watchers for directories:', directories.map(d => ({ id: d.id, name: d.name, autoWatch: d.autoWatch })));
       for (const dir of directories) {
+        if (cancelled) return;
         if (dir.transient) {
           continue;
         }
@@ -1538,19 +1541,25 @@ export default function App() {
       }
     };
 
-    // Delay para garantir que todas as pastas foram carregadas
+    // Give the hydrated library time to paint before watchers scan the folders.
     const timeoutId = setTimeout(restoreWatchers, 1000);
 
-    return () => clearTimeout(timeoutId);
-  }, [directories]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [directories, isStartupHydrating]);
 
   // Sync all directories with globalAutoWatch setting when it changes
   useEffect(() => {
-    if (!window.electronAPI || directories.length === 0) return;
+    if (isStartupHydrating || !window.electronAPI || directories.length === 0) return;
+
+    let cancelled = false;
 
     const syncAutoWatch = async () => {
       console.log(`[App] Syncing all directories to globalAutoWatch: ${globalAutoWatch}`);
       for (const dir of directories) {
+        if (cancelled) return;
         if (dir.transient) {
           continue;
         }
@@ -1580,8 +1589,9 @@ export default function App() {
       }
     };
 
-    syncAutoWatch();
-  }, [globalAutoWatch]);
+    void syncAutoWatch();
+    return () => { cancelled = true; };
+  }, [globalAutoWatch, isStartupHydrating]);
 
   // Auto-dismiss new images toast after 5 seconds
   useEffect(() => {

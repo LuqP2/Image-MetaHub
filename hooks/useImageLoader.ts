@@ -1871,7 +1871,7 @@ export function useImageLoader() {
 
     const processNewWatchedFiles = useCallback(async (
         directory: Directory,
-        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }>
+        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean; initialScan?: boolean }>
     ) => {
         try {
             await waitForDirectoryActivityToSettle(directory.id);
@@ -1885,19 +1885,24 @@ export function useImageLoader() {
             // Filtrar arquivos que j├í existem
             const images = useImageStore.getState().images;
             // Performance optimization: Avoid intermediate array allocation
-            const existingIds = new Set<string>();
+            const existingImages = new Map<string, IndexedImage>();
             for (let i = 0; i < images.length; i++) {
-                existingIds.add(images[i].id);
+                existingImages.set(images[i].id, images[i]);
             }
             const getWatchedImageId = (file: { relativePath?: string; normalizedName: string }) =>
                 `${directory.id}::${file.relativePath || file.normalizedName}`;
             const newFiles = normalizedFiles.filter(file => {
                 const imageId = getWatchedImageId(file);
-                return file.forceReindex === true || !existingIds.has(imageId);
+                const existing = existingImages.get(imageId);
+                if (!existing) return true;
+                if (file.forceReindex !== true) return false;
+                return !(file.initialScan && file.contentModifiedMs != null &&
+                    existing.contentModifiedMs === file.contentModifiedMs &&
+                    existing.fileSize === file.size);
             });
             const forceReindexExistingIds = new Set(
                 newFiles
-                    .filter(file => file.forceReindex === true && existingIds.has(getWatchedImageId(file)))
+                    .filter(file => file.forceReindex === true && existingImages.has(getWatchedImageId(file)))
                     .map(getWatchedImageId)
             );
 
@@ -1954,6 +1959,7 @@ export function useImageLoader() {
                 {
                     concurrency: indexingConcurrency,
                     fileStats: fileStatsMap,
+                    asyncHeadReads: true,
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         if (isCacheDebugEnabled()) {

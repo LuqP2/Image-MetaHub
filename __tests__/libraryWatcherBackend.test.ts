@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ watch: vi.fn(), require: vi.fn(), nativeConstructor: vi.fn() }));
+const mocks = vi.hoisted(() => ({ watch: vi.fn(), require: vi.fn(), nativeConstructor: vi.fn(), windows: vi.fn() }));
 vi.mock('chokidar', () => ({ default: { watch: mocks.watch } }));
+vi.mock('../services/windowsLibraryWatcher.mjs', () => ({ createWindowsLibraryWatcher: mocks.windows }));
 vi.mock('node:module', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:module')>();
   return { ...actual, createRequire: () => mocks.require, default: { ...actual.default, createRequire: () => mocks.require } };
@@ -38,12 +39,15 @@ describe('library watcher backend resource safety', () => {
     expect(mocks.require).not.toHaveBeenCalled();
     expect(mocks.watch).toHaveBeenCalledWith('/synthetic/library', { ...options, usePolling: true });
   });
-  it('keeps the existing backend on Windows and Linux', () => {
-    for (const platform of ['win32', 'linux']) {
-      vi.stubGlobal('process', { ...process, platform });
-      createLibraryWatcher('/synthetic/library', options);
-    }
-    expect(mocks.require).not.toHaveBeenCalled();
-    expect(mocks.watch).toHaveBeenCalledTimes(2);
+  it('uses recursive monitoring only on Windows without polling', () => {
+    vi.stubGlobal('process', { ...process, platform: 'win32', env: {} });
+    const local = 'C:/synthetic/library';
+    createLibraryWatcher(local, options);
+    expect(mocks.windows).toHaveBeenCalledExactlyOnceWith(local, options);
+    createLibraryWatcher(local, { ...options, usePolling: true });
+    createLibraryWatcher('\\\\server\\synthetic', { ...options, usePolling: true });
+    vi.stubGlobal('process', { ...process, platform: 'linux' });
+    createLibraryWatcher('/synthetic/library', options);
+    expect(mocks.watch).toHaveBeenCalledTimes(3);
   });
 });
