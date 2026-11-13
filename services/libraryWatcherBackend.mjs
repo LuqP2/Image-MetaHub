@@ -1,5 +1,6 @@
 import chokidar from 'chokidar';
 import { createRequire } from 'node:module';
+import { createWindowsLibraryWatcher } from './windowsLibraryWatcher.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -7,6 +8,10 @@ const require = createRequire(import.meta.url);
 // can exhaust the descriptors needed to launch Electron's next renderer.
 // The macOS-only alias retains Chokidar 3's tree-wide native FSEvents backend.
 export function createLibraryWatcher(directoryPath, options) {
+  if (process.platform === 'win32' && !options.usePolling &&
+      process.env.IMH_FORCE_POLLING !== 'true' && !directoryPath.startsWith('\\\\')) {
+    return createWindowsLibraryWatcher(directoryPath, options);
+  }
   if (process.platform === 'darwin' && !options.usePolling) {
     let watcher;
     try {

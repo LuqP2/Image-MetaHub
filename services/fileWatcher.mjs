@@ -158,6 +158,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       persistent: true,
       ignoreInitial: true,
       ignorePermissionErrors: true,
+      isRelevantFile: filePath => isMediaFile(filePath) || path.extname(filePath).toLowerCase() === '.json',
       awaitWriteFinish: {
         stabilityThreshold: 2000,
         pollInterval: 100
@@ -172,7 +173,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
 
     sendWatcherDebug(mainWindow, `[FileWatcher] Watcher created for ${directoryId} - waiting for ready event...`);
 
-    let initialScan = true;
+    let initialScan = watcher.options.backend !== 'windows-recursive';
     watcher.on('ready', () => {
       initialScan = false;
       clearTimeout(readyTimeout);
@@ -282,6 +283,10 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
     });
 
     watcher.on('error', (error) => {
+      if (watcher.options.backend === 'windows-recursive' && pendingRemovals.has(directoryId)) {
+        clearTimeout(removalTimeouts.get(directoryId));
+        processRemovalBatch(directoryId, dirPath, mainWindow, observers);
+      }
       if (isPermissionError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
         return;
