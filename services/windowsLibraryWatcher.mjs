@@ -136,7 +136,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
       const { target, ancestors, actual: expectedPath } = stack.pop();
       const entry = entries.get(keyFor(target));
       let actual = expectedPath;
-      if (entry.link) {
+      if (entry.link || (target === start && start !== root)) {
         actual = await io.promises.realpath(target).catch(error => {
           if (missing(error)) return null;
           if (options.ignorePermissionErrors && denied(error)) return inaccessible;
@@ -195,7 +195,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
           continue;
         }
         if (closed || !kind || (!kind.isFile() && !kind.isDirectory())) continue;
-        const data = { target: child, directory: kind.isDirectory(), link };
+        const data = { target: child, directory: kind.isDirectory(), link, actual: path.join(actual, item.name) };
         entries.set(keyFor(child), data);
         if (data.directory && path.relative(root, child).split(path.sep).length <= maxDepth) {
           stack.push({ ...data, ancestors: nextAncestors, actual: path.join(actual, item.name) });
@@ -279,7 +279,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
     const kind = info?.isSymbolicLink() ? await probe(target) : info;
     if (closed || kind === inaccessible) return;
     if (kind?.isFile() && !old?.directory) {
-      inventory.set(key, { target, directory: false, link: info.isSymbolicLink() });
+      inventory.set(key, { target, directory: false, link: info.isSymbolicLink(), actual: old?.actual });
       if (old && old.target !== target) remove(key, old);
       // A path seen by the initial enumeration may have been created after subscribe.
       stable(target, (old && old.target === target) || duringStartup ? 'change' : 'add');
@@ -314,10 +314,13 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
       if (++processed % 256 === 0) await yieldToLoop();
       if (closed) return;
       if (!child.directory) {
-        if (!inventory.has(childKey) || (duringStartup && event === 'rename' && target !== root)) {
+        const previous = inventory.get(childKey);
+        if (!previous) {
           stable(child.target, 'add');
-        } else if (event === 'unknown') {
-          // Without a filename, unchanged membership does not rule out an edit.
+        } else if (event === 'unknown' ||
+            (previous.actual && child.actual && keyFor(previous.actual) !== keyFor(child.actual)) ||
+            (duringStartup && event === 'rename' && target !== root)) {
+          // A retained logical path may now resolve under a different junction target.
           stable(child.target, 'change');
         }
       }

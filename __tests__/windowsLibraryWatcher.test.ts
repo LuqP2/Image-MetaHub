@@ -200,6 +200,44 @@ it.runIf(process.platform === 'win32').each([false, true])(
   },
 );
 
+it.runIf(process.platform === 'win32')('reports retained files as changed when a junction is retargeted', async () => {
+  const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
+  const root = path.join(temp, 'library');
+  const junction = path.join(root, 'linked');
+  const first = path.join(temp, 'first');
+  const second = path.join(temp, 'second');
+  let watcher;
+  let notify;
+  try {
+    for (const folder of [root, first, second]) await fs.promises.mkdir(folder);
+    await fs.promises.writeFile(path.join(first, 'same.png'), 'first');
+    await fs.promises.writeFile(path.join(second, 'same.png'), 'second');
+    await fs.promises.symlink(first, junction, 'junction');
+    const watch = vi.fn((folder, _options, callback) => {
+      if (folder === root) notify = callback;
+      return Object.assign(new EventEmitter(), { close: vi.fn() });
+    });
+    watcher = createWindowsLibraryWatcher(root, {
+      awaitWriteFinish: { pollInterval: 10, stabilityThreshold: 30 },
+    }, { watch, promises: fs.promises });
+    const changed = vi.fn();
+    const added = vi.fn();
+    watcher.on('change', changed);
+    watcher.on('add', added);
+    await once(watcher, 'ready');
+    await fs.promises.unlink(junction);
+    await fs.promises.symlink(second, junction, 'junction');
+    notify('rename', 'linked');
+    await until(() => changed.mock.calls.length > 0);
+    expect(changed.mock.calls).toEqual([[path.join(junction, 'same.png')]]);
+    expect(added).not.toHaveBeenCalled();
+    expect(watch.mock.calls.map(([folder]) => folder)).toEqual([root, first, second]);
+  } finally {
+    watcher?.close();
+    await fs.promises.rm(temp, { recursive: true, force: true });
+  }
+});
+
 it.runIf(process.platform === 'win32')('observes real nested filesystem changes and waits for stable writes', async () => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
   const sub = path.join(root, 'nested');
