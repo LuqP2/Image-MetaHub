@@ -1954,6 +1954,7 @@ export function useImageLoader() {
                 {
                     concurrency: indexingConcurrency,
                     fileStats: fileStatsMap,
+                    asyncHeadReads: true,
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         if (isCacheDebugEnabled()) {

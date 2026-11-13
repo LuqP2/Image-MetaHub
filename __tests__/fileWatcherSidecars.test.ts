@@ -39,13 +39,13 @@ describe('file watcher sidecar matching', () => {
     expect(sidecarMatchesMediaFile('image.json', 'other.png')).toBe(false);
   });
 
-  it('finds the model after its sidecar has already been deleted', () => {
+  it('finds the model after its sidecar has already been deleted', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'imh-sidecar-unlink-'));
     temporaryDirectories.push(directory);
     const modelPath = path.join(directory, 'cube.glb');
     fs.writeFileSync(modelPath, 'synthetic');
 
-    expect(findMediaFilesForSidecar(path.join(directory, 'cube.glb.imagemetahub.json')))
+    expect(await findMediaFilesForSidecar(path.join(directory, 'cube.glb.imagemetahub.json')))
       .toEqual([modelPath]);
   });
 });

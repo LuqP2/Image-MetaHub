@@ -8138,7 +8138,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('read-files-head-batch', async (event, { filePaths, maxBytes }) => {
+  ipcMain.handle('read-files-head-batch', async (event, { filePaths, maxBytes, asynchronous }) => {
     const start = performance.now();
     try {
       if (!Array.isArray(filePaths) || filePaths.length === 0) {
@@ -8161,6 +8161,24 @@ function setupFileOperationHandlers() {
       const MAX_HEAD_BYTES = 2 * 1024 * 1024;
       const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_HEAD_BYTES;
       const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_HEAD_BYTES));
+
+      if (asynchronous === true) {
+        const files = await mapWithConcurrency(filePaths, 4, async filePath => {
+          try {
+            const handle = await fs.open(filePath, 'r');
+            try {
+              const buffer = Buffer.allocUnsafe(safeBytes);
+              const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
+              return { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath };
+            } finally {
+              await handle.close();
+            }
+          } catch (error) {
+            return { success: false, error: error.message, path: filePath };
+          }
+        });
+        return { success: true, files };
+      }
 
       // Use Synchronous operations to bypass UV Threadpool overhead
       // This emulates the performance characteristics of PowerShell/CMD
