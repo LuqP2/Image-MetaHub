@@ -64,6 +64,43 @@ it('enumerates without file stats and reconciles notifications received during e
   }
 });
 
+it.runIf(process.platform === 'win32').each(['EACCES', 'EPERM'])(
+  'keeps the root watcher active when a junction subscription fails with %s', async code => {
+    const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
+    const root = path.join(temp, 'root');
+    const target = path.join(temp, 'target');
+    const handle = new EventEmitter();
+    handle.close = vi.fn();
+    let notify;
+    let watcher;
+    try {
+      await fs.promises.mkdir(root);
+      await fs.promises.mkdir(target);
+      await fs.promises.symlink(target, path.join(root, 'linked'), 'junction');
+      const watch = vi.fn((folder, _options, callback) => {
+        if (folder !== root) throw Object.assign(new Error('Access denied'), { code });
+        notify = callback;
+        return handle;
+      });
+      watcher = createWindowsLibraryWatcher(root, {
+        ignorePermissionErrors: true,
+        awaitWriteFinish: { pollInterval: 10, stabilityThreshold: 30 },
+      }, { watch, promises: fs.promises });
+      await once(watcher, 'ready');
+      expect(watch).toHaveBeenCalledTimes(2);
+      const added = once(watcher, 'add');
+      const file = path.join(root, 'accessible.png');
+      await fs.promises.writeFile(file, 'synthetic');
+      notify('rename', 'accessible.png');
+      expect(await added).toEqual([file]);
+      expect(handle.close).not.toHaveBeenCalled();
+    } finally {
+      watcher?.close();
+      await fs.promises.rm(temp, { recursive: true, force: true });
+    }
+  },
+);
+
 it.runIf(process.platform === 'win32')('observes real nested filesystem changes and waits for stable writes', async () => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
   const sub = path.join(root, 'nested');

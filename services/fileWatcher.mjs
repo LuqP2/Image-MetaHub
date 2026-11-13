@@ -283,16 +283,17 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
     });
 
     watcher.on('error', (error) => {
-      if (watcher.options.backend === 'windows-recursive' && pendingRemovals.has(directoryId)) {
+      const nativeWatcherFailed = watcher.options.backend === 'windows-recursive';
+      if (nativeWatcherFailed && pendingRemovals.has(directoryId)) {
         clearTimeout(removalTimeouts.get(directoryId));
         processRemovalBatch(directoryId, dirPath, mainWindow, observers);
       }
-      if (isPermissionError(error)) {
+      if (!nativeWatcherFailed && isPermissionError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
         return;
       }
 
-      if (isTransientVanishError(error)) {
+      if (!nativeWatcherFailed && isTransientVanishError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Ignoring transient watcher vanish error for ${directoryId}: ${error.message || error}`);
         return;
       }

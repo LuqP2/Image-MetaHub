@@ -74,6 +74,11 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
     const handle = io.watch(target, { recursive: true, persistent: options.persistent !== false },
       (event, name) => notify(logicalPath, name, event));
     handle.on('error', error => {
+      if (logicalPath !== root && options.ignorePermissionErrors && denied(error)) {
+        links.delete(keyFor(logicalPath));
+        handle.close();
+        return;
+      }
       // Windows reports EPERM when the watched directory itself disappears.
       if (error.code === 'EPERM' || missing(error)) {
         if (logicalPath !== root) {
@@ -137,7 +142,13 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         const old = links.get(key);
         if (old?.actual !== actual) {
           old?.handle.close();
-          links.set(key, { actual, handle: subscribe(actual, target) });
+          links.delete(key);
+          try {
+            links.set(key, { actual, handle: subscribe(actual, target) });
+          } catch (error) {
+            if (options.ignorePermissionErrors && denied(error)) continue;
+            throw error;
+          }
         }
       }
       const result = await queueRead(async () => {
