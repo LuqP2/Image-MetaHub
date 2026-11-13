@@ -149,6 +149,57 @@ it.runIf(process.platform === 'win32').each(['EACCES', 'EPERM'])(
   },
 );
 
+it.runIf(process.platform === 'win32').each([false, true])(
+  'reconciles a linked target reporting EPERM only when missing (deleted: %s)', async deleted => {
+    const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
+    const root = path.join(temp, 'library');
+    const target = path.join(temp, 'external');
+    const junction = path.join(root, 'linked');
+    const rootHandle = Object.assign(new EventEmitter(), { close: vi.fn() });
+    const linkHandle = Object.assign(new EventEmitter(), { close: vi.fn() });
+    let watcher;
+    let denied = false;
+    try {
+      await fs.promises.mkdir(root);
+      await fs.promises.mkdir(target);
+      await fs.promises.writeFile(path.join(target, 'existing.png'), 'synthetic');
+      await fs.promises.symlink(target, junction, 'junction');
+      const stat = vi.fn(async (file, ...args) => {
+        if (denied && file === junction) throw Object.assign(new Error('Access denied'), { code: 'EACCES' });
+        return fs.promises.stat(file, ...args);
+      });
+      watcher = createWindowsLibraryWatcher(root, { ignorePermissionErrors: true }, {
+        watch: folder => folder === root ? rootHandle : linkHandle,
+        promises: { ...fs.promises, stat },
+      });
+      const removed = vi.fn();
+      watcher.on('unlinkDir', removed);
+      watcher.on('unlink', removed);
+      await once(watcher, 'ready');
+      stat.mockClear();
+      if (deleted) {
+        await fs.promises.unlink(path.join(target, 'existing.png'));
+        await fs.promises.rmdir(target);
+      } else {
+        denied = true;
+      }
+      linkHandle.emit('error', Object.assign(new Error('Watch ended'), { code: 'EPERM' }));
+      await until(() => stat.mock.calls.some(([file]) => file === junction));
+      if (deleted) {
+        await until(() => removed.mock.calls.length === 2);
+        expect(removed.mock.calls).toEqual([[junction], [path.join(junction, 'existing.png')]]);
+      } else {
+        await delay(100);
+        expect(removed).not.toHaveBeenCalled();
+      }
+      expect(rootHandle.close).not.toHaveBeenCalled();
+    } finally {
+      watcher?.close();
+      await fs.promises.rm(temp, { recursive: true, force: true });
+    }
+  },
+);
+
 it.runIf(process.platform === 'win32')('observes real nested filesystem changes and waits for stable writes', async () => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
   const sub = path.join(root, 'nested');

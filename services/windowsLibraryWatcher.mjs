@@ -78,6 +78,12 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
       if (logicalPath !== root && options.ignorePermissionErrors && denied(error)) {
         links.delete(keyFor(logicalPath));
         handle.close();
+        // Windows also reports EPERM when a junction's watched target disappears.
+        if (error.code === 'EPERM') {
+          void probe(logicalPath).then(kind => {
+            if (kind === null) notify(path.dirname(logicalPath), path.basename(logicalPath));
+          }).catch(fail);
+        }
         return;
       }
       // Windows reports EPERM when the watched directory itself disappears.
