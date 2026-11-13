@@ -64,6 +64,54 @@ it('enumerates without file stats and reconciles notifications received during e
   }
 });
 
+it.each(['lstat', 'stat', 'readdir'])('preserves indexed paths when %s denies access', async operation => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));
+  const folder = path.join(root, 'nested');
+  const file = path.join(folder, 'existing.png');
+  const handle = new EventEmitter();
+  handle.close = vi.fn();
+  let notify;
+  let blocked = true;
+  let watcher;
+  try {
+    await fs.promises.mkdir(folder);
+    await fs.promises.writeFile(file, 'synthetic');
+    const actual = fs.promises[operation];
+    const read = vi.fn(async (target, ...args) => {
+      if (blocked && target === (operation === 'readdir' ? folder : file)) {
+        throw Object.assign(new Error('Access denied'), { code: 'EACCES' });
+      }
+      return actual(target, ...args);
+    });
+    blocked = false;
+    watcher = createWindowsLibraryWatcher(root, {
+      ignorePermissionErrors: true,
+      awaitWriteFinish: { pollInterval: 10, stabilityThreshold: 30 },
+    }, {
+      watch: (_root, _options, callback) => { notify = callback; return handle; },
+      promises: { ...fs.promises, [operation]: read },
+    });
+    const removed = vi.fn();
+    watcher.on('unlink', removed);
+    watcher.on('unlinkDir', removed);
+    await once(watcher, 'ready');
+    read.mockClear();
+    blocked = true;
+    notify('change', operation === 'readdir' ? null : path.relative(root, file));
+    await until(() => read.mock.calls.some(([target]) => target === (operation === 'readdir' ? folder : file)));
+    await delay(100);
+    expect(removed).not.toHaveBeenCalled();
+    blocked = false;
+    await fs.promises.unlink(file);
+    notify('rename', path.relative(root, file));
+    await until(() => removed.mock.calls.length > 0);
+    expect(removed.mock.calls).toEqual([[file]]);
+  } finally {
+    watcher?.close();
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
 it.runIf(process.platform === 'win32').each(['EACCES', 'EPERM'])(
   'keeps the root watcher active when a junction subscription fails with %s', async code => {
     const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'imh-watcher-'));

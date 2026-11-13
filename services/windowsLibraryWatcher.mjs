@@ -26,6 +26,7 @@ function queueRead(run) {
 
 const missing = error => ['ENOENT', 'ENOTDIR'].includes(error.code);
 const denied = error => ['EACCES', 'EPERM'].includes(error.code);
+const inaccessible = Symbol('inaccessible');
 
 export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
   const root = path.resolve(directoryPath);
@@ -116,7 +117,8 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
     try {
       return await (follow ? io.promises.stat(target) : io.promises.lstat(target));
     } catch (error) {
-      if (missing(error) || (options.ignorePermissionErrors && denied(error))) return null;
+      if (missing(error)) return null;
+      if (options.ignorePermissionErrors && denied(error)) return inaccessible;
       throw error;
     }
   }
@@ -130,11 +132,17 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
       let actual = expectedPath;
       if (entry.link) {
         actual = await io.promises.realpath(target).catch(error => {
-          if (missing(error) || (options.ignorePermissionErrors && denied(error))) return null;
+          if (missing(error)) return null;
+          if (options.ignorePermissionErrors && denied(error)) return inaccessible;
           throw error;
         });
       }
-      if (closed || !actual || ancestors.has(keyFor(actual))) continue;
+      if (closed || !actual) continue;
+      if (actual === inaccessible) {
+        await preserveSubtree(entries, target);
+        continue;
+      }
+      if (ancestors.has(keyFor(actual))) continue;
       const nextAncestors = new Set(ancestors);
       nextAncestors.add(keyFor(actual));
       if (entry.link && keyFor(target) !== keyFor(root)) {
@@ -146,7 +154,10 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
           try {
             links.set(key, { actual, handle: subscribe(actual, target) });
           } catch (error) {
-            if (options.ignorePermissionErrors && denied(error)) continue;
+            if (options.ignorePermissionErrors && denied(error)) {
+              await preserveSubtree(entries, target);
+              continue;
+            }
             throw error;
           }
         }
@@ -156,10 +167,15 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         try {
           return await io.promises.readdir(target, { withFileTypes: true });
         } catch (error) {
-          if (missing(error) || (options.ignorePermissionErrors && denied(error))) return [];
+          if (missing(error)) return [];
+          if (options.ignorePermissionErrors && denied(error)) return inaccessible;
           throw error;
         }
       });
+      if (result === inaccessible) {
+        await preserveSubtree(entries, target);
+        continue;
+      }
       for (let i = 0; i < result.length && !closed; i++) {
         if (i && i % 256 === 0) await yieldToLoop();
         if (closed) break;
@@ -168,6 +184,10 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         if (!inScope(child)) continue;
         const link = item.isSymbolicLink();
         const kind = link ? await probe(child) : item;
+        if (kind === inaccessible) {
+          await preserveSubtree(entries, child);
+          continue;
+        }
         if (closed || !kind || (!kind.isFile() && !kind.isDirectory())) continue;
         const data = { target: child, directory: kind.isDirectory(), link };
         entries.set(keyFor(child), data);
@@ -177,6 +197,16 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
       }
     }
     return entries;
+  }
+
+  async function preserveSubtree(entries, target) {
+    const parent = keyFor(target);
+    let processed = 0;
+    for (const [key, entry] of inventory) {
+      if (++processed % 256 === 0) await yieldToLoop();
+      if (closed) return;
+      if (keyInside(key, parent)) entries.set(key, entry);
+    }
   }
 
   function stable(target, event) {
@@ -202,6 +232,10 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         if (closed) return;
         const stats = await probe(pending.target);
         if (closed || writes.get(key) !== pending) continue;
+        if (stats === inaccessible) {
+          writes.delete(key);
+          continue;
+        }
         if (!stats?.isFile()) {
           writes.delete(key);
           notify(path.dirname(pending.target), path.basename(pending.target));
@@ -235,8 +269,9 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
     const key = keyFor(target);
     const old = inventory.get(key);
     const info = await probe(target, false);
+    if (closed || info === inaccessible) return;
     const kind = info?.isSymbolicLink() ? await probe(target) : info;
-    if (closed) return;
+    if (closed || kind === inaccessible) return;
     if (kind?.isFile() && !old?.directory) {
       inventory.set(key, { target, directory: false, link: info.isSymbolicLink() });
       if (old && old.target !== target) remove(key, old);
