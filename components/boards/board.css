@@ -238,6 +238,10 @@
 
 .board-inline-link { pointer-events:auto; }
 .board-workspace .react-flow__resize-control.handle { z-index:11; }
+.board-frame-resize { touch-action:none; }
+.board-frame-resize[data-selected=false] { opacity:0; }
+.board-frame-resize[data-selected=false]:hover { opacity:1; }
+.board-stage[data-connecting=true] .board-frame-resize { display:none; }
 
 .board-tab-close { flex-shrink:0; width:24px; min-height:24px; padding:0; border-color:transparent; background:transparent; }
 

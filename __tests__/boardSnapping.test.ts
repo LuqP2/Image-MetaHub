@@ -30,7 +30,7 @@ describe('Canvas snapping geometry', () => {
     expect(result.guides.find(g => g.axis === 'x')?.referenceId).toBe('far');
   });
   it('anchors grid to the top-left and board origin, including negative positions', () => {
-    expect(snapBoardBounds(rect('moving', -35, 37), [], 1, false, true)).toEqual({ correction: { x: 11, y: 11 }, guides: [] });
+    expect(snapBoardBounds(rect('moving', -35, 37), [], 1, false, true)).toMatchObject({ correction: { x: 11, y: 11 }, guides: [] });
     expect(snapBoardBounds(rect('moving', -35, 37), [], 1, false, false).correction).toEqual({ x: 0, y: 0 });
   });
   it('uses objects before grid independently in each axis', () => {
@@ -46,17 +46,29 @@ describe('Canvas snapping geometry', () => {
     expect(result.updates).toEqual([{ id: 'a', x: 24, y: 24 }, { id: 'b', x: 174, y: 64 }]);
     expect(gesture.originals[0].x).toBe(1);
   });
-  it('prepares only image cards and frames as references and rejects mixed selections', () => {
+  it('snaps moving frames to other frames and excludes their own contents', () => {
     const frame: BoardObject = { ...card('frame'), type: 'frame', frameId: null, title: 'Frame', color: '#ffffff' };
     const text: BoardObject = { ...card('text'), type: 'text', text: 'Text', fontSize: 24, color: '#ffffff' };
     const video = { ...card('video'), mediaType: 'video' as const };
     const smart: BoardObject = { ...frame, id: 'smart', type: 'smart-frame', source: { kind: 'library' }, criteria: normalizeLibraryQueryCriteria(), groupConstraints: [], layout: { kind: 'grid' } };
-    const objects = [card('a'), frame, smart, text, video];
+    const objects = [{ ...card('a'), frameId: frame.id }, frame, { ...smart, x: 300 }, text, video];
     expect(createBoardSnapGesture(objects, ['a'], 'a', { x: 0, y: 0 }, false)?.references.map(r => r.id)).toEqual(['frame', 'smart']);
-    for (const id of ['frame', 'smart', 'text', 'video']) {
+    const gesture = createBoardSnapGesture(objects, ['frame'], 'frame', { x: 0, y: 0 }, false)!;
+    expect(gesture.references.map(r => r.id)).toEqual(['smart']);
+    const result = resolveBoardSnapGesture(gesture, { x: 197, y: 0 }, 1, true, false);
+    expect(result.updates).toEqual([{ id: 'frame', x: 200, y: 0 }]);
+    expect(result.guides).toContainEqual(expect.objectContaining({ axis: 'x', coordinate: 300, referenceId: 'smart' }));
+    for (const id of ['text', 'video']) {
       expect(createBoardSnapGesture(objects, ['a', id], 'a', { x: 0, y: 0 }, false)).toBeNull();
       expect(createBoardSnapGesture(objects, [id], id, { x: 0, y: 0 }, false)).toBeNull();
     }
+  });
+  it('snaps the resized edge and keeps the opposite edge fixed', () => {
+    const target = rect('target', 300, 150);
+    const free = rect('moving', 0, 0, 104, 147);
+    const snap = snapBoardBounds(free, [target], 1, true, false, { y: 2 });
+    expect(snap.bounds).toEqual({ ...free, height: 150 });
+    expect(snap.guides).toEqual([expect.objectContaining({ axis: 'y', coordinate: 150, referenceId: 'target' })]);
   });
   it('measures repeated snapping against 10k prepared rectangles', () => {
     const references = Array.from({ length: 10000 }, (_, index) => rect(`${index}`, index % 100 * 200, Math.floor(index / 100) * 200));

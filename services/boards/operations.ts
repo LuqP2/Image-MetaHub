@@ -67,7 +67,7 @@ export function drawBoardObject(document: BoardDocument, type: Exclude<BoardTool
 }
 
 export type BoardObjectUpdate = { id: string } & Partial<BoardObject>;
-export function updateObjects(document: BoardDocument, updates: BoardObjectUpdate[], resizeStart = document.objects): BoardDocument {
+export function updateObjects(document: BoardDocument, updates: BoardObjectUpdate[], { resizeStart = document.objects, preserveFrameContents = false }: { resizeStart?: BoardObject[]; preserveFrameContents?: boolean } = {}): BoardDocument {
   const byId = new Map(updates.map(update => [update.id, update]));
   const initial = new Map(resizeStart.map(object => [object.id, object]));
   const resizingFrames = new Set(document.objects.filter(object => object.type === 'frame' && (byId.get(object.id)?.width !== undefined || byId.get(object.id)?.height !== undefined)).map(object => object.id));
@@ -78,7 +78,7 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
     // member geometry wins, including a multi-selection resize in the same update.
     const parentUpdate = object.frameId ? byId.get(object.frameId) : null;
     const parent = parentUpdate ? document.objects.find(candidate => candidate.id === object.frameId) : null;
-    if (parent && parentUpdate) {
+    if (parent && parentUpdate && !(preserveFrameContents && resizingFrames.has(parent.id))) {
       // Pointer updates supply absolute frame bounds. Always scale from the
       // gesture's starting geometry so axis changes and reversals cannot compound.
       const fromStart = resizingFrames.has(parent.id);
@@ -101,7 +101,8 @@ export function updateObjects(document: BoardDocument, updates: BoardObjectUpdat
   for (let index = 0; index < objects.length; index++) {
     let object = document.objects[index], owner = owners.get(object.id);
     if (!owner || object.type !== 'asset') continue;
-    if (owner.frameId && resizingFrames.has(owner.frameId)) {
+    if (preserveFrameContents && owner.frameId && resizingFrames.has(owner.frameId) && !byId.has(owner.id) && !byId.has(object.id)) continue;
+    if (!preserveFrameContents && owner.frameId && resizingFrames.has(owner.frameId)) {
       object = initial.get(object.id) ?? object;
       const initialOwner = initial.get(owner.id);
       if (initialOwner?.type === 'stack') owner = initialOwner;

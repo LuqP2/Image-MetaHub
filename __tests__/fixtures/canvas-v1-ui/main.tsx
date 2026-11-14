@@ -11,12 +11,13 @@ import { useBoardUIStore } from '../../../store/useBoardUIStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useBoardQueryStore } from '../../../store/useBoardQueryStore';
 import { BoardQueryContext } from '../../../components/boards/BoardQueryContext';
-import { drawBoardObject, createFrame, addConnection, updateObjects } from '../../../services/boards/operations';
+import { addAssets, drawBoardObject, createFrame, addConnection, updateObjects } from '../../../services/boards/operations';
 import { copyBoardSelection, pasteBoardSelection } from '../../../services/boards/commands';
 import { createSmartFrame, branchSmartFrame } from '../../../services/boards/smartFrameOperations';
 import type { BoardSmartFrameObject } from '../../../services/boards/queryTypes';
 import '../../../src/index.css';
 import { boardImage } from '../../helpers/boardIntegrationFixtures';
+import { boardLocator } from '../../helpers/boardFixtures';
 
 document.documentElement.style.cssText = '--gray-950:9 12 20;--gray-900:17 24 39;--gray-800:31 41 55;--gray-700:55 65 81;--gray-600:75 85 99;--gray-400:156 163 175;--gray-300:209 213 219;--gray-100:243 244 246;--accent:99 102 241;';
 document.body.style.cssText = 'margin:0;width:100vw;height:100vh;font-family:Arial,sans-serif';
@@ -42,6 +43,33 @@ function LibraryFlowSmoke({ boardId }: { boardId: string }) {
 }
 
 Object.assign(window, { canvasSmoke: {
+  async prepareFrameResize() {
+    const state = useBoardStore.getState();
+    const id = await state.createBoard('Frame resize smoke');
+    useBoardUIStore.setState({ libraryOpen: false, inspectorOpen: false });
+    state.executeOperation(id, doc => {
+      const assets = addAssets(doc, Array.from({ length: 5 }, (_, index) => ({
+        name: `Card ${index + 1}`, mediaType: 'image' as const,
+        width: 1000, height: 300,
+        reference: { kind: 'path' as const, locator: boardLocator(`image-${index}.png`) },
+      })), { x: 84, y: 128 });
+      const framed = createFrame(assets, assets.objects.map(object => object.id));
+      return updateObjects(framed, [{ id: framed.objects[0].id, height: framed.objects[0].height + 160 }], { preserveFrameContents: true });
+    });
+    await wait(() => !!document.querySelector('.board-frame-resize.line.bottom'));
+    return id;
+  },
+  frameResizePoint(selector: string) {
+    const control = document.querySelector<HTMLElement>(`.board-frame-resize${selector}`)!;
+    const rect = control.getBoundingClientRect();
+    const point = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    check(document.elementFromPoint(point.x, point.y) === control, `Frame resize target is obstructed: ${selector}`);
+    return point;
+  },
+  frameResizeState(id: string) {
+    const { document, selectedObjectIds, past } = useBoardStore.getState().sessions[id];
+    return { objects: document.objects, selectedObjectIds, undoSteps: past.length };
+  },
   async verifyDockAlignment(compact: boolean, expectedWidth: number) {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     useBoardUIStore.setState({ libraryOpen: false, inspectorOpen: true });

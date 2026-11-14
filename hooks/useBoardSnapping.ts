@@ -100,5 +100,5 @@ export function useBoardSnapping(boardId: string) {
     setGuides([]);
     return cancelled;
   }, [apply]);
-  return { begin, filterChanges, finish, guides };
+  return { begin, filterChanges, finish, guides, setGuides };
 }

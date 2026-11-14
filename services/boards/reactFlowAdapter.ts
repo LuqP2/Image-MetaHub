@@ -4,7 +4,7 @@ import type { Edge, Node, NodeChange } from '@xyflow/react';
 import type { BoardDocument, BoardObject } from './types';
 import type { BoardObjectUpdate } from './operations';
 
-export type BoardFlowNode = Node<{ object: BoardObject }>;
+export type BoardFlowNode = Node<{ object: BoardObject; boardId?: string }>;
 export type BoardNodeRuntime = Pick<BoardFlowNode, 'measured' | 'dragging'>;
 
 /** React Flow's measurements/drag flags are controlled UI state, never board content. */
@@ -38,7 +38,7 @@ export function boardToFlow(document: BoardDocument, selectedObjectIds: string[]
     const parent = object.frameId ? frames.get(object.frameId) : undefined;
     return {
       ...runtime?.get(object.id),
-      id: object.id, type: object.type, data: { object },
+      id: object.id, type: object.type, data: { object, boardId: document.id },
       parentId: parent?.id, position: { x: object.x - (parent?.x ?? 0), y: object.y - (parent?.y ?? 0) },
       style: { width: object.width, height: object.height }, width: object.width, height: object.height,
       zIndex: object.zIndex, selected: selectedObjectIds.includes(object.id), draggable: editable, connectable: editable,
