@@ -18,6 +18,8 @@ import { SettingSwitch } from './SettingSwitch';
 export const ViewerSettingsPanel: React.FC = () => {
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
+  const hideAssociatedTextureMaps = useSettingsStore((state) => state.hideAssociatedTextureMaps);
+  const setHideAssociatedTextureMaps = useSettingsStore((state) => state.setHideAssociatedTextureMaps);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const setShowFullFilePath = useSettingsStore((state) => state.setShowFullFilePath);
   const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
@@ -85,6 +87,11 @@ export const ViewerSettingsPanel: React.FC = () => {
         <SettingRow
           label="Show filenames on grid"
           control={<SettingSwitch checked={showFilenames} onChange={setShowFilenames} />}
+        />
+        <SettingRow
+          label="Hide associated texture maps"
+          description="Keep linked images under Texture Maps on each 3D model. Search and the Image media filter can still find them."
+          control={<SettingSwitch checked={hideAssociatedTextureMaps} onChange={setHideAssociatedTextureMaps} ariaLabel="Hide associated texture maps" />}
         />
         <SettingRow
           label="Show full path"

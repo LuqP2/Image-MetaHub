@@ -31,6 +31,7 @@ import { Image as ImageIcon, X, Search } from 'lucide-react';
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
 import ImageModal from './components/ImageModal';
+import { getModelTextureMapIndex } from './utils/modelTextureMaps';
 import Sidebar from './components/Sidebar';
 import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import Header from './components/Header';
@@ -424,6 +425,8 @@ export default function App() {
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
   const safeImages = useMemo(() => Array.isArray(images) ? images : [], [images]);
+  const textureMapIndex = useMemo(() => getModelTextureMapIndex(safeImages), [safeImages]);
+  const hideAssociatedTextureMaps = useSettingsStore((state) => state.hideAssociatedTextureMaps);
   const safeFilteredImages = useMemo(() => Array.isArray(filteredImages) ? filteredImages : [], [filteredImages]);
   const safeClusterNavigationContext = useMemo(() => Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [], [clusterNavigationContext]);
   // activeImageScope is a descriptor now; resolve it to the displayed scoped image set
@@ -2919,11 +2922,19 @@ export default function App() {
         : scopedBaseImages,
     [libraryView, collectionFilteredImages, findSimilarIdSet, scopedBaseImages],
   );
+  const browseImages = useMemo(() => {
+    if (libraryView !== 'library' || !hideAssociatedTextureMaps || searchQuery.trim()
+        || advancedFilters.mediaTypes?.includes('image') || semanticResultGeneration !== null || findSimilarIdSet) {
+      return baseDisplayImages;
+    }
+    return baseDisplayImages.filter((image) => !textureMapIndex.associatedImageIds.has(image.id));
+  }, [advancedFilters.mediaTypes, baseDisplayImages, findSimilarIdSet, hideAssociatedTextureMaps,
+    libraryView, searchQuery, semanticResultGeneration, textureMapIndex]);
   const displayImages = useMemo(() => {
-    if (!relatedImages) return baseDisplayImages;
+    if (!relatedImages) return browseImages;
     return safeImages.filter((image) => relatedImages.imageIds.has(image.id))
       .sort((a, b) => b.lastModified - a.lastModified);
-  }, [baseDisplayImages, relatedImages, safeImages]);
+  }, [browseImages, relatedImages, safeImages]);
   const relatedTotalPages = itemsPerPage === -1 ? 1 : Math.ceil(displayImages.length / itemsPerPage);
   const galleryPage = relatedImages ? Math.min(relatedPage, Math.max(1, relatedTotalPages)) : currentPage;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
@@ -3234,6 +3245,12 @@ export default function App() {
     setSelectedImage(image);
   }, [beginModalOpenFlow, openImageModals, resolveViewerHost, reuseImageViewer, setSelectedImage]);
 
+  const openTextureMap = useCallback((modelId: string, image: IndexedImage) => {
+    const maps = getModelTextureMapIndex(useImageStore.getState().images).byModelId.get(modelId) ?? [];
+    if (!maps.some((map) => map.image.id === image.id)) return;
+    handleOpenImageInResultSet(image, maps.map((map) => map.image), 'related-images');
+  }, [handleOpenImageInResultSet]);
+
   const handleGalleryImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (!relatedImages) {
       handleGridImageClick(image, event);
@@ -3494,13 +3511,13 @@ export default function App() {
   }, [beginModalOpenFlow, openImageModals, resolveViewerHost, setError, setSelectedImage, slideshowPlaylistPreview.images]);
 
   useEffect(() => {
-    const scopedTotalPages = Math.ceil(baseDisplayImages.length / itemsPerPage);
+    const scopedTotalPages = Math.ceil(browseImages.length / itemsPerPage);
     if (currentPage > scopedTotalPages && scopedTotalPages > 0) {
       resetLibraryGridScrollPosition();
       resetCollectionsGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [currentPage, baseDisplayImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
+  }, [currentPage, browseImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
 
   useEffect(() => {
     if (libraryView !== 'collections') {
@@ -3683,13 +3700,16 @@ export default function App() {
       comparisonImages: imageState.comparisonImages.map(toImageModalImageDTO),
       collections: imageState.collections,
       selectedImageIds: Array.from(selectedImages),
+      textureMaps: (textureMapIndex.byModelId.get(modal.image.id) ?? []).map(({ image, role }) => ({
+        image: toImageModalImageDTO(image), role,
+      })),
       lineage: {
         resolvedByImageId: resolvedLineage ? { [modal.image.id]: resolvedLineage } : {},
         derivedIdsBySourceId: derivedIds.length > 0 ? { [modal.image.id]: derivedIds } : {},
         images: lineageImages,
       },
     };
-  }, [lineageLastBuiltAt, progress, selectedImages, viewerLicenseSyncToken, viewerSettingsSyncToken]);
+  }, [lineageLastBuiltAt, progress, selectedImages, textureMapIndex, viewerLicenseSyncToken, viewerSettingsSyncToken]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -3816,6 +3836,13 @@ export default function App() {
         };
         const viewerCommand = command as ImageViewerCommand;
         switch (viewerCommand.type) {
+          case 'open-texture-map': {
+            const maps = textureMapIndex.byModelId.get(session.imageId) ?? [];
+            const target = maps.find(({ image }) => image.id === viewerCommand.imageId);
+            if (!target) throw new Error('Texture map is no longer associated with this model.');
+            openTextureMap(session.imageId, target.image);
+            break;
+          }
           case 'start-trial': {
             const activated = await useLicenseStore.getState().activateTrial();
             if (!activated) {
@@ -4068,7 +4095,7 @@ export default function App() {
         respond({ success: true });
       })().catch((error) => respond({ success: false, error: error instanceof Error ? error.message : 'Viewer command failed.' }));
     });
-  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openRelatedImages, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
+  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openRelatedImages, openImageModals, openTextureMap, reparseViewerImages, resolveModalNavigationImages, textureMapIndex]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals
@@ -4363,6 +4390,7 @@ export default function App() {
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
+          onOpenTextureMap={openTextureMap}
         />
       ) : null}
 
@@ -4971,6 +4999,7 @@ export default function App() {
             onFindSimilar={(image) => openFindSimilar(image, resolveModalNavigationImages(modal))}
             onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
             onOpenImageEditor={(image) => handleOpenImageEditorFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
+            onOpenTextureMap={(image) => openTextureMap(modal.image.id, image)}
           />
         ))}
 

@@ -158,6 +158,7 @@ interface SettingsState {
   indexingConcurrency: number;
   disableThumbnails: boolean;
   showFilenames: boolean;
+  hideAssociatedTextureMaps: boolean;
   canvasSmartGuides: boolean;
   canvasSnapToGrid: boolean;
   canvasShowGrid: boolean;
@@ -246,6 +247,7 @@ interface SettingsState {
   setIndexingConcurrency: (value: number) => void;
   setDisableThumbnails: (value: boolean) => void;
   setShowFilenames: (value: boolean) => void;
+  setHideAssociatedTextureMaps: (value: boolean) => void;
   setCanvasSmartGuides: (value: boolean) => void;
   setCanvasSnapToGrid: (value: boolean) => void;
   setCanvasShowGrid: (value: boolean) => void;
@@ -320,6 +322,7 @@ export const useSettingsStore = create<SettingsState>()(
       indexingConcurrency: defaultIndexingConcurrency,
       disableThumbnails: false,
       showFilenames: false,
+      hideAssociatedTextureMaps: false,
       canvasSmartGuides: true,
       canvasSnapToGrid: false,
       canvasShowGrid: false,
@@ -396,6 +399,7 @@ export const useSettingsStore = create<SettingsState>()(
         }),
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
       setShowFilenames: (value) => set({ showFilenames: !!value }),
+      setHideAssociatedTextureMaps: (value) => set({ hideAssociatedTextureMaps: value }),
       setCanvasSmartGuides: (value) => set({ canvasSmartGuides: !!value }),
       setCanvasSnapToGrid: (value) => set({ canvasSnapToGrid: !!value }),
       setCanvasShowGrid: (value) => set({ canvasShowGrid: !!value }),
@@ -497,6 +501,7 @@ export const useSettingsStore = create<SettingsState>()(
         indexingConcurrency: defaultIndexingConcurrency,
         disableThumbnails: false,
         showFilenames: false,
+        hideAssociatedTextureMaps: false,
         canvasSmartGuides: true,
         canvasSnapToGrid: false,
         canvasShowGrid: false,
