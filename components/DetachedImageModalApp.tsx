@@ -240,6 +240,8 @@ const DetachedImageModalApp: React.FC = () => {
       onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
       modalId={snapshot.sessionId}
       image={image}
+      textureMaps={(snapshot.textureMaps ?? []).map(({ image: map, role }) => ({ image: asIndexedImage(map), role }))}
+      onOpenTextureMap={(map) => void sendCommand({ type: 'open-texture-map', imageId: map.id })}
       prefetchPrevious={prefetchPrevious}
       prefetchNext={prefetchNext}
       onClose={() => void window.electronAPI?.imageViewerWindowAction({ sessionId: snapshot.sessionId, action: 'close' })}

@@ -29,6 +29,7 @@ import { getRecentTagChips } from '../utils/tagSuggestions';
 import { isAudioFileName, isModel3DFileName, isVideoFileName } from '../utils/mediaTypes.js';
 import AudioPlayer from './AudioPlayer';
 import Model3DViewer from './Model3DViewer';
+import { TextureMapsSection } from './TextureMapsSection';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { saveShadows } from '../services/userDataPersistenceAdapter';
 import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
@@ -151,12 +152,14 @@ interface ImagePreviewSidebarProps {
   width: number;
   isResizing: boolean;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onOpenTextureMap: (modelId: string, image: IndexedImage) => void;
 }
 
 const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   width,
   isResizing,
   onResizeStart,
+  onOpenTextureMap,
 }) => {
   const {
     previewImage,
@@ -563,17 +566,21 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
           {isModel3D ? (
-            <div className="h-80 w-full overflow-hidden rounded-lg">
-              <Model3DViewer
-                key={activeImage.id}
-                image={activeImage}
-                directoryPath={activeImageDirectoryPath}
-                compact
-                onOpenSourceImage={(targetImage) => {
-                  setPreviewImage(targetImage);
-                  setSelectedImage(targetImage);
-                }}
-              />
+            <div className="w-full overflow-hidden rounded-lg">
+              <div className="h-80">
+                <Model3DViewer
+                  key={activeImage.id}
+                  image={activeImage}
+                  directoryPath={activeImageDirectoryPath}
+                  compact
+                  onOpenSourceImage={(targetImage) => {
+                    setPreviewImage(targetImage);
+                    setSelectedImage(targetImage);
+                  }}
+                />
+              </div>
+              <TextureMapsSection key={activeImage.id} image={activeImage}
+                onOpen={(targetImage) => onOpenTextureMap(activeImage.id, targetImage)} />
             </div>
           ) : imageUrl ? (
             isAudio ? (

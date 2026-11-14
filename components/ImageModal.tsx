@@ -75,6 +75,8 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import AudioPlayer from './AudioPlayer';
 import ImageAdjustmentPanel from './ImageAdjustmentPanel';
 import Model3DViewer from './Model3DViewer';
+import { TextureMapsSection } from './TextureMapsSection';
+import type { IndexedTextureMap } from '../utils/modelTextureMaps';
 import ExrViewer from './ExrViewer';
 import { isExrFileName, canEditRasterFile } from '../utils/mediaTypes.js';
 import { getRelativeImagePath, splitRelativePath } from '../utils/imagePaths';
@@ -171,6 +173,8 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
 };
 
 interface ImageModalProps {
+  textureMaps?: IndexedTextureMap[];
+  onOpenTextureMap?: (image: IndexedImage) => void;
   hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
@@ -915,6 +919,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onFindSimilar,
   onOpenComfyUIWorkflow,
   onOpenImageEditor,
+  textureMaps,
+  onOpenTextureMap,
   onImageDeleted,
   onImageRenamed,
   onRequestDelete,
@@ -3791,17 +3797,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {onNavigateNext && <button type="button" aria-label="Next image" title="Next image" disabled={currentIndex < 0 || currentIndex >= totalImages - 1 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('next'); }} className="absolute inset-y-0 right-0 z-20 flex w-12 items-center justify-end text-white disabled:opacity-25"><ChevronRight className="h-9 w-9 rounded-full bg-black/50" /></button>}
             </>} /></div>
           ) : isModel3D ? (
-            <div data-no-window-drag="true" className="h-full min-h-0 w-full min-w-0">
-              <Model3DViewer
-                key={liveImage.id}
-                image={liveImage}
-                directoryPath={directoryPath}
-                modalControls
-                onOpenSourceImage={(targetImage) => {
-                  setPreviewImage(targetImage);
-                  setSelectedImage(targetImage);
-                }}
-              />
+            <div data-no-window-drag="true" className="flex h-full min-h-0 w-full min-w-0 flex-col">
+              <div className="min-h-0 flex-1">
+                <Model3DViewer
+                  key={liveImage.id}
+                  image={liveImage}
+                  directoryPath={directoryPath}
+                  modalControls
+                  onOpenSourceImage={(targetImage) => {
+                    setPreviewImage(targetImage);
+                    setSelectedImage(targetImage);
+                  }}
+                />
+              </div>
+              {onOpenTextureMap && (
+                <TextureMapsSection key={liveImage.id} image={liveImage} maps={textureMaps} onOpen={onOpenTextureMap} />
+              )}
             </div>
           ) : imageUrl ? (
             isAudio ? (
@@ -5435,6 +5446,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
   };
 
   const propsEqual =
+    prevProps.textureMaps === nextProps.textureMaps &&
+    prevProps.onOpenTextureMap === nextProps.onOpenTextureMap &&
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.name === nextProps.image.name &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&

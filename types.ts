@@ -1255,6 +1255,7 @@ export interface Model3DBounds {
 
 export interface Model3DMetadata {
   format: string;
+  textureMaps?: import('./utils/modelTextureMaps').ModelTextureMap[];
   vertexCount?: number;
   faceCount?: number;
   materialCount?: number;

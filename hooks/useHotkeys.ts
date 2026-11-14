@@ -7,10 +7,11 @@ import { useImageLoader } from './useImageLoader';
 import { useFeatureAccess } from './useFeatureAccess';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateActions';
-import type { Directory, ExploreDimension, ImageRating } from '../types';
+import type { Directory, ExploreDimension, ImageRating, IndexedImage } from '../types';
 
 interface HotkeyProps {
   relatedImageIds?: ReadonlySet<string>;
+  getSelectionScope?: () => readonly IndexedImage[] | undefined;
   isCanvasActive?: boolean;
   isCommandPaletteOpen: boolean;
   setIsCommandPaletteOpen: (isOpen: boolean) => void;
@@ -57,6 +58,7 @@ const createTransferDestination = (directories: Directory[], destinationPath: st
 
 export const useHotkeys = ({
   relatedImageIds,
+  getSelectionScope,
   isCanvasActive = false,
   isCommandPaletteOpen,
   setIsCommandPaletteOpen,
@@ -133,7 +135,7 @@ export const useHotkeys = ({
     });
     hotkeyManager.registerAction('selectAll', () => {
       if (!relatedImageIds) {
-        selectAllImages();
+        selectAllImages(getSelectionScope?.());
         return;
       }
       const { images } = useImageStore.getState();
@@ -317,6 +319,7 @@ export const useHotkeys = ({
     handleSelectFolder,
     handleLoadFromStorage,
     selectAllImages,
+    getSelectionScope,
     relatedImageIds,
     handleDeleteSelectedImages,
     selectedImage,

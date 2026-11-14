@@ -226,14 +226,14 @@ const focusGridAndPress = (container: HTMLElement, key: string) => {
   fireEvent.keyDown(document, { key });
 };
 
-const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
+const SelectionHarness = ({ images, selectionScope }: { images: IndexedImage[]; selectionScope?: IndexedImage[] }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
   const { handleImageSelection } = useImageSelection();
 
   return (
     <ImageGrid
       images={images}
-      onImageClick={handleImageSelection}
+      onImageClick={(image, event) => handleImageSelection(image, event, selectionScope)}
       selectedImages={selectedImages}
       currentPage={1}
       totalPages={1}
@@ -1215,7 +1215,7 @@ describe('ImageGrid selection opening behavior', () => {
     expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-visible']));
   });
 
-  it('selects an image range with shift-click from the preview anchor', () => {
+  it.each([false, true])('selects a shift-click range from the preview anchor (hidden map: %s)', (hideMap) => {
     const images = [
       createImage({ id: 'img-1', name: 'alpha.png' }),
       createImage({ id: 'img-2', name: 'beta.png' }),
@@ -1235,11 +1235,12 @@ describe('ImageGrid selection opening behavior', () => {
       filterAndSortImages: vi.fn(),
     } as any);
 
-    render(<SelectionHarness images={images} />);
+    const gallery = hideMap ? [images[0], images[2]] : images;
+    render(<SelectionHarness images={gallery} selectionScope={hideMap ? gallery : undefined} />);
 
     fireEvent.click(screen.getByAltText('gamma.png'), { shiftKey: true });
 
-    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2', 'img-3']));
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(gallery.map((image) => image.id)));
   });
 
   it('clears checked images when clicking empty grid space without modifiers', () => {

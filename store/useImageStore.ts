@@ -813,7 +813,7 @@ interface ImageState {
   getResolvedFilteredCollectionImages: (collectionId: string) => IndexedImage[];
   getCollectionImageCount: (collectionId: string) => number;
   toggleImageSelection: (imageId: string) => void;
-  selectAllImages: () => void;
+  selectAllImages: (imagesInView?: readonly IndexedImage[]) => void;
   clearImageSelection: () => void;
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
@@ -4801,8 +4801,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         },
 
-        selectAllImages: () => set(state => {
-            const selectionScope = resolveDisplayedImages(state);
+        selectAllImages: (imagesInView) => set(state => {
+            const selectionScope = imagesInView ?? resolveDisplayedImages(state);
             // Performance optimization: Avoid intermediate array allocation
             const allImageIds = new Set<string>();
             for (let i = 0; i < selectionScope.length; i++) {

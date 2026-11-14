@@ -1,4 +1,5 @@
 import type { RelatedImagesMode } from '../utils/relatedImages';
+import type { TextureMapRole } from '../utils/modelTextureMaps';
 import type { IndexedImage, ImageRating, SmartCollection, BaseMetadata } from '../types';
 import type { ResolvedLineageEntry } from './lineageRegistry';
 import type { WorkflowOverrides } from './comfyUIApiClient';
@@ -43,6 +44,7 @@ export interface ImageViewerSnapshot {
   collections: SmartCollection[];
   /** Ids only: the viewer needs the selection size and membership, not the records. */
   selectedImageIds: string[];
+  textureMaps?: { image: ImageModalImageDTO; role: TextureMapRole }[];
   /**
    * The detached renderer has its own small image store. Send only the current
    * image's resolved lineage plus the directly related records it needs to show
@@ -107,6 +109,7 @@ export interface ImageViewerSaveResult {
 }
 
 export type ImageViewerCommand =
+  | { type: 'open-texture-map'; imageId: string }
   | { type: 'navigate'; direction: 'next' | 'previous' | 'random'; wrap?: boolean }
   | { type: 'start-trial' }
   | { type: 'close' }
