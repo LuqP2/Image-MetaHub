@@ -15,6 +15,19 @@
     @apply border-accent/40 bg-accent/15 text-gray-50 shadow-sm;
   }
 
+  .app-workspace-tab {
+    @apply relative inline-flex h-12 items-center gap-1.5 whitespace-nowrap px-2.5 text-xs font-semibold text-gray-400 transition-colors hover:text-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent;
+  }
+
+  .app-workspace-tab[aria-current="page"] {
+    @apply text-gray-50 light:text-gray-100;
+  }
+
+  .app-workspace-tab[aria-current="page"]::after {
+    content: "";
+    @apply absolute inset-x-2.5 bottom-0 h-0.5 bg-accent;
+  }
+
   .app-top-pill {
     @apply inline-flex h-9 items-center gap-2 rounded-lg border border-gray-700/70 bg-gray-900/60 px-3 text-xs font-semibold text-gray-300 transition-colors duration-200 hover:border-gray-600 hover:bg-gray-800/80 hover:text-gray-100;
   }

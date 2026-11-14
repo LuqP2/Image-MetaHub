@@ -378,7 +378,7 @@ const Header: React.FC<HeaderProps> = ({
           )}
 
           {libraryView && onLibraryViewChange && (
-            <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
+            <div className="-my-1.5 min-w-0 max-w-full overflow-x-auto scrollbar-thin">
               <nav aria-label="Workspaces" className="flex w-max items-center gap-1">
                 {viewTabs.map((tab) => {
                   const isComfyUITab = tab.id === 'comfyui';
@@ -420,9 +420,7 @@ const Header: React.FC<HeaderProps> = ({
                         onOpenDroppedImageInComfyUI?.(imageId);
                         clearInternalImageDragData();
                       } : undefined}
-                      className={`app-top-segment !h-8 !px-2.5 whitespace-nowrap ${
-                        libraryView === tab.id ? 'app-top-segment-active' : ''
-                      } ${
+                      className={`app-workspace-tab ${
                         isComfyUITab && isComfyUIDragTarget
                           ? 'ring-2 ring-cyan-400 bg-cyan-500/25 text-cyan-100'
                           : ''
@@ -445,7 +443,7 @@ const Header: React.FC<HeaderProps> = ({
                   <button
                     key={tab.key}
                     onClick={tab.run}
-                    className="app-top-segment !h-8 !px-2.5 whitespace-nowrap"
+                    className="app-workspace-tab"
                     title={`${tab.label} (opens Explore)`}
                   >
                     <span>{tab.label}</span>
