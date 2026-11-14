@@ -1671,7 +1671,7 @@ export interface ComparisonPaneProps {
   directoryPath: string;
   syncEnabled: boolean;
   externalZoom?: ZoomState;
-  onZoomChange?: (zoom: number, x: number, y: number) => void;
+  onZoomChange?: (zoom: number, x: number, y: number, isExternal?: boolean) => void;
   onHoverChange?: (isHovered: boolean) => void;
   onRemove?: () => void;
   className?: string;

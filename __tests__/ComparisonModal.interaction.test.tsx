@@ -3,24 +3,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ComparisonModal from '../components/ComparisonModal';
 import { useImageStore } from '../store/useImageStore';
-import type { IndexedImage } from '../types';
+import type { ComparisonPaneProps, IndexedImage } from '../types';
+import { defaultComparisonUI, useComparisonUIStore } from '../store/useComparisonUIStore';
 
 vi.mock('../components/ComparisonPane', () => ({
   default: ({
     image,
     onHoverChange,
     onRemove,
-  }: {
-    image: IndexedImage;
-    onHoverChange?: (isHovered: boolean) => void;
-    onRemove?: () => void;
-  }) => (
+    externalZoom,
+    onZoomChange,
+  }: ComparisonPaneProps) => (
     <div
       data-testid={`pane-${image.id}`}
+      data-zoom={JSON.stringify(externalZoom)}
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
     >
       {image.name}
+      <button type="button" onClick={() => onZoomChange?.(2, -100, -80)}>
+        {`Zoom ${image.id}`}
+      </button>
+      <button type="button" onClick={() => onZoomChange?.(2, -60, -40, true)}>
+        {`Apply zoom to ${image.id}`}
+      </button>
       {onRemove ? (
         <button type="button" onClick={onRemove} aria-label={`Remove ${image.name} from comparison pane`}>
           Remove pane
@@ -97,6 +103,27 @@ const createImage = (id: string, prompt: string): IndexedImage => ({
 describe('ComparisonModal interactions', () => {
   beforeEach(() => {
     useImageStore.getState().resetState();
+    useComparisonUIStore.setState({ ui: defaultComparisonUI() });
+  });
+
+  it('keeps the follower transform when disabling Sync without rebroadcasting its clamped position', () => {
+    const leader = createImage('leader', 'first prompt');
+    const follower = createImage('follower', 'second prompt');
+    const staleZoom = { zoom: 1.5, x: -10, y: -20 };
+    useImageStore.setState({ comparisonImages: [leader, follower] });
+    useComparisonUIStore.setState({
+      ui: { ...defaultComparisonUI(), paneZooms: { [follower.id]: staleZoom } },
+    });
+
+    render(<ComparisonModal isOpen onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom leader' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply zoom to follower' }));
+
+    expect(useComparisonUIStore.getState().ui.sharedZoom).toEqual({ zoom: 2, x: -100, y: -80 });
+    fireEvent.click(screen.getByRole('button', { name: 'Sync: ON' }));
+
+    expect(screen.getByTestId('pane-leader').getAttribute('data-zoom')).toBe(JSON.stringify({ zoom: 2, x: -100, y: -80 }));
+    expect(screen.getByTestId('pane-follower').getAttribute('data-zoom')).toBe(JSON.stringify({ zoom: 2, x: -60, y: -40 }));
   });
 
   it('opens with metadata collapsed and highlights the matching metadata card on pane hover', () => {

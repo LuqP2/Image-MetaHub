@@ -62,10 +62,8 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
         onInit={applyExternalZoom}
         wheel={{ step: 0.1 }}
         onTransformed={(ref) => {
-          if (onZoomChange && !isApplyingExternalZoom.current) {
-            const { positionX, positionY, scale } = ref.state;
-            onZoomChange(scale, positionX, positionY);
-          }
+          const { positionX, positionY, scale } = ref.state;
+          onZoomChange?.(scale, positionX, positionY, isApplyingExternalZoom.current);
         }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
