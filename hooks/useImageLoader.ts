@@ -1129,6 +1129,7 @@ export function useImageLoader() {
             suppressSuccessMessage?: boolean;
             suppressErrorMessage?: boolean;
             awaitEnrichment?: boolean;
+            hydrateCachedImages?: boolean;
         } = {}
     ) => {
         const loadStart = performance.now();
@@ -1260,7 +1261,7 @@ export function useImageLoader() {
             }
 
             let preloadedImages: IndexedImage[] = [];
-            const shouldHydratePreloadedImages = !isUpdate || diff.needsFullRefresh;
+            const shouldHydratePreloadedImages = !isUpdate || diff.needsFullRefresh || options.hydrateCachedImages === true;
             const regeneratedCachedImages =
                 shouldHydratePreloadedImages && diff.cachedImages.length > 0
                     ? await (() => {
@@ -1782,7 +1783,11 @@ export function useImageLoader() {
                     if (rebuildLibraryCache) {
                         await window.electronAPI?.updateAllowedPaths(directoriesToLoad.map(dir => dir.path));
                         for (const dir of directoriesToLoad) {
-                            await loadDirectory(dir, true, undefined, { awaitEnrichment: true, suppressSuccessMessage: true });
+                            await loadDirectory(dir, true, undefined, {
+                                awaitEnrichment: true,
+                                hydrateCachedImages: true,
+                                suppressSuccessMessage: true,
+                            });
                             setEnrichmentProgress(null);
                         }
                         setLineageRebuildSuspended(false);
