@@ -92,8 +92,15 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
     });
   };
 
-  const handleZoomChange = (zoom: number, x: number, y: number) => {
-    if (syncEnabled) {
+  const handlePaneZoomChange = (imageId: string, zoom: number, x: number, y: number, isExternal = false) => {
+    useComparisonUIStore.setState((state) => {
+      const old = state.ui.paneZooms[imageId];
+      if (old && Math.abs(old.zoom - zoom) < .001 && Math.abs(old.x - x) < .1 && Math.abs(old.y - y) < .1) {
+        return state;
+      }
+      return { ui: { ...state.ui, paneZooms: { ...state.ui.paneZooms, [imageId]: { zoom, x, y } } } };
+    });
+    if (syncEnabled && !isExternal) {
       updateSharedZoom(zoom, x, y);
     }
   };
@@ -485,7 +492,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                     directoryPath={directoryPathById.get(image.directoryId) || ''}
                   syncEnabled={syncEnabled}
                   externalZoom={syncEnabled ? sharedZoom : useComparisonUIStore.getState().ui.paneZooms[image.id]}
-                  onZoomChange={(zoom, x, y) => { useComparisonUIStore.setState(state => { const old = state.ui.paneZooms[image.id]; return old && Math.abs(old.zoom - zoom) < .001 && Math.abs(old.x - x) < .1 && Math.abs(old.y - y) < .1 ? state : { ui: { ...state.ui, paneZooms: { ...state.ui.paneZooms, [image.id]: { zoom, x, y } } } }; }); handleZoomChange(zoom, x, y); }}
+                  onZoomChange={(zoom, x, y, isExternal) => handlePaneZoomChange(image.id, zoom, x, y, isExternal)}
                   onHoverChange={(isHovered) =>
                     setActiveMetadataIndex((current) => (isHovered ? index : current === index ? null : current))
                   }

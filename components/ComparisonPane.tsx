@@ -1,13 +1,14 @@
 import Model3DViewer from './Model3DViewer';
 import ExrViewer from './ExrViewer';
 import { isExrFileName, isModel3DFileName } from '../utils/mediaTypes.js';
-import React, { useState, useEffect, useRef, FC } from 'react';
-import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import React, { useState, FC } from 'react';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles, X } from 'lucide-react';
 import { ComparisonPaneProps, BaseMetadata } from '../types';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import useComparisonImageSource from '../hooks/useComparisonImageSource';
+import { useComparisonZoom } from '../hooks/useComparisonZoom';
 
 const ComparisonPane: FC<ComparisonPaneProps> = ({
   image,
@@ -15,7 +16,6 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   externalCamera,
   onCameraChange,
   directoryPath,
-  syncEnabled,
   externalZoom,
   onZoomChange,
   onHoverChange,
@@ -23,20 +23,13 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   className,
   imageLabel,
 }) => {
-  const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
   const isModel3D = isModel3DFileName(image.name);
   const isExr = isExrFileName(image.name);
   const { imageUrl, loadError } = useComparisonImageSource(image, directoryPath, isExr || isModel3D);
-
-  // Apply external zoom when sync enabled
-  useEffect(() => {
-    if (externalZoom && transformRef.current) {
-      const { setTransform } = transformRef.current;
-      setTransform(externalZoom.x, externalZoom.y, externalZoom.zoom, 0);
-    }
-  }, [syncEnabled, externalZoom]);
+  const { transformRef, applyExternalZoom, isApplyingExternalZoom } =
+    useComparisonZoom(externalZoom, 0.5, !isExr && !isModel3D && !loadError);
 
   if (isModel3D) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><Model3DViewer image={image} directoryPath={directoryPath} externalCamera={externalCamera} onCameraChange={onCameraChange} className="h-full" />{onRemove && <button aria-label={`Remove ${image.name}`} className="absolute bottom-2 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
   if (isExr) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><ExrViewer image={image} directoryPath={directoryPath} externalZoom={externalZoom} onZoomChange={onZoomChange} />{onRemove && <button className="absolute bottom-8 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
@@ -61,31 +54,30 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
     >
       <TransformWrapper
         ref={transformRef}
-        initialScale={externalZoom?.zoom ?? 1}
-        initialPositionX={externalZoom?.x}
-        initialPositionY={externalZoom?.y}
         minScale={0.5}
         maxScale={5}
-        centerOnInit={!externalZoom || (externalZoom.zoom === 1 && externalZoom.x === 0 && externalZoom.y === 0)}
+        centerZoomedOut
+        disablePadding
+        panning={{ velocityDisabled: true }}
+        onInit={applyExternalZoom}
         wheel={{ step: 0.1 }}
         onTransformed={(ref) => {
-          if (onZoomChange) {
-            const { positionX, positionY, scale } = ref.state;
-            onZoomChange(scale, positionX, positionY);
-          }
+          const { positionX, positionY, scale } = ref.state;
+          onZoomChange?.(scale, positionX, positionY, isApplyingExternalZoom.current);
         }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             <TransformComponent
-              wrapperClass="w-full h-full"
-              contentClass="w-full h-full flex items-center justify-center"
+              wrapperStyle={{ width: '100%', height: '100%' }}
+              contentStyle={{ width: '100%', height: '100%' }}
             >
               {imageUrl ? (
                 <img
                   src={imageUrl}
                   alt={image.name}
-                  className="max-w-full max-h-full object-contain"
+                  draggable={false}
+                  className="block h-full w-full select-none object-contain"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
@@ -97,7 +89,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
             {/* Zoom Controls - Always visible on mobile, hover on desktop */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
               <button
-                onClick={() => zoomIn()}
+                onClick={() => zoomIn(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom In"
                 aria-label="Zoom In"
@@ -105,7 +97,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 <ZoomIn className="w-5 h-5 text-white" />
               </button>
               <button
-                onClick={() => zoomOut()}
+                onClick={() => zoomOut(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom Out"
                 aria-label="Zoom Out"
@@ -113,7 +105,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 <ZoomOut className="w-5 h-5 text-white" />
               </button>
               <button
-                onClick={() => resetTransform()}
+                onClick={() => resetTransform(0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Reset Zoom"
                 aria-label="Reset Zoom"
