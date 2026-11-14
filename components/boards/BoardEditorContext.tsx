@@ -4,11 +4,13 @@ import type { IndexedImage } from '../../types';
 import type { BoardAssetObject } from '../../services/boards/types';
 import type { BoardObjectUpdate } from '../../services/boards/operations';
 import type { BoardPoint } from '../../services/boards/layout';
+import type { SmartGuide } from '../../services/boards/snapping';
 
 export interface BoardEditorActions {
   exporting?: boolean;
   editable: boolean;
   connecting: boolean;
+  showResizeGuides?(guides: SmartGuide[]): void;
   tool?: BoardTool;
   setTool?(tool: BoardTool): void;
   editingObjectId?: string | null;

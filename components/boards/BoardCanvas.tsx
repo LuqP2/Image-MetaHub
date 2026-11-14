@@ -37,7 +37,7 @@ import BoardConnection from './BoardConnection';
 import BoardViewportControls from './BoardViewportControls';
 import BoardCanvasHelp from './BoardCanvasHelp';
 import { boardBackground, boardGridColor } from '../../services/boards/background';
-import { useBoardEditor } from './BoardEditorContext';
+import { BoardEditorContext, useBoardEditor } from './BoardEditorContext';
 
 const nodeTypes = { prompt: BoardPromptNode, stack: BoardStackNode, sticky: BoardCreativeNode, shape: BoardCreativeNode, link: BoardCreativeNode, 'smart-frame': BoardSmartFrameNode, asset: BoardAssetNode, text: BoardTextNode, frame: BoardFrameNode };
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
@@ -57,6 +57,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
   const flow = useReactFlow<BoardFlowNode>();
   const { x: viewportX, y: viewportY, zoom } = useViewport();
   const snapping = useBoardSnapping(boardId);
+  const canvasEditor = useMemo(() => ({ ...editor, showResizeGuides: snapping.setGuides }), [editor, snapping.setGuides]);
   const showGrid = useSettingsStore(state => state.canvasShowGrid);
   const stageRef = useRef<HTMLDivElement>(null);
   const connections = useBoardConnections(boardId, stageRef);
@@ -121,7 +122,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     const filtered = snapping.filterChanges(changes);
     const updatedNodes = applyNodeChanges(filtered, nodes);
     const updates = flowGeometryUpdates(updatedNodes, filtered);
-    if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates, useBoardStore.getState().sessions[boardId].interaction?.objects));
+    if (updates.length) state.updateInteraction(boardId, document => updateObjects(document, updates, { resizeStart: useBoardStore.getState().sessions[boardId].interaction?.objects }));
     if (changes.some(change => change.type === 'dimensions' && change.resizing === false)) state.commitInteraction(boardId);
   }, [boardId, nodes, editor.editable, snapping.filterChanges]);
   const finishDrag = useCallback(() => {
@@ -172,6 +173,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       clearInternalImageDragData();
       if (ids.length) editor.dropAssets?.(ids, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
     }}>
+    <BoardEditorContext.Provider value={canvasEditor}>
     <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} style={{ background: boardBackground(session.document.backgroundColor) }}
       onSelectionStart={() => { if (marquee.current) marquee.current.active = true; }}
       onSelectionEnd={event => {
@@ -219,6 +221,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       <Panel position="bottom-left"><BoardCanvasHelp/></Panel>
       {showGrid && <Background bgColor={boardBackground(session.document.backgroundColor)} color={boardGridColor(session.document.backgroundColor)} gap={24} size={1} />}
     </ReactFlow>
+    </BoardEditorContext.Provider>
     {!!snapping.guides.length && <svg aria-label="Smart Guides" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1001, overflow: 'hidden' }}>
       <g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
         {snapping.guides.map(guide => <line key={guide.axis} data-axis={guide.axis} data-reference={guide.referenceId}

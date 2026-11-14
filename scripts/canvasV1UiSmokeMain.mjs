@@ -2,6 +2,7 @@ import { app, BrowserWindow, ClipboardItem, ipcMain, clipboard, nativeImage } fr
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { registerBoardIpc } from '../electron/boardIpc.mjs';
+import assert from 'node:assert/strict';
 
 const output = process.env.IMH_CANVAS_UI_SMOKE_ROOT;
 if (!output || !path.resolve(output).includes('canvas-smoke-local')) throw new Error('An isolated Canvas smoke output is required.');
@@ -29,7 +30,55 @@ try {
     return { success: true };
   });
   await window.loadFile(path.join(output, 'renderer/index.html'));
-  if (process.argv.includes('--background-only')) {
+  if (process.argv.includes('--frame-resize-only')) {
+    const id = await window.webContents.executeJavaScript('window.canvasSmoke.prepareFrameResize()');
+    window.webContents.debugger.attach('1.3');
+    const read = () => window.webContents.executeJavaScript(`window.canvasSmoke.frameResizeState(${JSON.stringify(id)})`);
+    const drag = async (selector, dx, dy, modifiers = 0) => {
+      const from = await window.webContents.executeJavaScript(`window.canvasSmoke.frameResizePoint(${JSON.stringify(selector)})`);
+      const to = { x: from.x + dx, y: from.y + dy };
+      const send = (type, point, buttons, keys = modifiers) => window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+        type, ...point, button: type === 'mouseMoved' ? 'none' : 'left', buttons, modifiers: keys, clickCount: type === 'mouseMoved' ? 0 : 1,
+      });
+      await send('mousePressed', from, 1);
+      await send('mouseMoved', to, 1);
+      await send('mouseReleased', to, 0, 0);
+      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    };
+    const before = await read();
+    assert.deepEqual(before.selectedObjectIds, []);
+    await drag('.line.bottom', 0, -100);
+    const trimmed = await read();
+    const [originalFrame, ...images] = before.objects;
+    const [trimmedFrame] = trimmed.objects;
+    assert.deepEqual(trimmed.selectedObjectIds, [originalFrame.id]);
+    assert.equal(trimmedFrame.height, originalFrame.height - 100);
+    assert.deepEqual(trimmed.objects.slice(1), images);
+    assert.equal(trimmed.undoSteps, before.undoSteps + 1);
+    await drag('.line.left', 30, 0, 1);
+    const narrowed = await read();
+    const [narrowedFrame] = narrowed.objects;
+    assert.equal(narrowedFrame.x, trimmedFrame.x + 30);
+    assert.equal(narrowedFrame.width, trimmedFrame.width - 30);
+    assert.deepEqual(narrowed.objects.slice(1), images);
+    await drag('.handle.top.left', 40, 30, 1);
+    const scaled = await read();
+    const [scaledFrame, ...scaledImages] = scaled.objects;
+    const ratio = scaledFrame.width / narrowedFrame.width;
+    const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `Expected ${actual} to equal ${expected}`);
+    assert.ok(ratio < 1);
+    close(scaledFrame.height, narrowedFrame.height * ratio);
+    close(scaledFrame.x + scaledFrame.width, narrowedFrame.x + narrowedFrame.width);
+    close(scaledFrame.y + scaledFrame.height, narrowedFrame.y + narrowedFrame.height);
+    scaledImages.forEach((image, index) => {
+      close(image.width, images[index].width * ratio);
+      close(image.height, images[index].height * ratio);
+      close(image.x, scaledFrame.x + (images[index].x - narrowedFrame.x) * ratio);
+      close(image.y, scaledFrame.y + (images[index].y - narrowedFrame.y) * ratio);
+    });
+    assert.equal(scaled.undoSteps, narrowed.undoSteps + 1);
+    process.stdout.write('Frame resize smoke passed with five images\n');
+  } else if (process.argv.includes('--background-only')) {
     const { a, b } = await window.webContents.executeJavaScript('window.canvasSmoke.prepareBackground()');
     await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
     await fs.writeFile(path.join(output, 'background-white.png'), (await window.webContents.capturePage()).toPNG());

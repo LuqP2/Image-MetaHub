@@ -2,7 +2,7 @@ import { Handle, Position, NodeResizer, useNodeId, useStore } from '@xyflow/reac
 import { useBoardEditor } from './BoardEditorContext';
 import type { CSSProperties } from 'react';
 
-export default function BoardNodeControls({ selected, keepAspectRatio = false, minWidth = 80, minHeight = 60 }: { selected: boolean; keepAspectRatio?: boolean; minWidth?: number; minHeight?: number }) {
+export default function BoardNodeControls({ selected, frame = false, keepAspectRatio = false, minWidth = 80, minHeight = 60 }: { selected: boolean; frame?: boolean; keepAspectRatio?: boolean; minWidth?: number; minHeight?: number }) {
   const editor = useBoardEditor();
   const nodeId = useNodeId();
   const zoom = useStore(state => state.transform?.[2] ?? 1);
@@ -26,17 +26,17 @@ export default function BoardNodeControls({ selected, keepAspectRatio = false, m
     const handle = connection.isValid && connection.toNode?.id === nodeId ? connection.toHandle?.id : '';
     return `near:${handle ?? ''}`;
   });
-  const showHandles = editor.editable && (editor.connecting || selected || connectionState.startsWith('near:'));
+  const showHandles = editor.editable && (editor.connecting || (!frame && selected) || connectionState.startsWith('near:'));
   const activeHandle = connectionState.startsWith('near:') ? connectionState.slice(5) : '';
   return <>
-    <NodeResizer isVisible={selected && editor.editable && !groupResize} minWidth={minWidth} minHeight={minHeight} keepAspectRatio={keepAspectRatio}
+    <NodeResizer isVisible={!frame && selected && editor.editable && !groupResize} minWidth={minWidth} minHeight={minHeight} keepAspectRatio={keepAspectRatio}
       handleStyle={{ width: 12, height: 12 }} lineStyle={{ '--board-resize-hit': `${12 / zoom}px`, '--board-resize-stroke': `${1 / zoom}px` } as CSSProperties}
       onResizeStart={editor.begin} />
     {([['top', Position.Top], ['right', Position.Right], ['bottom', Position.Bottom], ['left', Position.Left]] as const).map(([id, position]) =>
       <Handle key={id} id={id} type="source" position={position} isConnectable={editor.editable}
-        title="Drag to connect, or click then choose a destination" className="board-connection-handle" data-editable={editor.editable}
+        title="Drag to connect, or click then choose a destination" className="board-connection-handle" data-editable={editor.editable && !frame}
         isConnectableStart={editor.editable} isConnectableEnd={editor.editable}
-        style={{ '--board-connect-hit': `${9 / zoom}px`, opacity: showHandles ? 1 : undefined, pointerEvents: editor.editable && (editor.connecting || selected || connectionState !== '') ? 'auto' : undefined,
+        style={{ '--board-connect-hit': `${9 / zoom}px`, opacity: showHandles ? 1 : undefined, pointerEvents: showHandles || (!frame && editor.editable && connectionState !== '') ? 'auto' : undefined,
           ...(activeHandle === id ? { width: 14, height: 14, boxShadow: '0 0 0 4px rgb(var(--accent) / .25)' } : {}) } as CSSProperties} />)}
   </>;
 }
