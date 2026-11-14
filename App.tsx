@@ -890,8 +890,11 @@ export default function App() {
   }, [rightSidebarWidth]);
 
   // --- Hotkeys Hook ---
+  const textureFilteredSelectionScopeRef = useRef<IndexedImage[] | undefined>(undefined);
+  const getTextureFilteredSelectionScope = useCallback(() => textureFilteredSelectionScopeRef.current, []);
   const { commands } = useHotkeys({
     relatedImageIds: relatedImages?.imageIds,
+    getSelectionScope: getTextureFilteredSelectionScope,
     isCanvasActive: !relatedImages && libraryView === 'canvas',
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
@@ -2638,7 +2641,7 @@ export default function App() {
     })),
   [resolveGeneratedOutputImageId]);
 
-  const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+  const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent, imagesInView?: IndexedImage[]) => {
     if (event.button === 1) {
       event.preventDefault();
       handleOpenImageModalInBackground(image);
@@ -2653,7 +2656,7 @@ export default function App() {
     if (!event.ctrlKey && !event.metaKey && !event.shiftKey && resolveViewerHost() === 'detached') {
       beginViewerOpening(image.id);
     }
-    handleImageSelection(image, event);
+    handleImageSelection(image, event, imagesInView);
   }, [beginViewerOpening, handleActivateImageModal, handleImageSelection, handleOpenImageModalInBackground, openImageModals, resolveViewerHost]);
 
   useEffect(() => {
@@ -2935,6 +2938,8 @@ export default function App() {
     return safeImages.filter((image) => relatedImages.imageIds.has(image.id))
       .sort((a, b) => b.lastModified - a.lastModified);
   }, [browseImages, relatedImages, safeImages]);
+  const textureFilteredSelectionScope = !relatedImages && browseImages !== baseDisplayImages ? browseImages : undefined;
+  textureFilteredSelectionScopeRef.current = textureFilteredSelectionScope;
   const relatedTotalPages = itemsPerPage === -1 ? 1 : Math.ceil(displayImages.length / itemsPerPage);
   const galleryPage = relatedImages ? Math.min(relatedPage, Math.max(1, relatedTotalPages)) : currentPage;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
@@ -3253,7 +3258,7 @@ export default function App() {
 
   const handleGalleryImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (!relatedImages) {
-      handleGridImageClick(image, event);
+      handleGridImageClick(image, event, textureFilteredSelectionScope);
     } else if (event.button === 1) {
       event.preventDefault();
       handleOpenImageModalInBackground(image, displayImages, 'related-images');
@@ -3264,7 +3269,7 @@ export default function App() {
     } else {
       handleOpenImageInResultSet(image, displayImages, 'related-images');
     }
-  }, [displayImages, handleGridImageClick, handleImageSelection, handleOpenImageInResultSet, handleOpenImageModalInBackground, relatedImages]);
+  }, [displayImages, handleGridImageClick, handleImageSelection, handleOpenImageInResultSet, handleOpenImageModalInBackground, relatedImages, textureFilteredSelectionScope]);
 
   const handleOpenBoardImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
     handleOpenImageInResultSet(image, navigationImages, 'canvas');

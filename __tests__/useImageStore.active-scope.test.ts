@@ -69,6 +69,15 @@ describe('useImageStore active image scope', () => {
     ]);
   });
 
+  it('selects only the gallery results when a narrower view is supplied', () => {
+    const { selectAllImages } = useImageStore.getState();
+    selectAllImages([third]);
+    expect([...useImageStore.getState().selectedImages]).toEqual([third.id]);
+
+    selectAllImages([]);
+    expect(useImageStore.getState().selectedImages.size).toBe(0);
+  });
+
   it('navigates within the active scope when no cluster context is set', () => {
     useImageStore.getState().handleNavigateNext();
     expect(useImageStore.getState().selectedImage?.id).toBe(third.id);
