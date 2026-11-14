@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - [2026-11-14]
+
+### Added
+
+- **Canvas (Pro)**: Introducing a dedicated visual workspace for creating reference boards, moodboards, and creative layouts. Arrange images, videos, 3D models, prompts, text, sticky notes, shapes, and connections on an infinite canvas. Explore your Library through Smart Frames with live queries, visual filter branching, intersections, differences, metadata groups, and interactive matrices. Create image stacks, group visually similar images, and use Prompt Cards to explore prompt variations and matching generations. Includes smart alignment guides, customizable backgrounds, inline video playback, 3D previews, multiple board tabs, undo/redo, automatic saving, editable board import/export, and high-resolution PNG export. Boards maintain references to original files, keeping your creative layouts connected to your Library.
+- **Detached Comparison (Pro)**: Open Compare sessions in a separate desktop window and return to the main application without losing the current selection, layout, zoom, or metadata comparison state.
+- **3D Model Comparison (Pro)**: Compare up to four assets, including 3D models and mixed image/model selections. An optional synchronized camera allows models of different scales to be inspected together with coordinated orbit, pan, zoom, and projection controls.
+- **Prompt Library Folders**: Organize saved prompts and reusable blocks into dedicated folders. Create, rename, and delete folders, move individual items or multiple selections, and preserve folder organization through JSON import and export.
+- **3D Model Texture Maps**: Automatically associate texture maps with their corresponding 3D models using 3D Saver metadata or recognized filename suffixes. A new collapsible Texture Maps section provides direct access to associated maps, with an optional setting to hide them from normal Library browsing.
+- **Find Related Images**: Find all images generated during the same session or on the same date directly from the Grid, Table, and image viewer context menus. Results include a removable filter showing the matching date or time range and image count.
+- **Library Annotation Backup**: Added a new Backup section under Settings → Library to export saved image tags, favorites, and unused manual tags to a JSON file, providing a portable backup of your Library organization.
+- **Extended Pro Trial**: Users with an expired Pro trial or less than three days of trial access remaining automatically receive 72 hours of Pro access to explore Canvas and the other new features in this release.
+
+### Improved
+
+- **ComfyUI Workspace**: Redesigned the Workspace around a unified, resizable sidebar with Library, Prompt, and Models tabs. Browse and search your Library directly from the Workspace using filenames, paths, and generation metadata, with search and scroll position preserved when switching tabs. Includes image prompt tooltips, consistent card styling, and direct access to image inspection and workflow actions.
+- **Library Pagination**: Added a 500-item page size option and persistent page size selection across application restarts.
+- **Library Cache Management**: Clearing the Library cache now displays progress throughout cache removal, reloading, and indexing. Images awaiting metadata extraction display their indexing status instead of prematurely reporting missing metadata.
+- **File Transfer Workflow**: Move To and Copy To remember the previously selected destination, expanded folders, and scroll position during the current application session.
+- **Library Query Engine**: Unified filtering, sorting, and metadata matching across browsing and background search operations for more consistent results.
+- **LoRA Metadata Display**: LoRA names and their corresponding weights are now displayed in separate rows for improved readability.
+- **Image Viewer Controls**: The Reject Candidate action adapts to narrower viewer layouts without overflowing the annotations panel.
+- **Auto-Tag Management**: Auto-tags can now be managed directly from the Library sidebar, with context menu actions and bulk removal. Sidebar tag management is more consistent across manual and automatically generated tags.
+- **Prompt Bookmarks**: Replaced the Save Prompt button with a compact bookmark icon alongside the Prompt label in the image viewer and preview sidebar, making it easier to save prompts without taking up additional space.
+- **Application Header**: Streamlined the main header with reduced height, cleaner workspace navigation tabs, and simplified utility controls, providing more vertical space for the Library and other workspaces.
+
+### Changed
+
+- **Source Code Licensing**: Restored the Mozilla Public License 2.0 (MPL 2.0) for the desktop application, CLI, and metadata engine, replacing PolyForm Perimeter 1.0.1.
+- **Electron Runtime**: Updated Electron from 38.8.6 to 45.3.1.
+- **macOS System Requirements**: macOS 13 Ventura or later is now required. macOS 12 Monterey is no longer supported following the Electron upgrade.
+- **Dependency Updates and Security**: Updated core dependencies, including Transformers.js and Archiver, addressing all reported production dependency vulnerabilities while maintaining local AI inference and ZIP export functionality.
+
+### Fixed
+
+- **Windows AutoWatch Reliability**: Fixed application freezes when enabling AutoWatch on large libraries. Native recursive folder monitoring and asynchronous inventory processing maintain responsiveness while detecting new, renamed, modified, and deleted files.
+- **AutoWatch Linked Folders and Permissions**: Improved monitoring of Windows junctions and linked folders, including target changes and folder replacements. Permission errors no longer interrupt monitoring or incorrectly remove existing Library entries.
+- **Compare Zoom and Navigation**: Fixed Reset Zoom, incorrect mouse-wheel zoom positioning, and inaccessible areas when panning enlarged images. Images remain centered when zoomed below fit, and disabling synchronized zoom preserves the current view.
+- **Compare Visual Analysis**: Fixed Loupe, Edges, and Difference Map failing with cross-origin canvas errors when analyzing local images.
+- **OpenEXR Viewer Controls**: Fixed navigation hit areas interfering with EXR color-management, exposure, and other viewer controls.
+- **Generation Seed Precision**: Fixed loss of precision when processing large generation seeds, preserving their exact values during metadata extraction, indexing, and grouping.
+- **Library Cache Recovery**: Fixed incomplete restoration of previously indexed images when resuming an interrupted Library cache rebuild.
+- **Library Tag Counts**: Fixed stale tag counts and tags remaining visible in the sidebar after their associated images were deleted. Tag counts now stay synchronized with the indexed Library.
+- **User Preferences and Data Preservation**: Fixed a potential data loss issue where database-opening or annotation-loading errors could trigger automatic deletion of the shared preferences database. Existing user preferences and annotations are now preserved when these errors occur.
+- **ComfyUI Embedded Workflows**: Fixed failures when opening workflows from images with compacted metadata. Embedded workflows are now rehydrated and the original UI graph is preferred when loading them into the ComfyUI Workspace.
+
 ## [0.22.1] - [2026-10-22]
 
 ### Added
