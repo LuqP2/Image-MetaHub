@@ -68,7 +68,8 @@ export function resolveModelTextureMaps(images: readonly IndexedImage[]) {
     declarations.add(model.id);
     for (const entry of entries) {
       if (!entry || typeof entry.role !== 'string' || !Object.hasOwn(textureMapLabels, entry.role) || typeof entry.filename !== 'string'
-          || /[/\\:\u0000-\u001f]/.test(entry.filename) || !isImageFileName(entry.filename)) continue;
+          || /[/\\:]/.test(entry.filename) || Array.from(entry.filename).some((character) => character.charCodeAt(0) < 32)
+          || !isImageFileName(entry.filename)) continue;
       const matches = imagesByName.get(getKey(folder, entry.filename));
       const exact = matches?.find((image) => image.name === entry.filename);
       const image = exact ?? (matches?.length === 1 ? matches[0] : undefined);
