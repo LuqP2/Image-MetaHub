@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { IndexedImage, SavePromptInput, SavedPromptSaveResult, ShadowMetadata } from '../types';
 import { getPersistedShadowMetadata } from '../services/userDataPersistenceAdapter';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
@@ -88,17 +88,44 @@ export function useSavePrompt() {
   }, [persist]);
 }
 
-export function useIsPromptSaved(
-  positivePrompt: unknown,
-  negativePrompt: unknown,
-): boolean {
+function findMatchingPrompt(positivePrompt: unknown, negativePrompt: unknown) {
   const positive = typeof positivePrompt === 'string' ? positivePrompt : '';
   const negative = typeof negativePrompt === 'string' ? negativePrompt : '';
-  return useSavedPromptStore((state) => (
-    Boolean(positive.trim() || negative.trim())
-    && state.prompts.some((prompt) => (
-      prompt.positivePrompt === positive
-      && prompt.negativePrompt === negative
-    ))
-  ));
+  return (prompts: ReturnType<typeof useSavedPromptStore.getState>['prompts']) =>
+    positive.trim() || negative.trim()
+      ? prompts.find(prompt => prompt.positivePrompt === positive && prompt.negativePrompt === negative)
+      : undefined;
+}
+
+export function useIsPromptSaved(positivePrompt: unknown, negativePrompt: unknown): boolean {
+  const findPrompt = findMatchingPrompt(positivePrompt, negativePrompt);
+  return useSavedPromptStore(state => Boolean(findPrompt(state.prompts)));
+}
+
+export function usePromptBookmark(positivePrompt: unknown, negativePrompt: unknown) {
+  const isPromptSaved = useIsPromptSaved(positivePrompt, negativePrompt);
+  const savePrompt = useSavePrompt();
+  const pending = useRef(false);
+  const [isBookmarkPending, setIsBookmarkPending] = useState(false);
+
+  const togglePromptBookmark = async (image: IndexedImage, options: SavePromptOptions) => {
+    if (pending.current) return;
+    pending.current = true;
+    setIsBookmarkPending(true);
+    try {
+      const state = useSavedPromptStore.getState();
+      const saved = findMatchingPrompt(positivePrompt, negativePrompt)(state.prompts);
+      if (saved) {
+        await state.remove(saved.id);
+        return 'Prompt removed';
+      }
+      const result = await savePrompt(image, options);
+      return result.status === 'already-saved' ? 'Already saved' : 'Prompt saved';
+    } finally {
+      pending.current = false;
+      setIsBookmarkPending(false);
+    }
+  };
+
+  return { isPromptSaved, isBookmarkPending, togglePromptBookmark };
 }

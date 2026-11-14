@@ -62,7 +62,7 @@ import { getAvifCarrierConflicts } from '../utils/imageMetaHubAvifExtension.mjs'
 import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
-import { useIsPromptSaved, useSavePrompt } from '../hooks/useSavePrompt';
+import { usePromptBookmark } from '../hooks/useSavePrompt';
 import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
 import BatchExportModal from './BatchExportModal';
 import ImageLineageSection from './ImageLineageSection';
@@ -1226,7 +1226,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
   const liveImage = imageFromStore ?? image;
   const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(liveImage);
-  const savePrompt = useSavePrompt();
   const blockExtraction = usePromptBlockExtraction();
   const selectedBlockTextRef = useRef<string | null>(null);
   const thumbnail = useResolvedThumbnail(liveImage);
@@ -1865,7 +1864,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const nMeta: BaseMetadata | undefined = getUsableNormalizedMetadata(liveImage);
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
   const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
-  const isPromptSaved = useIsPromptSaved(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
+  const { isPromptSaved, isBookmarkPending, togglePromptBookmark } = usePromptBookmark(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
 
   // The single checkpoint reference (if any) links the "Model" value.
   const checkpointRef = useMemo(
@@ -4484,23 +4483,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   labelAction={
                     <button
                       type="button"
-                      disabled={isShadowLoading || Boolean(shadowError)}
+                      disabled={isBookmarkPending || isShadowLoading || Boolean(shadowError)}
                       onClick={async () => {
                         try {
-                          const result = await savePrompt(liveImage, {
+                          const message = await togglePromptBookmark(liveImage, {
                             directoryPath,
                             showOriginal,
                             shadowMetadata,
                             shadowReady: !isShadowLoading && !shadowError,
                           });
-                          setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+                          if (message) setSuccess(message);
                         } catch (cause) {
-                          setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+                          setError(cause instanceof Error ? cause.message : 'Could not update prompt bookmark.');
                         }
                       }}
                       className="inline-flex rounded p-0.5 text-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
-                      title={isPromptSaved ? 'Prompt saved' : 'Save prompt'}
-                      aria-label="Save prompt"
+                      title={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
+                      aria-label={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
                       aria-pressed={isPromptSaved}
                     >
                       <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} />

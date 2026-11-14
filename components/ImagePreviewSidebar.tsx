@@ -38,7 +38,7 @@ import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorM
 import BatchExportModal from './BatchExportModal';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
-import { useIsPromptSaved, useSavePrompt } from '../hooks/useSavePrompt';
+import { usePromptBookmark } from '../hooks/useSavePrompt';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -223,7 +223,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const activeImage = previewImageFromStore || previewImage;
   const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage);
-  const savePrompt = useSavePrompt();
   const blockExtraction = usePromptBlockExtraction();
   const selectedBlockTextRef = useRef<string | null>(null);
   const allImages = useImageStore((state) => state.images);
@@ -320,7 +319,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
-  const isPromptSaved = useIsPromptSaved(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
+  const { isPromptSaved, isBookmarkPending, togglePromptBookmark } = usePromptBookmark(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
   const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
   const ensureFullRawMetadata = useCallback(async (
     options: RawMetadataHydrationOptions = {},
@@ -839,24 +838,24 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 labelAction={
                   <button
                     type="button"
-                    disabled={isShadowLoading || Boolean(shadowError)}
+                    disabled={isBookmarkPending || isShadowLoading || Boolean(shadowError)}
                     onClick={async () => {
                       if (!activeImage) return;
                       try {
-                        const result = await savePrompt(activeImage, {
+                        const message = await togglePromptBookmark(activeImage, {
                           directoryPath: activeImageDirectoryPath,
                           showOriginal,
                           shadowMetadata,
                           shadowReady: !isShadowLoading && !shadowError,
                         });
-                        setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+                        if (message) setSuccess(message);
                       } catch (cause) {
-                        setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+                        setError(cause instanceof Error ? cause.message : 'Could not update prompt bookmark.');
                       }
                     }}
                     className="inline-flex rounded p-0.5 text-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
-                    title={isPromptSaved ? 'Prompt saved' : 'Save prompt'}
-                    aria-label="Save prompt"
+                    title={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
+                    aria-label={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
                     aria-pressed={isPromptSaved}
                   >
                     <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} />
