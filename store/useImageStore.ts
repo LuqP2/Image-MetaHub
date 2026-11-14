@@ -109,6 +109,7 @@ type ThumbnailEntryState = {
 type DirectoryProgressState = {
     current: number;
     total: number;
+    source?: 'watcher';
 };
 
 type FacetCountMap = Map<string, number>;

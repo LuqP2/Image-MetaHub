@@ -4,11 +4,12 @@ import { processFiles } from '../services/fileIndexer';
 import { resumeRecoveredEnrichment } from '../services/resumeRecoveredEnrichment';
 import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
-import { IndexedImage, Directory } from '../types';
+import { IndexedImage, Directory, type WatchedFile } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { createCacheDebugSnapshot, isCacheDebugEnabled, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
+import { enqueueWatchedFileJob, shouldIndexWatchedFile } from '../utils/watchedFileIndexing';
 import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs } from '../utils/fileTimestamps.js';
 import { buildProvenanceIdentityLookupKey } from '../utils/provenancePath.mjs';
@@ -285,6 +286,7 @@ export function useImageLoader() {
     const idleReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const idleReconcileQueueRef = useRef<Directory[]>([]);
     const idleReconcileRunningRef = useRef(false);
+    const watchedFileJobsRef = useRef(new Map<string, Promise<void>>());
     const provenanceIdentityByLookupKeyRef = useRef(new Map<string, ProvenanceIdentity>());
     const provenanceIdentityVersionByLookupKeyRef = useRef(new Map<string, number>());
 
@@ -1132,6 +1134,9 @@ export function useImageLoader() {
             hydrateCachedImages?: boolean;
         } = {}
     ) => {
+        if (useImageStore.getState().directoryProgress[directory.id]?.source === 'watcher') {
+            await waitForDirectoryActivityToSettle(directory.id);
+        }
         const loadStart = performance.now();
         const suppressIndexingState = isUpdate;
         const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
@@ -1890,12 +1895,14 @@ export function useImageLoader() {
         }
     }, []);
 
-    const processNewWatchedFiles = useCallback(async (
+    const indexWatchedFiles = useCallback(async (
         directory: Directory,
-        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean; initialScan?: boolean }>
+        files: WatchedFile[]
     ) => {
+        let showProgress = false;
         try {
             await waitForDirectoryActivityToSettle(directory.id);
+            if (!useImageStore.getState().directories.some(entry => entry.id === directory.id && entry.autoWatch)) return;
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const normalizedFiles = files.map(file => {
                 const relativePath = toRelativeWatchPath(file.path, directory.path);
@@ -1914,12 +1921,7 @@ export function useImageLoader() {
                 `${directory.id}::${file.relativePath || file.normalizedName}`;
             const newFiles = normalizedFiles.filter(file => {
                 const imageId = getWatchedImageId(file);
-                const existing = existingImages.get(imageId);
-                if (!existing) return true;
-                if (file.forceReindex !== true) return false;
-                return !(file.initialScan && file.contentModifiedMs != null &&
-                    existing.contentModifiedMs === file.contentModifiedMs &&
-                    existing.fileSize === file.size);
+                return shouldIndexWatchedFile(existingImages.get(imageId), file);
             });
             const forceReindexExistingIds = new Set(
                 newFiles
@@ -1936,6 +1938,8 @@ export function useImageLoader() {
 
             // Criar mock handles para os arquivos (necess├írio para processFiles)
             // Inclu├¡mos _filePath para que o Electron possa ler os arquivos via IPC batch
+            showProgress = true;
+            setDirectoryProgress(directory.id, { current: 0, total: newFiles.length, source: 'watcher' });
             const fileEntries = newFiles.map(file => ({
                 handle: createElectronFileHandle(file.normalizedName, file.path) as any,
                 path: file.relativePath || file.normalizedName,
@@ -1981,6 +1985,13 @@ export function useImageLoader() {
                     concurrency: indexingConcurrency,
                     fileStats: fileStatsMap,
                     asyncHeadReads: true,
+                    onEnrichmentProgress: (progress) => {
+                        if (progress) setDirectoryProgress(directory.id, {
+                            current: progress.processed,
+                            total: progress.total,
+                            source: 'watcher',
+                        });
+                    },
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         if (isCacheDebugEnabled()) {
@@ -2016,6 +2027,7 @@ export function useImageLoader() {
             // Aguardar Phase B completar
             await phaseB;
 
+            useImageStore.getState().flushPendingImages();
             if (getIsElectron() && (enrichedForCache.length > 0 || refreshedForCache.length > 0)) {
                 try {
                     const fallbackToFullDelta = async (imagesToUpsert: IndexedImage[]) => {
@@ -2074,8 +2086,14 @@ export function useImageLoader() {
 
         } catch (error) {
             console.error('Error processing watched files:', error);
+        } finally {
+            if (showProgress) setDirectoryProgress(directory.id, null);
         }
-    }, [addImages, mergeImages]);
+    }, [addImages, mergeImages, setDirectoryProgress]);
+
+    const processNewWatchedFiles = useCallback((directory: Directory, files: WatchedFile[]) => {
+        return enqueueWatchedFileJob(watchedFileJobsRef.current, directory.id, () => indexWatchedFiles(directory, files));
+    }, [indexWatchedFiles]);
 
     return {
         handleSelectFolder,

@@ -53,10 +53,19 @@ it('enumerates without file stats and reconciles notifications received during e
     expect(observed).toEqual([created]);
     expect(lstat.mock.calls.map(([file]) => file)).toEqual([created]);
     expect(stat.mock.calls.every(([file]) => file === created)).toBe(true);
+    const previousStatCount = stat.mock.calls.length;
+    notify('change', 'created.png');
+    await until(() => stat.mock.calls.length > previousStatCount);
+    await delay(60);
+    expect(observed).toEqual([created]);
+    await fs.promises.appendFile(created, 'changed');
+    notify('change', 'created.png');
+    await until(() => observed.length === 2);
+    expect(observed).toEqual([created, created]);
     notify('change', 'existing.png');
     watcher.close();
     await delay(100);
-    expect(observed).toEqual([created]);
+    expect(observed).toEqual([created, created]);
     expect(handle.close).toHaveBeenCalledOnce();
   } finally {
     watcher?.close();
@@ -242,6 +251,9 @@ it('reports retained files as changed after replacing a directory at the same pa
     await fs.promises.mkdir(replacement);
     await fs.promises.writeFile(path.join(album, 'same.png'), 'old');
     await fs.promises.writeFile(path.join(replacement, 'same.png'), 'new');
+    const timestamp = new Date('2025-01-01T00:00:00Z');
+    await fs.promises.utimes(path.join(album, 'same.png'), timestamp, timestamp);
+    await fs.promises.utimes(path.join(replacement, 'same.png'), timestamp, timestamp);
     watcher = createWindowsLibraryWatcher(root, {
       awaitWriteFinish: { pollInterval: 10, stabilityThreshold: 30 },
     }, {
@@ -259,7 +271,10 @@ it('reports retained files as changed after replacing a directory at the same pa
     notify('rename', 'album');
     notify('rename', 'album');
     await until(() => changed.mock.calls.length > 0);
-    expect(changed.mock.calls).toEqual([[path.join(album, 'same.png')]]);
+    expect(changed.mock.calls).toEqual([[path.join(album, 'same.png'), { forceReindexUnchanged: true }]]);
+    notify('rename', 'album');
+    await delay(150);
+    expect(changed).toHaveBeenCalledOnce();
   } finally {
     watcher?.close();
     await fs.promises.rm(temp, { recursive: true, force: true });
@@ -295,7 +310,7 @@ it.runIf(process.platform === 'win32')('reports retained files as changed when a
     await fs.promises.symlink(second, junction, 'junction');
     notify('rename', 'linked');
     await until(() => changed.mock.calls.length > 0);
-    expect(changed.mock.calls).toEqual([[path.join(junction, 'same.png')]]);
+    expect(changed.mock.calls).toEqual([[path.join(junction, 'same.png'), { forceReindexUnchanged: true }]]);
     expect(added).not.toHaveBeenCalled();
     expect(watch.mock.calls.map(([folder]) => folder)).toEqual([root, first, second]);
   } finally {
