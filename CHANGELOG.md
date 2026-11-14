@@ -33,7 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Source Code Licensing**: Restored the Mozilla Public License 2.0 (MPL 2.0) for the desktop application, CLI, and metadata engine, replacing PolyForm Perimeter 1.0.1.
 - **Electron Runtime**: Updated Electron from 38.8.6 to 45.3.1.
 - **macOS System Requirements**: macOS 13 Ventura or later is now required. macOS 12 Monterey is no longer supported following the Electron upgrade.
 - **Dependency Updates and Security**: Updated core dependencies, including Transformers.js and Archiver, addressing all reported production dependency vulnerabilities while maintaining local AI inference and ZIP export functionality.
