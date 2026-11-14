@@ -1484,7 +1484,12 @@ export function useImageLoader() {
                     const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
                     scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
                     // Keep the progress bar visible for 2 seconds after completion
-                    setTimeout(() => setEnrichmentProgress(null), 2000);
+                    const completedProgress = useImageStore.getState().enrichmentProgress;
+                    setTimeout(() => {
+                        if (useImageStore.getState().enrichmentProgress === completedProgress) {
+                            setEnrichmentProgress(null);
+                        }
+                    }, 2000);
                     logIndexingPerf('load-directory:phase-b-followup', {
                         directoryId: directory.id,
                         indexedImages: indexedImages.length,
@@ -1522,12 +1527,12 @@ export function useImageLoader() {
                     } catch (err) {
                         releaseThumbnailPause();
                         console.error('Directory enrichment failed', err);
-                        setTimeout(() => setEnrichmentProgress(null), 2000);
+                        setEnrichmentProgress(null);
                         throw err;
                     }
 
                     if (!shouldCancelIndexing(suppressIndexingState)) {
-                        finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
+                        await finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
                     }
                 } else {
                     const phaseBStart = performance.now();
@@ -1726,7 +1731,7 @@ export function useImageLoader() {
         await loadDirectory(directory, true, subPath);
     }, [loadDirectory, setError]);
     
-    const handleLoadFromStorage = useCallback(async () => {
+    const handleLoadFromStorage = useCallback(async (rebuildLibraryCache = false) => {
         setLoading(true);
         if (getIsElectron()) {
             const storedPaths = localStorage.getItem('image-metahub-directories');
@@ -1773,6 +1778,17 @@ export function useImageLoader() {
                     // Then, load them all sequentially to avoid overwhelming the system.
                     const directoriesToLoad = useImageStore.getState().directories;
                     const startupVerificationMode = useSettingsStore.getState().startupVerificationMode;
+
+                    if (rebuildLibraryCache) {
+                        await window.electronAPI?.updateAllowedPaths(directoriesToLoad.map(dir => dir.path));
+                        for (const dir of directoriesToLoad) {
+                            await loadDirectory(dir, true, undefined, { awaitEnrichment: true, suppressSuccessMessage: true });
+                            setEnrichmentProgress(null);
+                        }
+                        setLineageRebuildSuspended(false);
+                        scheduleLineageRebuild(1200);
+                        return;
+                    }
 
                     const hydrateInBackground = async () => {
                         // Update allowed paths BEFORE loading from cache to avoid security violations
@@ -1849,7 +1865,7 @@ export function useImageLoader() {
             setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, loadDirectory, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setSuccess]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, loadDirectory, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setEnrichmentProgress, setLineageRebuildSuspended, setLoading, setError, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();

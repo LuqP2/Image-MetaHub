@@ -1219,6 +1219,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             </div>
 
           </>
+        ) : activeImage.enrichmentState === 'catalog' ? (
+          <div role="status" className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+            Indexing metadata…
+          </div>
         ) : (
           <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
               No normalized metadata available.

@@ -10,6 +10,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { SAVED_PROMPTS_DATABASE_NAME } from '../services/savedPromptStorage';
 
 const LICENSE_STORAGE_KEY = 'image-metahub-license';
+export const LIBRARY_CACHE_REBUILD_KEY = 'image-metahub-rebuild-library-cache';
 
 export async function clearLibraryCaches(): Promise<void> {
   console.log('🧹 Clearing library caches...');

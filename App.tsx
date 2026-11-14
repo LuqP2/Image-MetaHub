@@ -10,6 +10,7 @@ import { useSemanticStore } from './store/useSemanticStore';
 import { useLicenseStore } from './store/useLicenseStore';
 import { initializeSavedPromptSynchronization } from './store/useSavedPromptStore';
 import { useImageLoader } from './hooks/useImageLoader';
+import { LIBRARY_CACHE_REBUILD_KEY } from './utils/cacheReset';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useImageViewerFocus } from './hooks/useImageViewerFocus';
 import { useReusableImageViewer } from './hooks/useReusableImageViewer';
@@ -662,8 +663,9 @@ export default function App() {
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
   const viewerDisplayedImagesRef = useRef<IndexedImage[]>([]);
   const watchedRemovalCacheDeltaQueueRef = useRef<Map<string, PendingWatchedRemovalCacheDelta>>(new Map());
-  const startupHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const startupHydrationPromiseRef = useRef<Promise<void> | null>(null);
   const [isStartupHydrating, setIsStartupHydrating] = useState(true);
+  const [isRebuildingLibraryCache] = useState(() => sessionStorage.getItem(LIBRARY_CACHE_REBUILD_KEY) === '1');
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
   const resolveViewerHost = useCallback(
     () => resolveEffectiveImageViewerHost(imageViewerMode, Boolean(window.electronAPI?.imageViewerOpen)),
@@ -1311,13 +1313,19 @@ export default function App() {
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
-    const hydration = handleLoadFromStorage();
+    const hydration = startupHydrationPromiseRef.current ?? handleLoadFromStorage(isRebuildingLibraryCache);
     startupHydrationPromiseRef.current = hydration;
     void hydration.then(
       () => setIsStartupHydrating(false),
       () => setIsStartupHydrating(false),
     );
   }, []);
+
+  useEffect(() => {
+    if (isRebuildingLibraryCache && !isStartupHydrating) {
+      sessionStorage.removeItem(LIBRARY_CACHE_REBUILD_KEY);
+    }
+  }, [isRebuildingLibraryCache, isStartupHydrating]);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
@@ -4184,6 +4192,9 @@ export default function App() {
     !relatedImages && libraryView === 'library' &&
     safeFilteredImages.length === 0 &&
     (isStartupHydrating || isLoading || activeFolderHasProgress);
+  const rebuildCatalogProgress = isRebuildingLibraryCache && isStartupHydrating
+    ? Object.values(directoryProgress).find((entry) => entry.total > 0)
+    : undefined;
 
   return (
     <React.Profiler id="App" onRender={appProfilerOnRender}>
@@ -4412,6 +4423,15 @@ export default function App() {
             </div>
           )}
 
+          {isRebuildingLibraryCache && isStartupHydrating && (
+            <div role="status" className="shrink-0 border-b border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-300">
+              {enrichmentProgress && enrichmentProgress.total > 0
+                ? `Indexing metadata… ${enrichmentProgress.processed.toLocaleString()} / ${enrichmentProgress.total.toLocaleString()}`
+                : rebuildCatalogProgress
+                  ? `Reloading library… ${rebuildCatalogProgress.current.toLocaleString()} / ${rebuildCatalogProgress.total.toLocaleString()}`
+                  : 'Reloading library…'}
+            </div>
+          )}
           {error && (
             <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4 flex items-center justify-between">
               <span>{error}</span>
