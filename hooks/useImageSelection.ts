@@ -17,7 +17,12 @@ export function useImageSelection() {
         setFocusedImageIndex,
     } = useImageStore();
 
-    const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent, imagesInView?: IndexedImage[]) => {
+    const handleImageSelection = useCallback((
+        image: IndexedImage,
+        event: React.MouseEvent,
+        imagesInView?: IndexedImage[],
+        openImage = setSelectedImage,
+    ) => {
         const {
             focusedImageIndex,
             previewImage,
@@ -75,7 +80,7 @@ export function useImageSelection() {
 
             toggleImageSelection(image.id);
         } else {
-            setSelectedImage(image);
+            openImage(image);
         }
     }, [toggleImageSelection, setSelectedImage, setFocusedImageIndex]);
 

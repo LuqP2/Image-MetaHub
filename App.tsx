@@ -2308,6 +2308,14 @@ export default function App() {
       return;
     }
 
+    setRelatedImages((current) => {
+      if (!current?.imageIds.has(oldImageId)) return current;
+      const imageIds = new Set(current.imageIds);
+      imageIds.delete(oldImageId);
+      imageIds.add(newImageId);
+      return { ...current, imageIds };
+    });
+
     setOpenImageModals((current) =>
       current.map((modal) => ({
         ...modal,
@@ -3225,7 +3233,9 @@ export default function App() {
       event.preventDefault();
       handleOpenImageModalInBackground(image, displayImages, 'related-images');
     } else if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      handleImageSelection(image, event, displayImages);
+      handleImageSelection(image, event, displayImages, (target) => {
+        handleOpenImageInResultSet(target, displayImages, 'related-images');
+      });
     } else {
       handleOpenImageInResultSet(image, displayImages, 'related-images');
     }
