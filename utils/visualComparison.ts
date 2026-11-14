@@ -191,6 +191,7 @@ export const buildVisualComparisonFromImageData = (
 const loadImageElement = (url: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const image = new Image();
+    image.crossOrigin = 'anonymous';
     image.decoding = 'async';
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error('Unable to decode image for visual comparison'));

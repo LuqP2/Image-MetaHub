@@ -3,6 +3,7 @@ import { TransformComponent, TransformWrapper, ReactZoomPanPinchRef } from 'reac
 import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Pause, Play } from 'lucide-react';
 import { ComparisonAdvancedSettings, ComparisonViewMode, IndexedImage, ZoomState } from '../types';
 import useComparisonImageSource from '../hooks/useComparisonImageSource';
+import { useComparisonZoom } from '../hooks/useComparisonZoom';
 import {
   buildVisualComparisonFromUrls,
   imageDataToDataUrl,
@@ -68,24 +69,17 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const [edgeMapUrl, setEdgeMapUrl] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<VisualComparisonMetrics | null>(null);
   const [loupePoint, setLoupePoint] = useState<{ x: number; y: number; localX: number; localY: number } | null>(null);
-  const [localTransform, setLocalTransform] = useState(sharedZoom);
-  const transformRef = useRef<ReactZoomPanPinchRef>(null);
+  const [localTransform, setLocalTransform] = useState<ZoomState>({ zoom: 1, x: 0, y: 0 });
+  const { transformRef, applyExternalZoom, isApplyingExternalZoom } =
+    useComparisonZoom(sharedZoom, 0.4, !leftError && !rightError);
   const containerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState(false);
   const isAdvancedMode = ADVANCED_MODES.has(mode);
   // Flicker renders its own single-image layer (see renderAdvancedLayer) rather than
   // stacking both base images, but it must not trigger the heavy visual analysis that
   // the ADVANCED_MODES pipeline performs.
   const usesCustomLayer = isAdvancedMode || mode === 'flicker';
-
-  useEffect(() => {
-    if (!transformRef.current || !transformRef.current.state) return;
-    const { state } = transformRef.current;
-    if (state.scale !== sharedZoom.zoom || state.positionX !== sharedZoom.x || state.positionY !== sharedZoom.y) {
-      transformRef.current.setTransform(sharedZoom.x, sharedZoom.y, sharedZoom.zoom, 0);
-    }
-    setLocalTransform(sharedZoom);
-  }, [sharedZoom]);
 
   useEffect(() => {
     if (!isAdvancedMode || !leftUrl || !rightUrl) {
@@ -144,20 +138,20 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (!ref || !ref.state) return;
     const { positionX, positionY, scale } = ref.state;
     setLocalTransform({ zoom: scale, x: positionX, y: positionY });
-    onZoomChange(scale, positionX, positionY);
+    if (!isApplyingExternalZoom.current) onZoomChange(scale, positionX, positionY);
   };
 
   const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
   const updateSliderFromClientX = (clientX: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
+    const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect) return;
     const percent = ((clientX - rect.left) / rect.width) * 100;
     setSliderValue(clamp(percent, 0, 100));
   };
 
   const updateActiveImageFromClientX = (clientX: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
+    const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect) return;
     const percent = ((clientX - rect.left) / rect.width) * 100;
     onActiveImageChange?.(percent <= sliderValue ? 0 : 1);
@@ -428,25 +422,27 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   }
 
   return (
-    <div ref={containerRef} className="relative h-[60vh] md:h-full bg-black border-y border-gray-700/60 overflow-hidden group">
+    <div className="relative h-[60vh] md:h-full bg-black border-y border-gray-700/60 overflow-hidden group">
+      <div ref={containerRef} className="absolute inset-0">
       <TransformWrapper
         ref={transformRef}
-        initialScale={Math.max(sharedZoom.zoom, 0.5)}
         minScale={0.4}
         maxScale={5}
-        centerOnInit
+        centerZoomedOut
+        disablePadding
+        onInit={applyExternalZoom}
+        panning={{ velocityDisabled: true, excluded: ['comparison-slider-control', 'input', 'button'] }}
         wheel={{ step: 0.1 }}
         onTransformed={handleTransform}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             <TransformComponent
-              wrapperClass="w-full h-full"
-              contentClass="w-full h-full"
               wrapperStyle={{ width: '100%', height: '100%' }}
               contentStyle={{ width: '100%', height: '100%' }}
             >
               <div
+                ref={overlayRef}
                 className="relative w-full h-full overflow-hidden bg-black"
                 onMouseEnter={
                   mode === 'hover'
@@ -507,7 +503,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 {ready && mode === 'slider' && (
                   <>
                     <div
-                      className="absolute inset-y-0 cursor-ew-resize select-none touch-none flex items-center justify-center"
+                      className="comparison-slider-control absolute inset-y-0 cursor-ew-resize select-none touch-none flex items-center justify-center"
                       style={{ left: `${sliderValue}%`, width: '40px', marginLeft: '-20px' }}
                       onPointerDown={(e) => {
                         e.preventDefault();
@@ -555,7 +551,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
               <button
-                onClick={() => zoomIn()}
+                onClick={() => zoomIn(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom In"
                 aria-label="Zoom In"
@@ -563,7 +559,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 <ZoomIn aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
               <button
-                onClick={() => zoomOut()}
+                onClick={() => zoomOut(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Zoom Out"
                 aria-label="Zoom Out"
@@ -571,7 +567,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 <ZoomOut aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
               <button
-                onClick={() => resetTransform()}
+                onClick={() => resetTransform(0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
                 title="Reset Zoom"
                 aria-label="Reset Zoom"
@@ -592,6 +588,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
           </>
         )}
       </TransformWrapper>
+      </div>
     </div>
   );
 };
