@@ -1,3 +1,4 @@
+import type { RelatedImagesMode } from '../utils/relatedImages';
 import type { IndexedImage, ImageRating, SmartCollection, BaseMetadata } from '../types';
 import type { ResolvedLineageEntry } from './lineageRegistry';
 import type { WorkflowOverrides } from './comfyUIApiClient';
@@ -13,7 +14,8 @@ export type ImageViewerNavigationSource =
   | 'slideshow'
   | 'comfyui'
   | 'find-similar'
-  | 'canvas';
+  | 'canvas'
+  | 'related-images';
 // Canvas navigation is an explicit board snapshot, independent of library filters.
 
 export type ImageModalImageDTO = Omit<
@@ -109,6 +111,7 @@ export type ImageViewerCommand =
   | { type: 'start-trial' }
   | { type: 'close' }
   | { type: 'focus-main' }
+  | { type: 'find-related'; imageId: string; mode: RelatedImagesMode }
   | { type: 'find-similar'; imageId: string }
   | { type: 'open-comfyui'; imageId: string }
   | { type: 'open-editor'; imageId: string }

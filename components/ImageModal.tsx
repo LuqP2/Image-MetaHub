@@ -1,3 +1,5 @@
+import RelatedImagesMenu from './contextMenu/RelatedImagesMenu';
+import type { RelatedImagesMode } from '../utils/relatedImages';
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection, type ImageEditRecipe, type TagInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
@@ -175,6 +177,7 @@ interface ImageModalProps {
   prefetchPrevious?: { image: IndexedImage; directoryPath: string } | null;
   prefetchNext?: { image: IndexedImage; directoryPath: string } | null;
   onClose: () => void;
+  onFindRelated?: (image: IndexedImage, mode: RelatedImagesMode) => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onOpenComfyUIWorkflow?: (image: IndexedImage) => void;
   onOpenImageEditor?: (image: IndexedImage) => void;
@@ -908,6 +911,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   prefetchPrevious = null,
   prefetchNext = null,
   onClose,
+  onFindRelated,
   onFindSimilar,
   onOpenComfyUIWorkflow,
   onOpenImageEditor,
@@ -5249,6 +5253,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </>
           ) : (
             <>
+              {onFindRelated && (
+                <RelatedImagesMenu
+                  image={liveImage}
+                  horizontalClass={contextMenu.x + 440 > window.innerWidth ? 'right-full' : 'left-full'}
+                  onFindRelated={onFindRelated}
+                  onClose={hideContextMenu}
+                />
+              )}
               <button
                 onClick={copyImage}
                 className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isPlayableMedia ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}

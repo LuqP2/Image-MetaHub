@@ -17,7 +17,12 @@ export function useImageSelection() {
         setFocusedImageIndex,
     } = useImageStore();
 
-    const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+    const handleImageSelection = useCallback((
+        image: IndexedImage,
+        event: React.MouseEvent,
+        imagesInView?: IndexedImage[],
+        openImage = setSelectedImage,
+    ) => {
         const {
             focusedImageIndex,
             previewImage,
@@ -27,7 +32,7 @@ export function useImageSelection() {
         } = useImageStore.getState();
         // The displayed set (filtered ∩ node filter ∩ scope), so shift-click ranges never
         // include images hidden by the active filters.
-        const selectionScope = getScopedFilteredImages();
+        const selectionScope = imagesInView ?? getScopedFilteredImages();
 
         // Update focused index
         const clickedIndex = selectionScope.findIndex(img => img.id === image.id);
@@ -75,7 +80,7 @@ export function useImageSelection() {
 
             toggleImageSelection(image.id);
         } else {
-            setSelectedImage(image);
+            openImage(image);
         }
     }, [toggleImageSelection, setSelectedImage, setFocusedImageIndex]);
 

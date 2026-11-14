@@ -10,6 +10,7 @@ import { toggleRejectedCandidates, REJECTED_TAG } from '../services/candidateAct
 import type { Directory, ExploreDimension, ImageRating } from '../types';
 
 interface HotkeyProps {
+  relatedImageIds?: ReadonlySet<string>;
   isCanvasActive?: boolean;
   isCommandPaletteOpen: boolean;
   setIsCommandPaletteOpen: (isOpen: boolean) => void;
@@ -55,6 +56,7 @@ const createTransferDestination = (directories: Directory[], destinationPath: st
 };
 
 export const useHotkeys = ({
+  relatedImageIds,
   isCanvasActive = false,
   isCommandPaletteOpen,
   setIsCommandPaletteOpen,
@@ -129,7 +131,16 @@ export const useHotkeys = ({
         console.error('Error rescanning folders:', error);
       });
     });
-    hotkeyManager.registerAction('selectAll', selectAllImages);
+    hotkeyManager.registerAction('selectAll', () => {
+      if (!relatedImageIds) {
+        selectAllImages();
+        return;
+      }
+      const { images } = useImageStore.getState();
+      useImageStore.setState({
+        selectedImages: new Set(images.filter((image) => relatedImageIds.has(image.id)).map((image) => image.id)),
+      });
+    });
     hotkeyManager.registerAction('deleteSelected', () => {
       // If an image is open in the modal, do not trigger global delete
       if (useImageStore.getState().selectedImage) return;
@@ -306,6 +317,7 @@ export const useHotkeys = ({
     handleSelectFolder,
     handleLoadFromStorage,
     selectAllImages,
+    relatedImageIds,
     handleDeleteSelectedImages,
     selectedImage,
     previewImage,

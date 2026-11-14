@@ -283,6 +283,7 @@ const DetachedImageModalApp: React.FC = () => {
       startSlideshow={snapshot.startSlideshow}
       closeOnSlideshowExit={snapshot.closeOnSlideshowExit}
       onSlideshowStartAcknowledged={acknowledgeSlideshowStart}
+      onFindRelated={(target, mode) => void sendCommand({ type: 'find-related', imageId: target.id, mode })}
       onFindSimilar={(target) => void sendCommand({ type: 'find-similar', imageId: target.id })}
       onOpenComfyUIWorkflow={(target) => void sendCommand({ type: 'open-comfyui', imageId: target.id })}
       onOpenImageEditor={(target) => void sendCommand({ type: 'open-editor', imageId: target.id })}
