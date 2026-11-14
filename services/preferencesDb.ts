@@ -25,7 +25,6 @@ type DisablePersistenceFn = (error?: unknown) => void;
 type OpenPreferencesDatabaseOptions = {
   context: string;
   disablePersistence: DisablePersistenceFn;
-  allowReset?: boolean;
 };
 
 type ManualTagRecord = {
@@ -33,20 +32,6 @@ type ManualTagRecord = {
   createdAt: number;
   updatedAt: number;
 };
-
-let hasResetAttempted = false;
-
-export function getIndexedDbErrorName(error: unknown): string | undefined {
-  if (error instanceof DOMException) {
-    return error.name;
-  }
-
-  if (typeof error === 'object' && error && 'name' in error) {
-    return String((error as { name: unknown }).name);
-  }
-
-  return undefined;
-}
 
 function getIndexedDB(context: string, disablePersistence: DisablePersistenceFn): IDBFactory | null {
   if (typeof indexedDB === 'undefined') {
@@ -56,30 +41,6 @@ function getIndexedDB(context: string, disablePersistence: DisablePersistenceFn)
   }
 
   return indexedDB;
-}
-
-async function deletePreferencesDatabase(
-  context: string,
-  disablePersistence: DisablePersistenceFn,
-): Promise<boolean> {
-  const idb = getIndexedDB(context, disablePersistence);
-  if (!idb) {
-    return false;
-  }
-
-  return new Promise<boolean>((resolve) => {
-    const request = idb.deleteDatabase(PREFERENCES_DB_NAME);
-
-    request.onsuccess = () => resolve(true);
-    request.onerror = () => {
-      console.error(`Failed to reset shared preferences database while handling ${context}`, request.error);
-      resolve(false);
-    };
-    request.onblocked = () => {
-      console.warn(`Shared preferences database reset is blocked while handling ${context}.`);
-      resolve(false);
-    };
-  });
 }
 
 function getTransactionObjectStore(transaction: IDBTransaction | null, name: string): IDBObjectStore | null {
@@ -230,17 +191,9 @@ function upgradePreferencesDatabase(request: IDBOpenDBRequest, oldVersion: numbe
   }
 }
 
-export async function resetPreferencesDatabase(
-  context: string,
-  disablePersistence: DisablePersistenceFn,
-): Promise<boolean> {
-  return deletePreferencesDatabase(context, disablePersistence);
-}
-
 export async function openPreferencesDatabase({
   context,
   disablePersistence,
-  allowReset = true,
 }: OpenPreferencesDatabaseOptions): Promise<IDBDatabase | null> {
   const idb = getIndexedDB(context, disablePersistence);
   if (!idb) {
@@ -264,7 +217,6 @@ export async function openPreferencesDatabase({
             console.warn(`Failed to close shared preferences database during version change for ${context}`, closeError);
           }
         };
-        hasResetAttempted = false;
         resolve(db);
       };
 
@@ -274,21 +226,6 @@ export async function openPreferencesDatabase({
       };
     });
   } catch (error) {
-    const errorName = getIndexedDbErrorName(error);
-
-    if (
-      allowReset
-      && !hasResetAttempted
-      && (errorName === 'VersionError' || errorName === 'UnknownError' || errorName === 'InvalidStateError')
-    ) {
-      console.warn(`Resetting shared preferences database due to IndexedDB error while handling ${context}:`, error);
-      hasResetAttempted = true;
-      const resetSuccessful = await deletePreferencesDatabase(context, disablePersistence);
-      if (resetSuccessful) {
-        return openPreferencesDatabase({ context, disablePersistence, allowReset: false });
-      }
-    }
-
     console.error(`Could not open shared preferences database for ${context}. Disabling persistence.`, error);
     disablePersistence(error);
     return null;

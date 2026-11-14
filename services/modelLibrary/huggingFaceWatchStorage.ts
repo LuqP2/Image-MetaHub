@@ -5,7 +5,7 @@ import { packHuggingFaceWatches, unpackHuggingFaceWatches } from './huggingFaceW
 const STATE_ID = 'hf-watch-state-v1';
 
 async function database() {
-  const db = await openPreferencesDatabase({ context: 'Hugging Face monitoring', disablePersistence: () => {}, allowReset: false });
+  const db = await openPreferencesDatabase({ context: 'Hugging Face monitoring', disablePersistence: () => {} });
   if (!db) throw new Error('Hugging Face monitoring preferences could not be saved.');
   return db;
 }

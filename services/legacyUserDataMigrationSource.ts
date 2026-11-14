@@ -25,7 +25,6 @@ async function openMigrationDatabase(): Promise<IDBDatabase> {
   let openError: unknown = null;
   const db = await openPreferencesDatabase({
     context: 'stable identity user-data migration',
-    allowReset: false,
     disablePersistence: (error) => { openError = error ?? new Error('IndexedDB is unavailable.'); },
   });
   if (!db) {

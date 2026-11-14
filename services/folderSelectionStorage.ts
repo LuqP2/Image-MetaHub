@@ -24,11 +24,10 @@ function disablePersistence(error?: unknown) {
   isPersistenceDisabled = true;
 }
 
-async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
+async function openDatabase(): Promise<IDBDatabase | null> {
   return openPreferencesDatabase({
     context: 'folder selection storage',
     disablePersistence,
-    allowReset,
   });
 }
 
