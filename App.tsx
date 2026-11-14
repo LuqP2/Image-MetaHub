@@ -2018,6 +2018,28 @@ export default function App() {
     synchronizeViewerImage, handleActivateImageModal,
   );
 
+  const hideTextureMapsInLibrary = libraryView === 'library' && hideAssociatedTextureMaps
+    && !searchQuery.trim() && !advancedFilters.mediaTypes?.includes('image')
+    && semanticResultGeneration === null && !findSimilarGridFilter;
+  const isLibraryNavigationImageVisible = useCallback(
+    (imageId: string) => !hideTextureMapsInLibrary || !textureMapIndex.associatedImageIds.has(imageId),
+    [hideTextureMapsInLibrary, textureMapIndex],
+  );
+  const excludeHiddenTextureMaps = useCallback(
+    (images: IndexedImage[]) => hideTextureMapsInLibrary
+      ? images.filter((image) => isLibraryNavigationImageVisible(image.id))
+      : images,
+    [hideTextureMapsInLibrary, isLibraryNavigationImageVisible],
+  );
+  const visibleLibraryNavigationImages = useMemo(
+    () => excludeHiddenTextureMaps(safeFilteredImages),
+    [excludeHiddenTextureMaps, safeFilteredImages],
+  );
+  const visibleScopeNavigationImages = useMemo(
+    () => safeActiveImageScope ? excludeHiddenTextureMaps(safeActiveImageScope) : null,
+    [excludeHiddenTextureMaps, safeActiveImageScope],
+  );
+
   useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
@@ -2039,7 +2061,7 @@ export default function App() {
     const navigationSource =
       clusterNavigationContext && clusterNavigationContext.length > 0
         ? clusterNavigationContext
-        : safeActiveImageScope ?? safeFilteredImages;
+        : visibleScopeNavigationImages ?? visibleLibraryNavigationImages;
     const navigationImageIds = navigationSource.map((image) => image.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
       clusterNavigationContext && clusterNavigationContext.length > 0
@@ -2085,7 +2107,7 @@ export default function App() {
       const navigationSource =
         safeClusterNavigationContext.length > 0
           ? safeClusterNavigationContext
-          : safeActiveImageScope ?? safeFilteredImages;
+          : visibleScopeNavigationImages ?? visibleLibraryNavigationImages;
       const navigationImageIds = navigationSource.map((image) => image.id);
       const navigationSourceType: OpenImageModalState['navigationSource'] =
         safeClusterNavigationContext.length > 0
@@ -2111,11 +2133,11 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, beginViewerOpening, clusterNavigationContext, handleActivateImageModal, openImageModals, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [beginModalOpenFlow, beginViewerOpening, clusterNavigationContext, handleActivateImageModal, openImageModals, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeClusterNavigationContext, selectedImage, visibleLibraryNavigationImages, visibleScopeNavigationImages]);
 
   const filteredNavigationImageIds = useMemo(
-    () => safeFilteredImages.map((image) => image.id),
-    [safeFilteredImages]
+    () => visibleLibraryNavigationImages.map((image) => image.id),
+    [visibleLibraryNavigationImages]
   );
   const filteredNavigationIndexById = useMemo(() => {
     const indexById = new Map<string, number>();
@@ -2126,8 +2148,8 @@ export default function App() {
   }, [filteredNavigationImageIds]);
 
   const activeScopeNavigationImageIds = useMemo(
-    () => safeActiveImageScope?.map((image) => image.id) ?? null,
-    [safeActiveImageScope]
+    () => visibleScopeNavigationImages?.map((image) => image.id) ?? null,
+    [visibleScopeNavigationImages]
   );
   const activeScopeNavigationIndexById = useMemo(() => {
     if (!activeScopeNavigationImageIds) {
@@ -2160,7 +2182,9 @@ export default function App() {
     }
 
     if (modal.navigationSource === 'scope') {
-      return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
+      return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) =>
+        imageLookup.has(imageId) && isLibraryNavigationImageVisible(imageId)
+      );
     }
 
     if (modal.navigationSource === 'slideshow') {
@@ -2176,7 +2200,7 @@ export default function App() {
     }
 
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
-  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
+  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup, isLibraryNavigationImageVisible]);
 
   const resolveModalNavigationIndex = useCallback((
     modal: OpenImageModalState,
@@ -2494,7 +2518,7 @@ export default function App() {
       ? navigationImageOverride!
       : safeClusterNavigationContext.length > 0
         ? safeClusterNavigationContext
-        : safeActiveImageScope ?? safeFilteredImages;
+        : visibleScopeNavigationImages ?? visibleLibraryNavigationImages;
     const navigationImageIds = navigationSource.map((entry) => entry.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
       navigationSourceOverride ?? (
@@ -2547,7 +2571,7 @@ export default function App() {
         },
       ];
     });
-  }, [beginModalOpenFlow, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
+  }, [beginModalOpenFlow, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeClusterNavigationContext, visibleLibraryNavigationImages, visibleScopeNavigationImages]);
 
   const handleOpenImageModalFromGeneratedOutput = useCallback((imageId: string) => {
     const image = getImageByIdFromStore(imageId);
@@ -2555,7 +2579,7 @@ export default function App() {
       return;
     }
 
-    const navigationSource = safeActiveImageScope ?? safeFilteredImages;
+    const navigationSource = visibleScopeNavigationImages ?? visibleLibraryNavigationImages;
     const navigationImageIds = navigationSource.map((entry) => entry.id);
     if (reuseImageViewer({ imageId: image.id, navigationImageIds, navigationSource: safeActiveImageScope ? 'scope' : 'filtered' })) {
       setGeneratedOutputPreview(null);
@@ -2609,7 +2633,7 @@ export default function App() {
       setLibraryView('library');
     }
     setGeneratedOutputPreview(null);
-  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, resolveViewerHost, reuseImageViewer, safeActiveImageScope, safeFilteredImages, setSelectedImage]);
+  }, [beginModalOpenFlow, getImageByIdFromStore, libraryView, openImageModals, resolveViewerHost, reuseImageViewer, safeActiveImageScope, setSelectedImage, visibleLibraryNavigationImages, visibleScopeNavigationImages]);
 
   const resolveGeneratedOutputImageId = useCallback((output: GeneratedQueueOutput): string | undefined => {
     if (output.imageId && getImageByIdFromStore(output.imageId)) {
@@ -2925,14 +2949,10 @@ export default function App() {
         : scopedBaseImages,
     [libraryView, collectionFilteredImages, findSimilarIdSet, scopedBaseImages],
   );
-  const browseImages = useMemo(() => {
-    if (libraryView !== 'library' || !hideAssociatedTextureMaps || searchQuery.trim()
-        || advancedFilters.mediaTypes?.includes('image') || semanticResultGeneration !== null || findSimilarIdSet) {
-      return baseDisplayImages;
-    }
-    return baseDisplayImages.filter((image) => !textureMapIndex.associatedImageIds.has(image.id));
-  }, [advancedFilters.mediaTypes, baseDisplayImages, findSimilarIdSet, hideAssociatedTextureMaps,
-    libraryView, searchQuery, semanticResultGeneration, textureMapIndex]);
+  const browseImages = useMemo(
+    () => excludeHiddenTextureMaps(baseDisplayImages),
+    [baseDisplayImages, excludeHiddenTextureMaps],
+  );
   const displayImages = useMemo(() => {
     if (!relatedImages) return browseImages;
     return safeImages.filter((image) => relatedImages.imageIds.has(image.id))
