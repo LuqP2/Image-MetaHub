@@ -32,7 +32,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
   compact?: boolean;
   withinPanel?: boolean;
   renderActions?: (result: ReturnType<typeof compilePrompt>, visible: boolean, channel?: 'positive' | 'negative') => React.ReactNode;
-  appendText?: { id: number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
+  appendText?: { id: string | number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
 }) {
   const sessionDraft = getDraft(draftContext);
   const [draft, setDraft] = useState(() => {

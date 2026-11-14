@@ -93,18 +93,38 @@ it('uses prompts and model trigger words in the same preserved Workspace composi
   expect(screen.getByText('studio portrait, studio_trigger')).toBeTruthy();
 });
 
+it('appends model trigger words again after the workspace remounts with a preserved draft', async () => {
+  const initial = { editor: { ...emptyEditor(), document: makeDocument('existing prompt') } };
+  rememberDraft('prompt', initial, initial, null, 'comfyui');
+  const view = render(<Harness key="first" />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+  const model = screen.queryByRole('button', { name: /Studio LoRA/ });
+  if (model) fireEvent.click(model);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add to positive' }));
+  const parts = () => getDraft('comfyui')?.draft.editor?.document?.positive;
+  await waitFor(() => expect(parts()?.map(part => part.text)).toEqual(['existing prompt', 'studio_trigger']));
+  const originalId = parts()?.[1].id;
+
+  view.rerender(<Harness key="second" />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Add to positive' }));
+  await waitFor(() => expect(parts()?.map(part => part.text)).toEqual(['existing prompt', 'studio_trigger', 'studio_trigger']));
+  expect(parts()?.[1].id).toBe(originalId);
+  expect(parts()?.[2].id).not.toBe(originalId);
+});
+
 it('inserts each Workspace request once in StrictMode and starts without empty free-text parts', async () => {
   const initial = { editor: { ...emptyEditor(), document: { ...makeDocument(), positive: [], negative: [] } } };
   const block = { id: 'light', text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' }, revision: 1, createdAt: 1 } as PromptBlock;
   useSavedPromptStore.setState({ blocks: [block] });
   const props = { initial, kind: 'prompt' as const, compact: true, draftContext: 'comfyui' as const, onDirty: vi.fn(), onSaved: vi.fn(), onClose: vi.fn(), onViewSource: vi.fn() };
-  const renderEditor = (id: number) => <React.StrictMode><PromptEditor {...props} appendText={{ id, text: block.text, channel: 'positive', block }} /></React.StrictMode>;
-  const view = render(renderEditor(100));
+  const renderEditor = (id: string) => <React.StrictMode><PromptEditor {...props} appendText={{ id, text: block.text, channel: 'positive', block }} /></React.StrictMode>;
+  const view = render(renderEditor('first'));
   await waitFor(() => expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(1));
   expect(getDraft('comfyui')?.draft.editor?.document?.negative).toHaveLength(0);
-  view.rerender(renderEditor(100));
+  view.rerender(renderEditor('first'));
   expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(1);
-  view.rerender(renderEditor(101));
+  view.rerender(renderEditor('second'));
   await waitFor(() => expect(getDraft('comfyui')?.draft.editor?.document?.positive).toHaveLength(2));
   fireEvent.click(screen.getByRole('button', { name: 'Add positive blocks' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add block Lighting' }));

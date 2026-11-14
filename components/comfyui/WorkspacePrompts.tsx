@@ -30,7 +30,7 @@ function NodeItemActions({ result, block, busy, onSend }: { result: ReturnType<t
   </div>;
 }
 
-export type WorkspaceCompositionRequest = { id: number; positive: string; negative: string } | { id: number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
+export type WorkspaceCompositionRequest = { id: string; positive: string; negative: string } | { id: string; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
 type Draft = Partial<SavedPrompt & PromptBlock>;
 const emptyComposition = (): Draft => ({ positivePrompt: '', negativePrompt: '', editor: { ...emptyEditor(), document: { ...makeDocument(), positive: [], negative: [] } } });
 const session: { kind: 'prompt' | 'block'; filters: PromptLibraryFilters; selected: string | null; editing: Draft | null; blockEditing: Draft | null; editingKind: 'prompt' | 'block'; mode: 'browse' | 'details' | 'edit' | 'blockedit'; offset: number } = {
@@ -94,7 +94,7 @@ export default function WorkspacePrompts({ active, visiblePanel = true, request,
     if (!gate()) return;
     const editor = normalizeEditor(target.editor);
     if ('text' in target) {
-      const blockRequest = { id: Date.now(), text: target.text, channel: 'positive' as const, block: target };
+      const blockRequest = { id: crypto.randomUUID(), text: target.text, channel: 'positive' as const, block: target };
       if (!editing || editingKind !== 'prompt') {
         if (!replaceEditor(emptyComposition(), 'prompt')) return;
       }
@@ -106,7 +106,7 @@ export default function WorkspacePrompts({ active, visiblePanel = true, request,
     if (!editing || editingKind !== 'prompt') {
       if (!replaceEditor(emptyComposition(), 'prompt')) return;
     }
-    setAppend({ id: Date.now(), text: target.text, channel, block: target }); setMode('edit');
+    setAppend({ id: crypto.randomUUID(), text: target.text, channel, block: target }); setMode('edit');
   };
   const sendBlock = (block: PromptBlock, mode: 'append' | 'replace' | 'replaceSelection' = 'append') => {
     const result = compileBlockForUse(block);

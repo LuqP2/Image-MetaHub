@@ -35,7 +35,7 @@ export default function WorkspaceContextPanel({ collapsed, onToggle, active, lib
       showProModal('prompt_library_advanced');
       return;
     }
-    setComposition(previous => ({ id: (previous?.id ?? 0) + 1, text, channel }));
+    setComposition({ id: crypto.randomUUID(), text, channel });
     select('prompt');
     requestAnimationFrame(() => document.getElementById(`${id}-tab-prompt`)?.focus());
   };
