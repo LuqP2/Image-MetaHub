@@ -261,6 +261,10 @@ return <section aria-label="Workspace Image Inspector" className="h-full overflo
                     onContextMenu={showInspectorFieldContextMenu}
                   />
                 </div>
+                ) : image?.enrichmentState === 'catalog' ? (
+                  <div role="status" className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-300">
+                    Indexing metadata…
+                  </div>
                 ) : (
                   <div className="rounded-lg border border-gray-800 bg-gray-950/80 p-4 text-sm text-gray-400">
                     No normalized metadata is available for this image.

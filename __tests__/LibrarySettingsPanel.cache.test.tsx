@@ -1,9 +1,10 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LibrarySettingsPanel } from '../components/settings/LibrarySettingsPanel';
 import { useSemanticStore } from '../store/useSemanticStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { LIBRARY_CACHE_REBUILD_KEY } from '../utils/cacheReset';
 
 describe('LibrarySettingsPanel cache location', () => {
   beforeEach(() => {
@@ -13,7 +14,33 @@ describe('LibrarySettingsPanel cache location', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    sessionStorage.removeItem(LIBRARY_CACHE_REBUILD_KEY);
     delete window.electronAPI;
+  });
+
+  it('disables cache clearing while pending and announces the reload after success', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // Hold the paint callback so this test can observe the status without navigating.
+    vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+    let finishClear!: (result: { success: boolean }) => void;
+    const clearLibraryCache = vi.fn(() => new Promise<{ success: boolean }>((resolve) => {
+      finishClear = resolve;
+    }));
+    window.electronAPI = {
+      getDefaultCachePath: vi.fn().mockResolvedValue({ success: false }),
+      clearLibraryCache,
+    } as any;
+
+    render(<LibrarySettingsPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear library cache' }));
+    const clearingButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Clearing library cache…' });
+    expect(clearingButton.disabled).toBe(true);
+    fireEvent.click(clearingButton);
+    expect(clearLibraryCache).toHaveBeenCalledTimes(1);
+
+    await act(async () => finishClear({ success: true }));
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Reloading library…' }).disabled).toBe(true);
+    expect(sessionStorage.getItem(LIBRARY_CACHE_REBUILD_KEY)).toBe('1');
   });
 
   it('shows an observable error when the authorized directory cannot be opened', async () => {

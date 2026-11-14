@@ -4247,11 +4247,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
             {/* Favorite, Rating, and Tags */}
             <div className="space-y-3">
-              <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
+              <div className="flex w-fit max-w-full flex-wrap items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
                 <motion.button
                   onClick={handleToggleFavorite}
                   whileTap={{ scale: 0.9 }}
-                  className={`p-1 rounded transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
+                  className={`shrink-0 p-1 rounded transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
                     currentIsFavorite
                       ? 'text-rose-400 hover:text-rose-300'
                       : 'text-gray-500 hover:text-rose-400'
@@ -4261,12 +4261,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 >
                   <Heart className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
                 </motion.button>
-                <div className="h-5 w-px bg-gray-700/70" />
+                <div className="h-5 w-px shrink-0 bg-gray-700/70" />
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
                 <button
                   type="button"
                   onClick={handleToggleRejected}
-                  className={`rounded border px-2 py-1 text-xs font-medium ${isRejected ? 'border-amber-500/60 bg-amber-900/30 text-amber-200' : 'border-gray-700 text-gray-400 hover:border-amber-500/60 hover:text-amber-200'}`}
+                  className={`max-w-full rounded border px-2 py-1 text-xs font-medium ${isRejected ? 'border-amber-500/60 bg-amber-900/30 text-amber-200' : 'border-gray-700 text-gray-400 hover:border-amber-500/60 hover:text-amber-200'}`}
                   aria-pressed={isRejected}
                   title={isRejected ? 'Restore candidate' : 'Reject candidate without deleting the file'}
                 >
@@ -4691,6 +4691,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </div>
               )}
 
+            </div>
+          ) : liveImage.enrichmentState === 'catalog' ? (
+            <div role="status" className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+              Indexing metadata…
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">

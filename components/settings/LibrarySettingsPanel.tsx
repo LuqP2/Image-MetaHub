@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import type { DesktopRuntimeInfo } from '../../types';
 import { useSemanticStore } from '../../store/useSemanticStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { clearLibraryCaches, resetAllCaches } from '../../utils/cacheReset';
+import { clearLibraryCaches, LIBRARY_CACHE_REBUILD_KEY, resetAllCaches } from '../../utils/cacheReset';
 import { AdvancedSection } from './AdvancedSection';
 import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
@@ -57,6 +57,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const [defaultCachePath, setDefaultCachePath] = useState('');
   const [runtimeInfo, setRuntimeInfo] = useState<DesktopRuntimeInfo | null>(null);
   const [cacheLocationError, setCacheLocationError] = useState<string | null>(null);
+  const [cacheClearState, setCacheClearState] = useState<'idle' | 'clearing' | 'reloading'>('idle');
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -123,6 +124,8 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   };
 
   const handleClearLibraryCache = async () => {
+    if (cacheClearState !== 'idle') return;
+
     const confirmed = window.confirm(
       [
         'Clear library cache?',
@@ -138,11 +141,16 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
       return;
     }
 
+    setCacheClearState('clearing');
     try {
       await clearLibraryCaches();
-      alert('Library cache cleared. The app will now reload.');
+      sessionStorage.setItem(LIBRARY_CACHE_REBUILD_KEY, '1');
+      setCacheClearState('reloading');
+      // Allow the reload status to paint before replacing the renderer.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       window.location.reload();
     } catch (error) {
+      setCacheClearState('idle');
       console.error('Failed to clear library cache:', error);
       alert('Failed to clear library cache. Check console for details.');
     }
@@ -314,10 +322,14 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           <button
             type="button"
             onClick={handleClearLibraryCache}
-            className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-600"
+            disabled={cacheClearState !== 'idle'}
+            className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 enabled:hover:bg-gray-600 disabled:cursor-wait disabled:opacity-70"
           >
-            Clear library cache
+            {cacheClearState === 'clearing' ? 'Clearing library cache…' : cacheClearState === 'reloading' ? 'Reloading library…' : 'Clear library cache'}
           </button>
+          <span role="status" className="sr-only">
+            {cacheClearState === 'clearing' ? 'Clearing library cache…' : cacheClearState === 'reloading' ? 'Reloading library…' : ''}
+          </span>
         </SettingsSectionCard>
 
         <div className="space-y-3 pt-2">

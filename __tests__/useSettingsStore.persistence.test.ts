@@ -3,6 +3,22 @@ import { mergeSettingsWithExisting, stripLicenseFromSettings, useSettingsStore }
 import type { Keymap } from '../types';
 
 describe('useSettingsStore persistence helpers', () => {
+  it.each([10, 20, 50, 100, 500, -1])('restores the selected page size %s', async (itemsPerPage) => {
+    const originalStorage = useSettingsStore.persist.getOptions().storage;
+    useSettingsStore.persist.setOptions({ storage: {
+      getItem: async () => ({ state: { itemsPerPage } as ReturnType<typeof useSettingsStore.getState>, version: 0 }),
+      setItem: async () => {},
+      removeItem: async () => {},
+    } });
+    try {
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState().itemsPerPage).toBe(itemsPerPage);
+    } finally {
+      useSettingsStore.persist.setOptions({ storage: originalStorage });
+      useSettingsStore.getState().resetState();
+    }
+  });
+
   it('strips license data before hydrating the settings store', () => {
     const next = stripLicenseFromSettings({
       theme: 'dark',
