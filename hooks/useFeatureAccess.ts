@@ -120,7 +120,7 @@ const isTrialExpired = (trialStartDate: number | null, durationDays = TRIAL_DURA
   const trialEnd = trialStartDate + durationDays * 24 * 60 * 60 * 1000;
 
   // Clock rollback or expired
-  return now < trialStartDate || now > trialEnd;
+  return now < trialStartDate || now >= trialEnd;
 };
 
 // Helper: Calculate days remaining in trial
@@ -162,7 +162,7 @@ export const useFeatureAccess = () => {
   const trialUsed = isInitialized && licenseStore.trialActivated;
   const canStartTrial = isInitialized && licenseStore.trialAvailable && !hasProLicense && !isTrialActive && !trialUsed;
   const canExtendTrial = isExpired && licenseStore.trialAvailable && !isPro && trialUsed
-    && !!licenseStore.trialStartDate && !licenseStore.trialExtensionStartDate
+    && !!licenseStore.trialStartDate && !licenseStore.trialExtensionStartDate && !licenseStore.trialRelease023?.grantedAt
     && Date.now() > licenseStore.trialStartDate + TRIAL_DURATION_DAYS * 86400000;
 
   // Keep the development shortcut working, but do not open paid features before license state loads.

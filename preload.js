@@ -385,6 +385,7 @@ const electronAPI = {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   activateTrial: () => ipcRenderer.invoke('trial:activate'),
   activateTrialExtension: () => ipcRenderer.invoke('trial:extend'),
+  dismissReleaseTrialExtensionNotice: () => ipcRenderer.invoke('trial:dismiss-release-extension-notice'),
   getLicenseStatus: () => ipcRenderer.invoke('license:get-status'),
   activateLicense: (key, email) => ipcRenderer.invoke('license:activate', { key, email }),
   refreshLicense: () => ipcRenderer.invoke('license:refresh'),

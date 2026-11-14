@@ -87,6 +87,7 @@ import {
   permanentlyDeleteGrantedFiles,
   requestPermanentDeleteConfirmation,
 } from './electron/permanentDeletePolicy.mjs';
+import { applyReleaseTrialExtension, DAY_MS, TRIAL_DURATION_DAYS, TRIAL_EXTENSION_RELEASE } from './utils/trialPeriod.mjs';
 import { resolvePortableRuntime } from './utils/portableRuntime.mjs';
 import { buildDetachedViewerLoadTarget, buildDetachedViewerUrl } from './utils/detachedViewerUrl.mjs';
 import { getViewerLoadErrorDetails } from './utils/viewerLoadDiagnostics.mjs';
@@ -1006,7 +1007,7 @@ function queueSettingsUpdate(updater) {
   const applyUpdate = async () => {
     const currentSettings = await readSettings();
     const nextSettings = await updater(currentSettings ?? {});
-    await saveSettings(nextSettings);
+    if (nextSettings !== currentSettings) await saveSettings(nextSettings);
     return nextSettings;
   };
 
@@ -1026,12 +1027,19 @@ function mergeSettingsUpdate(currentSettings, newSettings) {
     ...newSettings,
   };
 
-  // Only trial:extend may grant this period. Whole-settings writes from stale
-  // renderers must neither erase an already-used offer nor move its start date.
-  if (newSettings?.license && typeof newSettings.license === 'object') {
+  // Trial extension records are owned by main and survive stale renderer writes.
+  const currentLicense = currentSettings?.license;
+  const releaseTrial = currentLicense?.trialRelease023;
+  if (releaseTrial?.grantedAt || (newSettings?.license && typeof newSettings.license === 'object')) {
     nextSettings.license = {
+      ...currentLicense,
       ...newSettings.license,
-      trialExtensionStartDate: currentSettings?.license?.trialExtensionStartDate ?? null,
+      trialExtensionStartDate: currentLicense?.trialExtensionStartDate ?? null,
+      trialRelease023: releaseTrial ?? null,
+      ...(releaseTrial?.grantedAt ? {
+        trialActivated: currentLicense.trialActivated,
+        trialStartDate: currentLicense.trialStartDate,
+      } : {}),
     };
   }
 
@@ -3662,7 +3670,19 @@ app.whenReady().then(async () => {
     appVersion: app.getVersion(),
     platform: process.platform,
   });
-  await licenseManager.initialize();
+  const initialLicenseStatus = await licenseManager.initialize();
+  if (app.getVersion() === TRIAL_EXTENSION_RELEASE && !desktopRuntime.isPortable) {
+    try {
+      await queueSettingsUpdate((settings) => applyReleaseTrialExtension(settings, {
+        version: app.getVersion(),
+        isPortable: desktopRuntime.isPortable,
+        authorized: initialLicenseStatus.authorized,
+        now: Date.now(),
+      }));
+    } catch (error) {
+      console.error('Failed to save the 0.23.0 trial extension:', error);
+    }
+  }
 
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
@@ -3727,6 +3747,26 @@ app.whenReady().then(async () => {
 });
 
 function setupLicenseHandlers() {
+  ipcMain.handle('trial:dismiss-release-extension-notice', async (event) => {
+    try {
+      await queueSettingsUpdate((settings) => {
+        const extension = settings.license?.trialRelease023;
+        if (!extension?.grantedAt || extension.noticeDismissed) return settings;
+        return {
+          ...settings,
+          license: {
+            ...settings.license,
+            trialRelease023: { ...extension, noticeDismissed: true },
+          },
+        };
+      });
+      broadcastSettingsUpdated(event.sender);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'The trial notice dismissal could not be saved.' };
+    }
+  });
+
   ipcMain.handle('trial:extend', async (event) => {
     try {
       if (desktopRuntime.isPortable) {
@@ -3740,8 +3780,8 @@ function setupLicenseHandlers() {
         const license = currentSettings?.license ?? {};
         const startDate = Number(license.trialStartDate);
         const now = Date.now();
-        if (license.trialExtensionStartDate || license.trialActivated !== true
-          || !Number.isFinite(startDate) || startDate <= 0 || now <= startDate + 7 * 86400000) {
+        if (license.trialExtensionStartDate || license.trialRelease023?.grantedAt || license.trialActivated !== true
+          || !Number.isFinite(startDate) || startDate <= 0 || now <= startDate + TRIAL_DURATION_DAYS * DAY_MS) {
           throw new Error('The extra trial is only available once, after your original trial ends.');
         }
         trialExtensionStartDate = now;
@@ -6611,15 +6651,18 @@ function setupFileOperationHandlers() {
   ipcMain.handle('delete-cache-folder', async (event, options = {}) => {
     try {
       const userDataDir = app.getPath('userData');
-      const settingsBeforeDelete = await readSettings();
-      const preservedLicense = options?.preserveLicense === true ? settingsBeforeDelete?.license : undefined;
-      const preservedFileNames = options?.preserveLicense === true
-        ? licenseManager.getPreservedStateFileNames()
-        : new Set();
-      await resetUserDataContents({ userDataDir, preservedFileNames });
-
-      if (preservedLicense) {
-        await saveSettings({ license: preservedLicense });
+      if (options?.preserveLicense === true) {
+        // Commit the licensing-only settings before removing cache files, so an
+        // interrupted reset cannot delete trial history or a notice dismissal.
+        await queueSettingsUpdate((settings) => settings.license ? { license: settings.license } : {});
+        const preservedFileNames = new Set([
+          ...licenseManager.getPreservedStateFileNames(),
+          path.basename(settingsPath),
+          path.basename(settingsBackupPath),
+        ]);
+        await resetUserDataContents({ userDataDir, preservedFileNames });
+      } else {
+        await resetUserDataContents({ userDataDir });
       }
 
       return { success: true, needsRestart: true };

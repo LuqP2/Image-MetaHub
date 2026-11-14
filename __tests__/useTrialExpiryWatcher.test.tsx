@@ -15,6 +15,7 @@ const setLicense = (overrides: Partial<ReturnType<typeof useLicenseStore.getStat
     trialStartDate: null,
     trialActivated: false,
     trialExtensionStartDate: null,
+    trialRelease023: null,
     licenseStatus: 'free',
     licenseKey: null,
     licenseEmail: null,
@@ -39,12 +40,12 @@ describe('useTrialExpiryWatcher', () => {
       licenseStatus: 'trial',
       trialActivated: true,
       trialStartDate: Date.now() - 20 * 86400000,
-      trialExtensionStartDate: Date.now() - 3 * 86400000 + 60_000,
+      trialRelease023: { grantedAt: Date.now() - 3 * 86400000 + 60_000, noticeDismissed: false },
     });
     renderHook(() => useTrialExpiryWatcher());
     await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
     expect(useLicenseStore.getState().licenseStatus).toBe('trial');
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(useLicenseStore.getState().licenseStatus).toBe('expired');
   });
 
@@ -58,7 +59,6 @@ describe('useTrialExpiryWatcher', () => {
     renderHook(() => useTrialExpiryWatcher());
     expect(useLicenseStore.getState().licenseStatus).toBe('trial');
 
-    // Past the deadline, plus the hook's cushion.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(65_000);
     });
