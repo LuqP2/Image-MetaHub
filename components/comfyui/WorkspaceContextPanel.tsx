@@ -1,39 +1,85 @@
-import React, { useEffect, useState } from 'react';
-import { Bookmark, Box, ChevronRight, ImageIcon } from 'lucide-react';
+import React, { useId, useState } from 'react';
+import { Bookmark, Box, ChevronLeft, Images } from 'lucide-react';
 import WorkspacePrompts, { type WorkspaceCompositionRequest } from './WorkspacePrompts';
 import WorkspaceModels from './WorkspaceModels';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
-const tabs = ['image', 'prompts', 'models'] as const;
-type Tab = typeof tabs[number];
-const icons = { image: ImageIcon, prompts: Bookmark, models: Box };
-const key = 'image-metahub-comfyui-context-tab';
-export default function WorkspaceContextPanel({ collapsed, onToggle, active, imagePanel, request, onOpenLibrary, onViewSource }: {
-  collapsed: boolean; onToggle: () => void; active: boolean; imagePanel: React.ReactNode;
-  request: WorkspaceCompositionRequest | null; onOpenLibrary: () => void; onViewSource: (path: string) => void | Promise<void>;
+
+const tabs = [
+  { id: 'library', label: 'Library', Icon: Images },
+  { id: 'prompt', label: 'Prompt', Icon: Bookmark },
+  { id: 'models', label: 'Models', Icon: Box },
+] as const;
+type Tab = typeof tabs[number]['id'];
+
+export default function WorkspaceContextPanel({ collapsed, onToggle, active, libraryPanel, onOpenLibrary, onViewSource }: {
+  collapsed: boolean;
+  onToggle: () => void;
+  active: boolean;
+  libraryPanel: (visible: boolean) => React.ReactNode;
+  onOpenLibrary: () => void;
+  onViewSource: (path: string) => void | Promise<void>;
 }) {
-  const [tab, setTab] = useState<Tab>(() => { const saved = localStorage.getItem(key); return tabs.includes(saved as Tab) ? saved as Tab : 'image'; });
-  const [visited, setVisited] = useState(new Set<Tab>([tab, 'image']));
-  const [composition, setComposition] = useState(request);
+  const id = useId();
+  const [tab, setTab] = useState<Tab>('library');
+  const [visited, setVisited] = useState(new Set<Tab>(['library']));
+  const [composition, setComposition] = useState<WorkspaceCompositionRequest | null>(null);
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
-  const select = (value: Tab) => { setTab(value); setVisited(current => new Set([...current, value])); localStorage.setItem(key, value); };
-  useEffect(() => { if (request) { setComposition(request); select('prompts'); } }, [request?.id]);
-  const add = (text: string, channel: 'positive' | 'negative') => {
-    if (!canUseAdvancedPromptLibrary) { showProModal('prompt_library_advanced'); return; }
-    setComposition({ id: Date.now(), text, channel }); select('prompts');
+
+  const select = (value: Tab) => {
+    setTab(value);
+    setVisited(current => current.has(value) ? current : new Set([...current, value]));
   };
+
+  const add = (text: string, channel: 'positive' | 'negative') => {
+    if (!canUseAdvancedPromptLibrary) {
+      showProModal('prompt_library_advanced');
+      return;
+    }
+    setComposition(previous => ({ id: (previous?.id ?? 0) + 1, text, channel }));
+    select('prompt');
+    requestAnimationFrame(() => document.getElementById(`${id}-tab-prompt`)?.focus());
+  };
+
   return <div className="flex h-full min-h-0 flex-col">
-    <div role="tablist" aria-label="Workspace context" className={collapsed ? 'flex flex-col gap-2 p-1 pt-3' : 'flex shrink-0 items-center gap-1 border-b border-gray-800 p-2'}>
-      {tabs.map(value => { const Icon = icons[value]; return <button key={value} type="button" id={`workspace-tab-${value}`} role="tab" aria-selected={tab === value} aria-controls={`workspace-panel-${value}`} title={value === 'image' ? 'Image' : value === 'prompts' ? 'Prompts' : 'Models'} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs ${tab === value ? 'bg-accent/15 text-accent' : 'text-gray-400 hover:bg-gray-800'}`} onClick={() => { select(value); if (collapsed) onToggle(); }} onKeyDown={event => {
-        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
-          event.preventDefault(); const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? 2 : 1)) % 3]; select(next); document.getElementById(`workspace-tab-${next}`)?.focus();
-        }
-      }}><Icon size={16} />{!collapsed && (value === 'image' ? 'Image' : value === 'prompts' ? 'Prompts' : 'Models')}</button>; })}
-      {!collapsed && <button type="button" className="ml-auto rounded p-1 text-gray-400 hover:bg-gray-800" aria-label="Collapse context panel" onClick={onToggle}><ChevronRight size={16} /></button>}
+    <div className={`flex shrink-0 border-b border-gray-800 ${collapsed ? 'flex-col p-1' : 'items-center gap-1 px-2'}`}>
+      <div role="tablist" aria-label="Workspace tools" aria-orientation={collapsed ? 'vertical' : 'horizontal'} className={`flex flex-1 ${collapsed ? 'flex-col' : 'min-w-0 items-center'}`}>
+        {tabs.map(({ id: value, label, Icon }, index) => (
+          <button key={value} type="button" id={`${id}-tab-${value}`} role="tab" aria-label={label}
+            aria-selected={tab === value} aria-controls={`${id}-panel-${value}`}
+            tabIndex={tab === value ? 0 : -1} title={label}
+            className={`flex h-8 items-center justify-center gap-1.5 px-2 text-xs focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-accent hover:bg-gray-800 ${collapsed ? 'border-l-2' : 'flex-1 border-b-2'} ${tab === value ? 'border-accent text-gray-100' : 'border-transparent text-gray-400'}`}
+            onClick={() => { select(value); if (collapsed) onToggle(); }}
+            onKeyDown={event => {
+              const previous = collapsed ? 'ArrowUp' : 'ArrowLeft';
+              const next = collapsed ? 'ArrowDown' : 'ArrowRight';
+              const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
+                event.key === previous ? (index + tabs.length - 1) % tabs.length :
+                event.key === next ? (index + 1) % tabs.length : null;
+              if (target === null) return;
+              event.preventDefault();
+              const nextTab = tabs[target].id;
+              select(nextTab);
+              document.getElementById(`${id}-tab-${nextTab}`)?.focus();
+            }}
+          >
+            <Icon size={14} className="shrink-0" />
+            {!collapsed && label}
+          </button>
+        ))}
+      </div>
+      {!collapsed && <button type="button" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent" title="Collapse workspace sidebar" aria-label="Collapse workspace sidebar" onClick={() => {
+        onToggle();
+        document.getElementById(`${id}-tab-${tab}`)?.focus();
+      }}><ChevronLeft size={14} /></button>}
     </div>
-    {tabs.map(value => <div key={value} id={`workspace-panel-${value}`} role="tabpanel" aria-labelledby={`workspace-tab-${value}`} hidden={collapsed || tab !== value} className={collapsed || tab !== value ? 'hidden' : 'min-h-0 flex-1'}>
-      {value === 'image' ? imagePanel : visited.has(value) && (value === 'prompts' ?
-        <WorkspacePrompts active={active && !collapsed && tab === value} request={composition} onOpenLibrary={onOpenLibrary} onViewSource={onViewSource} /> :
-        <WorkspaceModels active={active && !collapsed && tab === value} onAddText={add} />)}
-    </div>)}
+    {tabs.map(({ id: value }) => {
+      const visible = !collapsed && tab === value;
+      return <div key={value} id={`${id}-panel-${value}`} role="tabpanel" aria-labelledby={`${id}-tab-${value}`}
+        hidden={!visible} className={visible ? 'min-h-0 flex-1' : 'hidden'}>
+        {value === 'library' ? libraryPanel(visible) : visited.has(value) && (value === 'prompt' ?
+          <WorkspacePrompts active={active && visible} visiblePanel={visible} request={composition} onOpenLibrary={onOpenLibrary} onViewSource={onViewSource} /> :
+          <WorkspaceModels active={active && visible} visiblePanel={visible} onAddText={add} />)}
+      </div>;
+    })}
   </div>;
 }

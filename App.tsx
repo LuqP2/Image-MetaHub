@@ -636,7 +636,6 @@ export default function App() {
     }
     return window.localStorage.getItem(COMFYUI_WORKSPACE_APPLY_FILTERS_STORAGE_KEY) === 'true';
   });
-  const [isComfyUIWorkspaceGenerating, setIsComfyUIWorkspaceGenerating] = useState(false);
   const [editorImageId, setEditorImageId] = useState<string | null>(null);
   const [editorNavigationImageIds, setEditorNavigationImageIds] = useState<string[] | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
@@ -3363,13 +3362,6 @@ export default function App() {
       );
     });
   }, [comfyUIWorkspaceNavigationImages, libraryView]);
-  const comfyUIWorkspaceCurrentIndex = useMemo(() => {
-    if (!comfyUIWorkspaceImage) {
-      return -1;
-    }
-
-    return comfyUIWorkspaceNavigationImages.findIndex((candidate) => candidate.id === comfyUIWorkspaceImage.id);
-  }, [comfyUIWorkspaceImage, comfyUIWorkspaceNavigationImages]);
   const handleComfyUIWorkspaceDirectoryChange = useCallback((directoryId: string | null) => {
     const nextDirectoryId = directoryId || '';
     setComfyUIWorkspaceDirectoryId(nextDirectoryId);
@@ -3439,20 +3431,6 @@ export default function App() {
     suppressSelectedImageModalOpenRef.current = image.id;
     setSelectedImage(image);
   }, [beginModalOpenFlow, comfyUIWorkspaceNavigationImages, handleActivateImageModal, openImageModals, resolveViewerHost, reuseImageViewer, setSelectedImage]);
-  const handleComfyUIWorkspaceNavigate = useCallback((direction: 'next' | 'previous') => {
-    if (comfyUIWorkspaceCurrentIndex === -1) {
-      return;
-    }
-
-    const nextIndex = direction === 'next'
-      ? comfyUIWorkspaceCurrentIndex + 1
-      : comfyUIWorkspaceCurrentIndex - 1;
-    const nextImage = comfyUIWorkspaceNavigationImages[nextIndex];
-
-    if (nextImage) {
-      setComfyUIWorkspaceImageId(nextImage.id);
-    }
-  }, [comfyUIWorkspaceCurrentIndex, comfyUIWorkspaceNavigationImages]);
   const comfyUIWorkspaceDirectoryPathByImageId = useMemo(() => {
     const paths: Record<string, string> = {};
 
@@ -4870,12 +4848,8 @@ export default function App() {
                     directoryPath={comfyUIWorkspaceImage?.directoryId ? directoryPathById.get(comfyUIWorkspaceImage.directoryId) : undefined}
                     navigationImages={comfyUIWorkspaceNavigationImages}
                     directoryPathByImageId={comfyUIWorkspaceDirectoryPathByImageId}
-                    currentIndex={comfyUIWorkspaceCurrentIndex}
                     isActive={shouldShowEmbeddedComfyUIView}
-                    onNavigatePrevious={() => handleComfyUIWorkspaceNavigate('previous')}
-                    onNavigateNext={() => handleComfyUIWorkspaceNavigate('next')}
-                    onGenerationStateChange={setIsComfyUIWorkspaceGenerating}
-                    suspendBrowser={isGeneratingComfyUI || isComfyUIWorkspaceGenerating}
+                    suspendBrowser={isGeneratingComfyUI}
                     onOpenQueue={() => setIsQueueOpen(true)}
                     onOpenPromptLibrary={() => setLibraryView('prompts')}
                     onViewPromptSource={handleOpenFileFromDeepLink}

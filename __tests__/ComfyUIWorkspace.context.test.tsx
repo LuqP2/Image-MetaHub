@@ -40,7 +40,7 @@ afterEach(() => {
 });
 function Harness() {
   const [collapsed, setCollapsed] = useState(false);
-  return <WorkspaceContextPanel collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active imagePanel={<p>Image context</p>} request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />;
+  return <WorkspaceContextPanel collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active libraryPanel={() => <p>Workspace library</p>} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />;
 }
 it('opens the Workspace editor with the latest item after a pending tag save', async () => {
   render(<WorkspacePrompts active request={null} onOpenLibrary={vi.fn()} onViewSource={vi.fn()} />);
@@ -70,7 +70,7 @@ it('keeps negative composition optional and reveals it on demand', () => {
 it('uses prompts and model trigger words in the same preserved Workspace composition and applies the compiled result', async () => {
   rememberDraft('prompt', { positivePrompt: 'separate library draft' }, { positivePrompt: 'separate library draft' });
   render(<Harness />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   fireEvent.click(screen.getByRole('button', { name: 'Prompts', exact: true }));
   fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
   fireEvent.click(screen.getByText('Use in Compose'));
@@ -80,15 +80,15 @@ it('uses prompts and model trigger words in the same preserved Workspace composi
   fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
   fireEvent.click(await screen.findByRole('button', { name: /Studio LoRA/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Add to positive' }));
-  expect(screen.getByRole('tab', { name: 'Prompts' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('tab', { name: 'Prompt' }).getAttribute('aria-selected')).toBe('true');
   await waitFor(() => expect(getDraft('comfyui')?.draft.editor?.document?.positive.some(part => part.text === 'studio_trigger')).toBe(true));
   expect(getDraft()?.draft.positivePrompt).toBe('separate library draft');
   const finalText = screen.getByRole('region', { name: 'Composition result' });
   expect(within(finalText).getByText('studio portrait, studio_trigger')).toBeTruthy();
-  fireEvent.click(screen.getByRole('tab', { name: 'Image' }));
-  expect(screen.getByText('Image context')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Collapse context panel' }));
-  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Library' }));
+  expect(screen.getByText('Workspace library')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse workspace sidebar' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   expect(await screen.findByRole('button', { name: 'Add to node' })).toBeTruthy();
   expect(screen.getByText('studio portrait, studio_trigger')).toBeTruthy();
 });
@@ -120,7 +120,7 @@ it('inserts each Workspace request once in StrictMode and starts without empty f
 
 it('creates a block without replacing the composition and keeps the list visible beside filters', async () => {
   render(<Harness />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: 'Add prompt text' }));
   const inputs = screen.getAllByRole('textbox', { name: /positive part/ });
@@ -147,7 +147,7 @@ it('creates a block without replacing the composition and keeps the list visible
 it('adds a block from its context menu to the preserved Workspace composition', async () => {
   data.blocks = [{ id: 'light', text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' }, createdAt: 1, revision: 1 } as PromptBlock];
   render(<Harness />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   fireEvent.click(screen.getByRole('button', { name: 'Compose', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: 'Add prompt text' }));
   fireEvent.change(screen.getAllByRole('textbox', { name: /positive part/ }).at(-1)!, { target: { value: 'keep this text' } });
@@ -231,7 +231,7 @@ it('allows copying an incomplete block but prevents sending unresolved required 
 it('opens saved prompts first, preserves literal selected text, and requests a field when the node has several', async () => {
   data.prompts[0].positivePrompt = '  soft light\nportrait, details  ';
   const view = render(<Harness />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   const navigation = screen.getByRole('button', { name: 'Compose', exact: true }).parentElement!;
   expect(within(navigation).getAllByRole('button').map(button => button.textContent)).toEqual(['Prompts', 'Blocks', 'Compose']);
   fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
@@ -258,7 +258,7 @@ it('does not write when no compatible selected node exists', async () => {
   data.blocks = [{ id: 'test', text: 'soft light', editor: { ...emptyEditor(), title: 'Lighting' }, createdAt: 1, revision: 1 } as PromptBlock];
   mocks.targets.mockResolvedValue({ success: false, targets: [], message: 'Select a text node in ComfyUI.' });
   render(<Harness />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   fireEvent.click(screen.getByRole('button', { name: 'Blocks', exact: true }));
   fireEvent.click(await screen.findByRole('button', { name: 'Add to selected node Lighting' }));
   expect(await screen.findByRole('button', { name: 'Copy text instead' })).toBeTruthy();
@@ -270,7 +270,7 @@ it('does not write when no compatible selected node exists', async () => {
 
 
 it('adds either prompt channel from its card and replaces node text from its context menu', async () => {
-  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Add prompt to selected node Portrait' }));
   await waitFor(() => expect(mocks.apply).toHaveBeenLastCalledWith({ token: 'field', text: 'studio portrait', mode: 'append', separator: ', ' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add negative to selected node Portrait' }));
@@ -285,7 +285,7 @@ it('adds either prompt channel from its card and replaces node text from its con
 
 it('navigates saved items without collapsing the image preview', async () => {
   data.prompts.push({ ...data.prompts[0], id: 'second', positivePrompt: 'landscape', editor: { ...emptyEditor(), title: 'Landscape' } });
-  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Open Portrait' }));
   const preview = screen.getByText('Preview image').closest('details')!;
   preview.open = true; fireEvent(preview, new Event('toggle'));
@@ -299,7 +299,7 @@ it('navigates saved items without collapsing the image preview', async () => {
 });
 
 it('disables Replace selected without a node selection and sends to the captured field when available', async () => {
-  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompts' }));
+  render(<Harness />); fireEvent.click(screen.getByRole('tab', { name: 'Prompt' }));
   const card = await screen.findByRole('button', { name: 'Open Portrait' });
   fireEvent.contextMenu(card);
   expect((screen.getByRole('menuitem', { name: 'Replace selected with prompt' }) as HTMLButtonElement).disabled).toBe(true);

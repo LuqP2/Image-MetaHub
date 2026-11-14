@@ -6,6 +6,7 @@ import type { IndexedImage } from '../types';
 import * as fileIndexer from '../services/fileIndexer';
 import { useImageStore } from '../store/useImageStore';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
+vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) => children({ width: 320, height: 320 }) }));
 const promptMocks = vi.hoisted(() => ({ save: vi.fn() }));
 vi.mock('../hooks/useSavePrompt', () => ({ useSavePrompt: () => promptMocks.save, buildSavedPromptSource: () => null }));
 vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => ({ canUseAdvancedPromptLibrary: true, canUseModelManager: true, showProModal: vi.fn() }) }));
@@ -138,7 +139,7 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     render(<ComfyUIWorkspace
       image={image}
       navigationImages={[image]}
-      currentIndex={0}
+
       directoryPath="C:/synthetic"
       isActive={false}
       workflowLoadRequest={{ id: 1, imageId: image.id, title: image.name, preferNewTab: true }}
@@ -162,7 +163,7 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     render(<ComfyUIWorkspace
       image={image}
       navigationImages={[image]}
-      currentIndex={0}
+
       isActive={false}
       workflowLoadRequest={{ id: 1, imageId: image.id, title: image.name, preferNewTab: true }}
       onOpenQueue={vi.fn()}
@@ -182,7 +183,7 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
       <ComfyUIWorkspace
         image={image}
         navigationImages={[image]}
-        currentIndex={0}
+
         isActive={false}
         onOpenQueue={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -192,6 +193,15 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     );
 
     const thumbnail = screen.getByRole('button', { name: /Inspect alpha\.png/i });
+    expect(thumbnail.getAttribute('title')).toBe('alpha.png\n\nprompt for alpha.png');
+    fireEvent.contextMenu(thumbnail, { clientX: 40, clientY: 400 });
+    const menu = screen.getByRole('button', { name: 'Inspect Asset' }).parentElement!;
+    expect(menu.style.bottom).toBe(`${window.innerHeight - 400}px`);
+    expect(menu.style.top).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Asset' }));
+    expect(onViewFullMetadata).toHaveBeenCalledWith(image);
+    onViewFullMetadata.mockClear();
+
     fireEvent.click(thumbnail);
 
     expect(onInspectImage).toHaveBeenCalledWith(image);
@@ -226,31 +236,54 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     view.unmount(); expect(unsubscribe).toHaveBeenCalled();
   });
 
-  it('saves the image prompt and captures literal selected text before opening the block editor', async () => {
-    const image = createImage('selection');
-    image.metadata!.normalizedMetadata!.prompt = '  warm\n light  ';
-    const mutate = vi.spyOn(useSavedPromptStore.getState(), 'mutate').mockResolvedValue('block');
-    const view = render(<ComfyUIWorkspace image={image} navigationImages={[image]} currentIndex={0} isActive={false} directoryPath="C:/synthetic" onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Save prompt' }));
-    await waitFor(() => expect(promptMocks.save).toHaveBeenCalledWith(image, expect.objectContaining({ directoryPath: 'C:/synthetic' })));
-    const prompt = view.container.querySelector('[data-prompt-text]')!;
-    const range = document.createRange(); range.selectNodeContents(prompt);
-    window.getSelection()!.addRange(range);
-    fireEvent.contextMenu(prompt);
-    const action = await screen.findByRole('button', { name: 'Save Selection as Block' });
-    window.getSelection()!.removeAllRanges();
-    fireEvent.click(action);
-    expect((screen.getByLabelText('Block text') as HTMLTextAreaElement).value).toBe('  warm\n light  ');
-    fireEvent.click(screen.getByRole('button', { name: 'Save block' }));
-    await waitFor(() => expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', kind: 'block', item: expect.objectContaining({ text: '  warm\n light  ' }) })));
-    expect(window.electronAPI?.comfyUIViewOpen).not.toHaveBeenCalled();
+  it('searches the complete workspace scope before virtualizing and preserves the query across tabs', () => {
+    const images = Array.from({ length: 220 }, (_, index) => ({
+      ...createImage(`image-${index}`),
+      directoryId: index === 99 || index === 100 || index === 101 ? 'matching' : 'other',
+      models: index === 99 || index === 100 || index === 101 ? ['aurora'] : [],
+      tags: index === 100 ? ['synthwave'] : [],
+    }));
+    const onOpenCompare = vi.fn();
+    const args = { image: images[0], navigationImages: images, isActive: false,
+      onOpenQueue: vi.fn(), onOpenSettings: vi.fn(), onOpenCompare };
+    const view = render(<ComfyUIWorkspace {...args} />);
+
+    const search = screen.getByRole('searchbox', { name: 'Search library' });
+    expect(screen.getByText('220 images')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Inspect image-100\.png/ })).toBeNull();
+    fireEvent.change(search, { target: { value: 'IMAGE-100 aurora synthwave' } });
+    expect(screen.getByRole('button', { name: /Inspect image-100\.png/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Library' }));
+    expect((screen.getByRole('searchbox', { name: 'Search library' }) as HTMLInputElement).value).toBe('IMAGE-100 aurora synthwave');
+
+    fireEvent.change(search, { target: { value: 'aurora' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Select image-99.png' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select image-101.png' }), { shiftKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Compare selected' }));
+    expect(onOpenCompare).toHaveBeenCalledWith(images.slice(99, 102));
+    fireEvent.change(search, { target: { value: 'absent' } });
+    expect(screen.getByText('No matching images.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Compare selected' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search library' }));
+    expect(screen.getByText('220 images')).toBeTruthy();
+
+    view.rerender(<ComfyUIWorkspace {...args} selectedDirectoryId="matching" />);
+    expect(screen.getByText('3 images')).toBeTruthy();
+    fireEvent.change(search, { target: { value: 'synthwave' } });
+    expect(screen.getByText('1 image')).toBeTruthy();
+    view.rerender(<ComfyUIWorkspace {...args} selectedDirectoryId="matching" applyLibraryFilters
+      navigationImages={images.filter(candidate => candidate.id !== 'image-100')} />);
+    expect(screen.getByText('No matching images.')).toBeTruthy();
   });
+
   it('allows saving an image without embedded prompt text through authoritative shadow validation', async () => {
     const image = createImage('shadow-only');
     image.metadata!.normalizedMetadata!.prompt = '';
     image.metadata!.normalizedMetadata!.negativePrompt = '';
-    promptMocks.save.mockClear().mockResolvedValue({ success: true });
-    render(<ComfyUIWorkspace image={image} navigationImages={[image]} currentIndex={0} isActive={false} directoryPath="C:/synthetic" onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    promptMocks.save.mockResolvedValue({ status: 'saved' });
+    render(<ComfyUIWorkspace image={image} navigationImages={[image]} isActive={false} directoryPath="C:/synthetic" onOpenQueue={vi.fn()} onOpenSettings={vi.fn()} />);
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Inspect shadow-only/ }));
     const button = screen.getByRole('button', { name: 'Save prompt' });
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);

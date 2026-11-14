@@ -1,14 +1,14 @@
 import { createPortal } from 'react-dom';
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  CheckSquare,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle,
-  Clipboard,
+  CheckSquare,
+  Bookmark,
   Copy,
   Download,
   ExternalLink,
@@ -21,7 +21,6 @@ import {
   Loader2,
   ListChecks,
   Package,
-  Play,
   RefreshCw,
   Rocket,
   Square,
@@ -34,9 +33,9 @@ import {
 } from 'lucide-react';
 import { BaseMetadata, ComfyUIViewLoadFailure, ComfyUIViewState, Directory, ImageRating, IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
-import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
-import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+
+
+
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
@@ -46,11 +45,14 @@ import { FileOperations } from '../services/fileOperations';
 import { useImageStore } from '../store/useImageStore';
 import TagManagerModal from './TagManagerModal';
 import WorkspaceContextPanel from './comfyui/WorkspaceContextPanel';
-import WorkspaceImageInspector from './comfyui/WorkspaceImageInspector';
-import type { WorkspaceCompositionRequest } from './comfyui/WorkspacePrompts';
+import WorkspaceSearch, { workspaceCardClass, workspaceFieldClass } from './comfyui/WorkspaceSearch';
+
+
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
-import { usePromptBlockExtraction, selectedPromptText } from '../hooks/usePromptBlockExtraction';
-import { buildSavedPromptSource } from '../hooks/useSavePrompt';
+
+
+import { useSavePrompt } from '../hooks/useSavePrompt';
+import { buildCatalogSearchText, buildCompactSearchText } from '../utils/imageSearchText';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 
 interface ComfyUIWorkspaceProps {
@@ -62,12 +64,12 @@ interface ComfyUIWorkspaceProps {
   directoryPath?: string;
   navigationImages?: IndexedImage[];
   directoryPathByImageId?: Record<string, string>;
-  currentIndex?: number;
+
   isActive: boolean;
   suspendBrowser?: boolean;
-  onNavigatePrevious?: () => void;
-  onNavigateNext?: () => void;
-  onGenerationStateChange?: (isGenerating: boolean) => void;
+
+
+
   onOpenQueue: () => void;
   onOpenSettings: () => void;
   directories?: Directory[];
@@ -97,20 +99,15 @@ const DEFAULT_VIEW_STATE: ComfyUIViewState = {
   lastLoadFailed: false,
 };
 
-const PANEL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-panel-collapsed';
-const THUMB_RAIL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-collapsed';
-const THUMB_RAIL_WIDTH_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-width';
-const ASSET_CONTEXT_MENU_WIDTH = 224;
-const ASSET_CONTEXT_MENU_HEIGHT = 304;
-const clampThumbRailWidth = (width: number) => Math.min(Math.max(Math.round(width) || 108, 76), 360);
-const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 
-const formatValue = (value: unknown): string => {
-  if (value === null || value === undefined || value === '') {
-    return 'Not found';
-  }
-  return String(value);
-};
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-thumb-rail-collapsed';
+const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-comfyui-workspace-sidebar-width';
+const MIN_SIDEBAR_WIDTH = 280;
+const MAX_SIDEBAR_WIDTH = 560;
+const ASSET_CONTEXT_MENU_WIDTH = 224;
+const ASSET_CONTEXT_MENU_HEIGHT = 328;
+const clampSidebarWidth = (width: number) => Math.min(Math.max(Math.round(width) || 320, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
+const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 
 const getImageDimensionsLabel = (image: IndexedImage): string => {
   const metadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
@@ -133,11 +130,6 @@ const getImagePrompt = (image: IndexedImage): string => {
   return (metadata?.prompt || image.prompt || '').trim();
 };
 
-const hasMetadataValue = (value: unknown): boolean => (
-  value !== null && value !== undefined && value !== ''
-);
-
-
 const WorkspaceThumbnailButton: React.FC<{
   image: IndexedImage;
   isActive: boolean;
@@ -154,100 +146,83 @@ const WorkspaceThumbnailButton: React.FC<{
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
   const dimensionsLabel = getImageDimensionsLabel(image);
+  const prompt = getImagePrompt(image);
 
   return (
-    <div className="group w-full shrink-0">
-      <div className="relative aspect-square w-full">
-        <button
-          onClick={onClick}
-          onDoubleClick={onDoubleClick}
-          onKeyDown={onKeyDown}
-          onContextMenu={onContextMenu}
-          className={`h-full w-full overflow-hidden rounded-md border bg-black transition-colors ${
-            isSelected
-              ? 'border-blue-400 ring-2 ring-blue-400/70'
-              : isActive
-                ? 'border-purple-400 ring-1 ring-purple-400/60'
-                : 'border-gray-700 hover:border-gray-500'
-          }`}
-          title={`Inspect ${image.name}. Double-click or press Enter to open the full viewer.`}
-          aria-label={`Inspect ${image.name}; press Enter to open the full viewer`}
-          draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
-          onDragStart={(event) => onDragStart(event, image, directoryPath)}
-        >
+    <div className={`group flex h-full min-w-0 items-center gap-1 rounded border px-1 ${isSelected ? 'border-accent/60 bg-accent/10' : isActive ? 'border-accent/40 bg-gray-800' : 'border-gray-800 hover:bg-gray-800/60'}`}>
+      <button
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onKeyDown={onKeyDown}
+        onContextMenu={onContextMenu}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline focus-visible:outline-accent"
+        title={prompt ? image.name + '\n\n' + prompt : image.name}
+        aria-label={`Inspect ${image.name}; press Enter to open the full viewer`}
+        aria-current={isActive || undefined}
+        draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
+        onDragStart={event => onDragStart(event, image, directoryPath)}
+      >
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-gray-950 text-gray-500">
           {thumbnail?.thumbnailUrl ? (
-            <img src={thumbnail.thumbnailUrl} alt="" className="h-full w-full object-cover image-alpha-grid" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-gray-600">
-              <ImageIcon className="h-5 w-5" />
-            </div>
-          )}
-        </button>
-        <button
-          onClick={onToggleSelected}
-          className={`absolute left-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-            isSelected ? 'text-blue-300 light:text-blue-800 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
-          }`}
-          title={isSelected ? 'Deselect image' : 'Select image'}
-          aria-label={isSelected ? 'Deselect image' : 'Select image'}
-        >
-          {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-        </button>
-        <button
-          onClick={onToggleFavorite}
-          className={`absolute right-1.5 top-1.5 rounded bg-gray-950/80 p-1 shadow transition-opacity ${
-            image.isFavorite ? 'text-pink-300 light:text-pink-800 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-pink-300 light:hover:text-pink-800'
-          }`}
-          title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        >
-          <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
-        </button>
-        {dimensionsLabel && (
-          <div
-            className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] leading-none text-white shadow"
-            title={`Dimensions: ${dimensionsLabel}`}
-          >
-            {dimensionsLabel}
-          </div>
-        )}
-      </div>
-      <div className="mt-1 truncate text-[11px] leading-4 text-gray-400" title={image.name}>
-        {image.name}
-      </div>
+            <img src={thumbnail.thumbnailUrl} alt="" draggable={false} className="h-full w-full object-cover image-alpha-grid" />
+          ) : <ImageIcon size={16} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs text-gray-100">{image.name}</div>
+          {dimensionsLabel && <div className="mt-0.5 text-[11px] tabular-nums text-gray-400">{dimensionsLabel}</div>}
+        </div>
+      </button>
+      <button type="button" onClick={onToggleSelected}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent ${isSelected ? 'text-accent' : 'text-gray-400'}`}
+        aria-pressed={isSelected} title={isSelected ? 'Deselect image' : 'Select image'}
+        aria-label={`${isSelected ? 'Deselect' : 'Select'} ${image.name}`}>
+        {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+      </button>
+      <button type="button" onClick={onToggleFavorite}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent ${image.isFavorite ? 'text-pink-400 light:text-pink-700' : 'text-gray-400'}`}
+        aria-pressed={Boolean(image.isFavorite)} title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={`${image.isFavorite ? 'Unfavorite' : 'Favorite'} ${image.name}`}>
+        <Heart size={14} fill={image.isFavorite ? 'currentColor' : 'none'} />
+      </button>
     </div>
   );
 };
 
-const hasSelectedTextWithin = (container: HTMLElement | null): boolean => {
-  if (!container || typeof window === 'undefined') {
-    return false;
-  }
-
-  const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.toString().trim().length === 0) {
-    return false;
-  }
-
-  for (let index = 0; index < selection.rangeCount; index += 1) {
-    const range = selection.getRangeAt(index);
-    try {
-      if (range.intersectsNode(container)) {
-        return true;
-      }
-    } catch {
-      const ancestor = range.commonAncestorContainer;
-      const ancestorElement = ancestor.nodeType === Node.ELEMENT_NODE
-        ? ancestor
-        : ancestor.parentElement;
-      if (ancestorElement instanceof Node && container.contains(ancestorElement)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+type LibraryRowData = {
+  images: IndexedImage[];
+  activeId?: string;
+  directories: Record<string, string>;
+  selected: Set<string>;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>, image: IndexedImage, index: number) => void;
+  onDoubleClick: (event: React.MouseEvent<HTMLButtonElement>, image: IndexedImage) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>, image: IndexedImage) => void;
+  onToggleSelected: (event: React.MouseEvent<HTMLButtonElement>, image: IndexedImage, index: number) => void;
+  onToggleFavorite: (id: string) => void;
+  onContextMenu: (event: React.MouseEvent, image: IndexedImage) => void;
+  onDragStart: (event: React.DragEvent<HTMLElement>, image: IndexedImage, directoryPath?: string) => void;
 };
+
+function LibraryRow({ index, style, data }: ListChildComponentProps<LibraryRowData>) {
+  const image = data.images[index];
+  return <div style={style} className="px-2 py-1">
+    <WorkspaceThumbnailButton
+      image={image}
+      isActive={image.id === data.activeId}
+      isSelected={data.selected.has(image.id)}
+      directoryPath={data.directories[image.id]}
+      onClick={event => data.onClick(event, image, index)}
+      onDoubleClick={event => data.onDoubleClick(event, image)}
+      onKeyDown={event => data.onKeyDown(event, image)}
+      onToggleSelected={event => data.onToggleSelected(event, image, index)}
+      onToggleFavorite={event => {
+        event.stopPropagation();
+        data.onToggleFavorite(image.id);
+      }}
+      onContextMenu={event => data.onContextMenu(event, image)}
+      onDragStart={data.onDragStart}
+    />
+  </div>;
+}
 
 const getBounds = (element: HTMLElement) => {
   const rect = element.getBoundingClientRect();
@@ -259,21 +234,11 @@ const getBounds = (element: HTMLElement) => {
   };
 };
 
-const getWorkflowMetadata = (image: IndexedImage | null): BaseMetadata | null =>
-  (image?.metadata?.normalizedMetadata as BaseMetadata | undefined) ?? null;
-
 type WorkspaceAssetContextMenu = {
   image: IndexedImage;
   x: number;
   y: number;
-} | null;
-
-type InspectorContextMenu = {
-  x: number;
-  y: number;
-  label: string;
-  value: string;
-  blockText?: string;
+  above: boolean;
 } | null;
 
 const getSameOriginUrl = (candidateUrl: string, configuredUrl: string): string => {
@@ -294,12 +259,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   directoryPath,
   navigationImages = [],
   directoryPathByImageId = {},
-  currentIndex = -1,
+
   isActive,
   suspendBrowser = false,
-  onNavigatePrevious,
-  onNavigateNext,
-  onGenerationStateChange,
+
+
+
   onOpenQueue,
   onOpenSettings,
   directories = [],
@@ -315,10 +280,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   onOpenPromptLibrary = () => {},
   onViewPromptSource = () => {},
 }) => {
-  const [compositionRequest, setCompositionRequest] = useState<WorkspaceCompositionRequest | null>(null);
+
   const [hasOverlay, setHasOverlay] = useState(false);
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
-  const extraction = usePromptBlockExtraction();
+
   useEffect(() => {
     const check = () => setHasOverlay(Boolean(document.querySelector('[role="dialog"][aria-modal="true"]')));
     const observer = new MutationObserver(check); check();
@@ -326,15 +291,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     return () => observer.disconnect();
   }, []);
   const browserHostRef = useRef<HTMLDivElement>(null);
-  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const thumbRailResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const lastSelectedThumbIndexRef = useRef<number | null>(null);
+
+  const sidebarResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const selectionAnchorRef = useRef<string | null>(null);
+  const libraryListRef = useRef<FixedSizeList<LibraryRowData>>(null);
+  const libraryScrollOffsetRef = useRef(0);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const savePrompt = useSavePrompt();
   const handledWorkflowLoadRequestIdRef = useRef<number | null>(null);
   const [viewState, setViewState] = useState<ComfyUIViewState>(DEFAULT_VIEW_STATE);
   const [loadFailure, setLoadFailure] = useState<ComfyUIViewLoadFailure | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
   const [assetContextMenu, setAssetContextMenu] = useState<WorkspaceAssetContextMenu>(null);
-  const [inspectorContextMenu, setInspectorContextMenu] = useState<InspectorContextMenu>(null);
+
   const [assetActionMessage, setAssetActionMessage] = useState<string>('');
   const [saveSelectionStatus, setSaveSelectionStatus] = useState('');
   useEffect(() => window.electronAPI?.onComfyUISaveSelection?.(({ kind, text }) => {
@@ -347,77 +316,53 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   useEffect(() => { if (saveSelectionStatus) { const timer = setTimeout(() => setSaveSelectionStatus(''), 4000); return () => clearTimeout(timer); } }, [saveSelectionStatus]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isRatingMenuOpen, setIsRatingMenuOpen] = useState(false);
-  const [thumbRailWidth, setThumbRailWidth] = useState(() => {
-    if (typeof window === 'undefined') {
-      return 108;
-    }
-    return clampThumbRailWidth(Number(window.localStorage.getItem(THUMB_RAIL_WIDTH_STORAGE_KEY)) || 108);
+  const [sidebarWidth, setSidebarWidthState] = useState(() => {
+    if (typeof window === 'undefined') return 320;
+    return clampSidebarWidth(Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)));
   });
-  const [isThumbRailCollapsed, setIsThumbRailCollapsed] = useState(() => {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
     }
-    return window.localStorage.getItem(THUMB_RAIL_COLLAPSED_STORAGE_KEY) === 'true';
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
   });
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return window.localStorage.getItem(PANEL_COLLAPSED_STORAGE_KEY) === 'true';
-  });
-
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const comfyUIWorkspaceLastUrl = useSettingsStore((state) => state.comfyUIWorkspaceLastUrl);
   const setComfyUIWorkspaceLastUrl = useSettingsStore((state) => state.setComfyUIWorkspaceLastUrl);
-  const panelWidth = useSettingsStore((state) => state.comfyUIWorkspacePanelWidth);
-  const setPanelWidth = useSettingsStore((state) => state.setComfyUIWorkspacePanelWidth);
   const removeImages = useImageStore((state) => state.removeImages);
   const selectedImages = useImageStore((state) => state.selectedImages);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
-  const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const bulkToggleFavorite = useImageStore((state) => state.bulkToggleFavorite);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
 
-  const { generateWithComfyUI, isGenerating, generateStatus } = useGenerateWithComfyUI();
-  const { copyToComfyUI, isCopying, copyStatus } = useCopyToComfyUI();
-  const thumbnail = useResolvedThumbnail(image);
-  const metadata = getWorkflowMetadata(image);
   const normalizedNavigationImages = useMemo(
     () => (navigationImages.length > 0 ? navigationImages : image ? [image] : []),
     [image, navigationImages],
   );
-  const currentPosition = currentIndex >= 0 ? currentIndex + 1 : 0;
-  const canNavigatePrevious = currentIndex > 0;
-  const canNavigateNext = currentIndex >= 0 && currentIndex < normalizedNavigationImages.length - 1;
+  const scopedLibraryImages = useMemo(
+    () => selectedDirectoryId ? normalizedNavigationImages.filter(candidate => candidate.directoryId === selectedDirectoryId) : normalizedNavigationImages,
+    [normalizedNavigationImages, selectedDirectoryId],
+  );
   const visibleNavigationImages = useMemo(() => {
-    if (normalizedNavigationImages.length <= 140) {
-      return normalizedNavigationImages;
-    }
+    const terms = librarySearch.toLowerCase().replace(/\\/g, '/').split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return scopedLibraryImages;
 
-    const visibleIndexes = new Set<number>();
-    const lastIndex = normalizedNavigationImages.length - 1;
+    return scopedLibraryImages.filter(candidate => {
+      const catalog = buildCatalogSearchText(candidate);
+      const metadata = buildCompactSearchText(candidate);
+      return terms.every(term => catalog.includes(term) || metadata.includes(term));
+    });
+  }, [librarySearch, scopedLibraryImages]);
 
-    for (let index = 0; index < 60; index += 1) {
-      visibleIndexes.add(index);
-      visibleIndexes.add(lastIndex - index);
-    }
+  useEffect(() => {
+    selectionAnchorRef.current = null;
+    libraryScrollOffsetRef.current = 0;
+    libraryListRef.current?.scrollTo(0);
+  }, [librarySearch, selectedDirectoryId, applyLibraryFilters]);
 
-    if (currentIndex >= 0) {
-      const startIndex = Math.max(0, currentIndex - 20);
-      const endIndex = Math.min(normalizedNavigationImages.length, currentIndex + 21);
-      for (let index = startIndex; index < endIndex; index += 1) {
-        visibleIndexes.add(index);
-      }
-    }
-
-    return Array.from(visibleIndexes)
-      .sort((a, b) => a - b)
-      .map((index) => normalizedNavigationImages[index])
-      .filter((candidate): candidate is IndexedImage => Boolean(candidate));
-  }, [currentIndex, normalizedNavigationImages]);
   const selectedWorkspaceImages = useMemo(
     () => visibleNavigationImages.filter((candidate) => selectedImages.has(candidate.id)),
     [selectedImages, visibleNavigationImages],
@@ -437,50 +382,21 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const shouldShowBrowserFallback = suspendBrowser || hasBrowserLoadFailure || !viewState.visible;
 
   useEffect(() => {
-    onGenerationStateChange?.(isGenerating);
-
-    return () => {
-      onGenerationStateChange?.(false);
-    };
-  }, [isGenerating, onGenerationStateChange]);
-
-  useEffect(() => {
     if (!assetContextMenu) {
       return;
     }
 
     const close = () => setAssetContextMenu(null);
     window.addEventListener('click', close);
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
     window.addEventListener('blur', close);
+    window.addEventListener('keydown', closeOnEscape);
     return () => {
       window.removeEventListener('click', close);
       window.removeEventListener('blur', close);
+      window.removeEventListener('keydown', closeOnEscape);
     };
   }, [assetContextMenu]);
-
-  useEffect(() => {
-    if (!inspectorContextMenu) {
-      return;
-    }
-
-    const close = () => setInspectorContextMenu(null);
-    window.addEventListener('click', close);
-    window.addEventListener('blur', close);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('blur', close);
-    };
-  }, [inspectorContextMenu]);
-
-  const togglePanelCollapsed = useCallback(() => {
-    setIsPanelCollapsed((current) => {
-      const next = !current;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(PANEL_COLLAPSED_STORAGE_KEY, String(next));
-      }
-      return next;
-    });
-  }, []);
 
   const connectionClasses = useMemo(() => {
     if (comfyUILastConnectionStatus === 'connected') {
@@ -695,61 +611,31 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     workflowLoadRequest,
   ]);
 
-  const generateFromMetadata = async () => {
-    if (!image || !metadata) {
-      return;
-    }
-    await generateWithComfyUI(image);
+  const setSidebarWidth = (width: number) => {
+    const nextWidth = clampSidebarWidth(width);
+    setSidebarWidthState(nextWidth);
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(nextWidth));
   };
 
-  const beginPanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
+  const beginSidebarResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    resizeStateRef.current = {
+    sidebarResizeStateRef.current = {
       startX: event.clientX,
-      startWidth: panelWidth,
+      startWidth: sidebarWidth,
     };
   };
 
-  const handlePanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isPanelCollapsed) {
-      return;
-    }
-    const resizeState = resizeStateRef.current;
+  const handleSidebarResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const resizeState = sidebarResizeStateRef.current;
     if (!resizeState) {
       return;
     }
-    setPanelWidth(resizeState.startWidth - (event.clientX - resizeState.startX));
+    setSidebarWidth(resizeState.startWidth + event.clientX - resizeState.startX);
   };
 
-  const endPanelResize = () => {
-    resizeStateRef.current = null;
-    void syncBounds();
-  };
-
-  const beginThumbRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    thumbRailResizeStateRef.current = {
-      startX: event.clientX,
-      startWidth: thumbRailWidth,
-    };
-  };
-
-  const handleThumbRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
-    const resizeState = thumbRailResizeStateRef.current;
-    if (!resizeState) {
-      return;
-    }
-    const nextWidth = clampThumbRailWidth(resizeState.startWidth + event.clientX - resizeState.startX);
-    setThumbRailWidth(nextWidth);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(THUMB_RAIL_WIDTH_STORAGE_KEY, String(nextWidth));
-    }
-  };
-
-  const endThumbRailResize = () => {
-    thumbRailResizeStateRef.current = null;
+  const endSidebarResize = () => {
+    sidebarResizeStateRef.current = null;
     void syncBounds();
   };
 
@@ -770,7 +656,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     window.electronAPI.startFileDrag({ directoryPath: dragDirectoryPath, relativePath, imageId: dragImage.id });
   }, []);
 
-  const copyInspectorValue = useCallback((label: string, value: string) => {
+  const copyAssetValue = useCallback((label: string, value: string) => {
     const text = value.trim();
     if (!text || text === 'Not found') {
       return;
@@ -790,64 +676,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const copyAssetPrompt = useCallback((contextImage: IndexedImage) => {
     const prompt = getImagePrompt(contextImage);
     setAssetContextMenu(null);
-    copyInspectorValue('Prompt', prompt);
-  }, [copyInspectorValue]);
+    copyAssetValue('Prompt', prompt);
+  }, [copyAssetValue]);
 
-  const showInspectorFieldContextMenu = useCallback((
-    event: React.MouseEvent<HTMLElement>,
-    label: string,
-    value: string,
-  ) => {
-    const selection = window.getSelection()?.toString().trim();
-    event.preventDefault();
-    event.stopPropagation();
-    setAssetContextMenu(null);
-    setInspectorContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      label: selection ? 'Selection' : label,
-      value: selection || value,
-      blockText: selectedPromptText() || undefined,
-    });
-  }, []);
-
-  const showInspectorSelectionContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('button, input, textarea, select, [contenteditable="true"]')) {
-      return;
-    }
-
-    const selection = window.getSelection()?.toString().trim();
-    if (!selection) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    setAssetContextMenu(null);
-    setInspectorContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      label: 'Selection',
-      value: selection,
-      blockText: selectedPromptText() || undefined,
-    });
-  }, []);
-
-  const copyInspectorContextValue = useCallback(() => {
-    if (!inspectorContextMenu) {
-      return;
-    }
-
-    copyInspectorValue(inspectorContextMenu.label, inspectorContextMenu.value);
-    setInspectorContextMenu(null);
-  }, [copyInspectorValue, inspectorContextMenu]);
-
-  const toggleThumbRailCollapsed = useCallback(() => {
-    setIsThumbRailCollapsed((current) => {
+  const toggleSidebarCollapsed = useCallback(() => {
+    setIsSidebarCollapsed((current) => {
       const next = !current;
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(THUMB_RAIL_COLLAPSED_STORAGE_KEY, String(next));
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(next));
       }
       window.requestAnimationFrame(() => {
         void syncBounds();
@@ -864,9 +700,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     event.preventDefault();
     event.stopPropagation();
 
-    if (event.shiftKey && lastSelectedThumbIndexRef.current !== null) {
-      const start = Math.min(lastSelectedThumbIndexRef.current, visibleIndex);
-      const end = Math.max(lastSelectedThumbIndexRef.current, visibleIndex);
+    const anchor = event.shiftKey
+      ? visibleNavigationImages.findIndex(candidate => candidate.id === selectionAnchorRef.current)
+      : -1;
+    if (anchor >= 0) {
+      const start = Math.min(anchor, visibleIndex);
+      const end = Math.max(anchor, visibleIndex);
       const rangeIds = visibleNavigationImages.slice(start, end + 1).map((candidate) => candidate.id);
       useImageStore.setState((state) => {
         const next = new Set(state.selectedImages);
@@ -877,7 +716,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       toggleImageSelection(contextImage.id);
     }
 
-    lastSelectedThumbIndexRef.current = visibleIndex;
+    selectionAnchorRef.current = contextImage.id;
   }, [toggleImageSelection, visibleNavigationImages]);
 
   const handleThumbnailClick = useCallback((event: React.MouseEvent<HTMLButtonElement>, contextImage: IndexedImage, visibleIndex: number) => {
@@ -994,22 +833,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     const browserBounds = browserHostRef.current?.getBoundingClientRect();
     const maxXBeforeBrowser = (browserBounds?.left ?? window.innerWidth) - ASSET_CONTEXT_MENU_WIDTH - 1;
     const preferredRightX = event.clientX;
-    const flippedLeftX = thumbBounds.left - ASSET_CONTEXT_MENU_WIDTH - 8;
-    const x = preferredRightX <= maxXBeforeBrowser
-      ? preferredRightX
-      : Math.max(0, Math.min(flippedLeftX, maxXBeforeBrowser));
+    const x = Math.max(0, Math.min(preferredRightX || thumbBounds.left, maxXBeforeBrowser > 0 ? maxXBeforeBrowser : window.innerWidth - ASSET_CONTEXT_MENU_WIDTH));
 
-    setAssetContextMenu({
-      image: contextImage,
-      x,
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - ASSET_CONTEXT_MENU_HEIGHT - 8)),
-    });
+    const cursorY = event.clientY || thumbBounds.bottom;
+    const spaceBelow = window.innerHeight - cursorY;
+    const above = cursorY >= ASSET_CONTEXT_MENU_HEIGHT + 8 ||
+      (spaceBelow < ASSET_CONTEXT_MENU_HEIGHT + 8 && cursorY > spaceBelow);
+    setAssetContextMenu({ image: contextImage, x, y: cursorY, above });
   }, []);
 
   const inspectAsset = useCallback((contextImage: IndexedImage) => {
-    inspectWorkspaceImage(contextImage);
     setAssetContextMenu(null);
-  }, [inspectWorkspaceImage]);
+    onViewFullMetadata?.(contextImage);
+  }, [onViewFullMetadata]);
 
   const openWorkflowInComfyUI = useCallback(async (contextImage: IndexedImage) => {
     setAssetContextMenu(null);
@@ -1093,6 +929,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     await deleteImages(getContextTargetImages(contextImage));
   }, [deleteImages, getContextTargetImages]);
 
+  const clearWorkspaceSelection = () => {
+    useImageStore.setState(state => {
+      const next = new Set(state.selectedImages);
+      selectedWorkspaceIds.forEach(id => next.delete(id));
+      return { selectedImages: next };
+    });
+    selectionAnchorRef.current = null;
+  };
+
   const handleBulkFavorite = useCallback(() => {
     if (selectedWorkspaceIds.length === 0) {
       return;
@@ -1140,7 +985,6 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-950">
-      {extraction.dialog}
       {saveSelectionStatus && <p role="status" className="shrink-0 border-b border-gray-800 px-3 py-2 text-xs text-accent">{saveSelectionStatus}</p>}
       {toolbarHost && createPortal(
         <div className="flex items-center gap-1" role="toolbar" aria-label="ComfyUI navigation">
@@ -1171,180 +1015,182 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       <div className="flex min-h-0 flex-1">
         <aside
           className="flex min-h-0 shrink-0 flex-col border-r border-gray-800 bg-gray-900/95"
-          style={{ width: isThumbRailCollapsed ? 44 : thumbRailWidth }}
+          style={{ width: isSidebarCollapsed ? 44 : sidebarWidth }}
         >
-          <div className="border-b border-gray-800 p-2">
-            {isThumbRailCollapsed ? (
-              <button
-                onClick={toggleThumbRailCollapsed}
-                className="flex h-8 w-full items-center justify-center rounded-md text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                title="Show thumbnails"
-                aria-label="Show thumbnails"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="flex items-center gap-1 rounded-md border border-gray-800 bg-gray-950 px-2 py-1.5">
-                <Folder className="h-3.5 w-3.5 shrink-0 text-gray-500" />
-                <select
-                  value={selectedDirectoryId || ''}
-                  onChange={(event) => onSelectDirectory?.(event.target.value || null)}
-                  className="min-w-0 flex-1 bg-transparent text-xs text-gray-200 outline-none"
-                  title="Change workspace folder"
-                  aria-label="Change workspace folder"
-                >
-                  <option value="" className="bg-gray-900 text-gray-100">All folders</option>
-                  {directories.map((directory) => (
-                    <option key={directory.id} value={directory.id} className="bg-gray-900 text-gray-100">
-                      {directory.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={toggleThumbRailCollapsed}
-                  className="rounded p-1 text-gray-500 hover:bg-gray-800 hover:text-gray-100"
-                  title="Hide thumbnails"
-                  aria-label="Hide thumbnails"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-            {!isThumbRailCollapsed && (
-            <>
-            <label
-              className="mt-2 flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-800 bg-gray-950/70 px-2 py-1.5 text-[11px] text-gray-400"
-              title="Use the current Library filters for this thumbnail rail"
-            >
-              <span className="truncate">Apply Library Filters</span>
-              <input
-                type="checkbox"
-                checked={applyLibraryFilters}
-                onChange={(event) => onApplyLibraryFiltersChange?.(event.target.checked)}
-                className="h-3.5 w-3.5 accent-purple-500"
-              />
-            </label>
-            <div className="mt-2 flex flex-wrap items-center gap-1">
-              <span className="mr-auto rounded border border-gray-800 px-1.5 py-1 text-[10px] font-medium text-gray-400">
-                {selectedWorkspaceCount}
-              </span>
-              <button
-                onClick={handleBulkExport}
-                disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
-                title={selectedWorkspaceCount === 0 ? 'Select images to export' : 'Export selected'}
-                aria-label="Export selected"
-              >
-                <Package className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={handleBulkFavorite}
-                disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-pink-300 light:hover:text-pink-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                title={selectedWorkspaceCount === 0 ? 'Select images to favorite' : allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
-                aria-label={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
-              >
-                <Heart className={`h-3.5 w-3.5 ${allSelectedWorkspaceFavorites ? 'fill-current text-pink-300 light:text-pink-800' : ''}`} />
-              </button>
-              <button
-                onClick={handleBulkTag}
-                disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-blue-300 light:hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                title={selectedWorkspaceCount === 0 ? 'Select images to tag' : 'Tag selected'}
-                aria-label="Tag selected"
-              >
-                <Tag className="h-3.5 w-3.5" />
-              </button>
-              <div className="relative">
-                <button
-                  onClick={() => setIsRatingMenuOpen((open) => !open)}
-                  disabled={selectedWorkspaceCount === 0}
-                  className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-yellow-300 light:hover:text-yellow-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                  title={selectedWorkspaceCount === 0 ? 'Select images to rate' : 'Rate selected'}
-                  aria-label="Rate selected"
-                >
-                  <Star className="h-3.5 w-3.5" />
-                </button>
-                {isRatingMenuOpen && selectedWorkspaceCount > 0 && (
-                  <div className="absolute left-0 top-full z-[100] mt-1 w-24 overflow-hidden rounded-md border border-gray-700 bg-gray-900 py-1 shadow-xl">
-                    {[0, 1, 2, 3, 4, 5].map((rating) => (
-                      <button
-                        key={rating}
-                        onClick={() => setSelectedRating(rating === 0 ? null : (rating as ImageRating))}
-                        className="block w-full px-2 py-1 text-left text-xs text-gray-200 hover:bg-gray-800"
-                      >
-                        {rating === 0 ? 'Clear' : `${rating} star${rating === 1 ? '' : 's'}`}
-                      </button>
-                    ))}
+          <WorkspaceContextPanel
+            collapsed={isSidebarCollapsed}
+            onToggle={toggleSidebarCollapsed}
+            active={shouldShowBrowser && viewState.visible}
+            onOpenLibrary={onOpenPromptLibrary}
+            onViewSource={onViewPromptSource}
+            libraryPanel={visible => (
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="shrink-0 space-y-2 border-b border-gray-800 p-2">
+                  <WorkspaceSearch label="Search library" query={librarySearch} onChange={setLibrarySearch} />
+                  <div className={workspaceFieldClass + ' flex items-center gap-1.5 focus-within:border-accent'}>
+                    <Folder size={14} className="shrink-0 text-gray-400" />
+                    <select
+                      value={selectedDirectoryId || ''}
+                      onChange={event => onSelectDirectory?.(event.target.value || null)}
+                      className="min-w-0 flex-1 bg-transparent text-xs text-gray-200 outline-none"
+                      aria-label="Change workspace folder"
+                    >
+                      <option value="" className="bg-gray-900">All folders</option>
+                      {directories.map(directory => (
+                        <option key={directory.id} value={directory.id} className="bg-gray-900">{directory.name}</option>
+                      ))}
+                    </select>
                   </div>
-                )}
+                  <label
+                    className={workspaceFieldClass + ' flex cursor-pointer items-center justify-between gap-2 text-gray-400 focus-within:border-accent'}
+                    title="Use the current Library filters for this workspace"
+                  >
+                    <span className="truncate">Apply Library Filters</span>
+                    <input
+                      type="checkbox"
+                      checked={applyLibraryFilters}
+                      onChange={(event) => onApplyLibraryFiltersChange?.(event.target.checked)}
+                      className="h-3.5 w-3.5 accent-accent"
+                    />
+                  </label>
+                  <div className="flex min-h-7 items-center justify-between gap-1 text-xs tabular-nums text-gray-400">
+                    <span role="status">{visibleNavigationImages.length.toLocaleString()} {visibleNavigationImages.length === 1 ? 'image' : 'images'}</span>
+                    {selectedWorkspaceCount > 0 && <span>{selectedWorkspaceCount} selected</span>}
+                  </div>
+                  {selectedWorkspaceCount > 0 && <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Selected image actions">
+                    <button
+                      onClick={handleBulkExport}
+                      className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
+                      title="Export selected"
+                      aria-label="Export selected"
+                    >
+                      <Package className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={handleBulkFavorite}
+                      className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-pink-300 light:hover:text-pink-800 disabled:cursor-not-allowed disabled:text-gray-700"
+                      title={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
+                      aria-label={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
+                    >
+                      <Heart className={`h-3.5 w-3.5 ${allSelectedWorkspaceFavorites ? 'fill-current text-pink-300 light:text-pink-800' : ''}`} />
+                    </button>
+                    <button
+                      onClick={handleBulkTag}
+                      className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-blue-300 light:hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-700"
+                      title="Tag selected"
+                      aria-label="Tag selected"
+                    >
+                      <Tag className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setIsRatingMenuOpen((open) => !open)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-yellow-300 light:hover:text-yellow-800 disabled:cursor-not-allowed disabled:text-gray-700"
+                        title="Rate selected"
+                        aria-label="Rate selected"
+                      >
+                        <Star className="h-3.5 w-3.5" />
+                      </button>
+                      {isRatingMenuOpen && (
+                        <div className="absolute left-0 top-full z-[100] mt-1 w-24 overflow-hidden rounded-md border border-gray-700 bg-gray-900 py-1 shadow-xl">
+                          {[0, 1, 2, 3, 4, 5].map((rating) => (
+                            <button
+                              key={rating}
+                              onClick={() => setSelectedRating(rating === 0 ? null : (rating as ImageRating))}
+                              className="block w-full px-2 py-1 text-left text-xs text-gray-200 hover:bg-gray-800"
+                            >
+                              {rating === 0 ? 'Clear' : `${rating} star${rating === 1 ? '' : 's'}`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleBulkCompare}
+                      disabled={selectedWorkspaceCount < 2 || selectedWorkspaceCount > 4}
+                      className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-purple-300 light:hover:text-purple-800 disabled:cursor-not-allowed disabled:text-gray-700"
+                      title={selectedWorkspaceCount < 2 ? 'Select at least 2 images to compare' : selectedWorkspaceCount > 4 ? 'Select at most 4 images to compare' : 'Compare selected'}
+                      aria-label="Compare selected"
+                    >
+                      <GitCompare className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={handleBulkDelete}
+                      className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-red-300 light:hover:text-red-800 disabled:cursor-not-allowed disabled:text-gray-700"
+                      title="Delete selected"
+                      aria-label="Delete selected"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={clearWorkspaceSelection}
+                      className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
+                      title="Clear selection"
+                      aria-label="Clear selection"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>}
+                  {assetActionMessage && <p role="status" className="text-xs text-gray-400">{assetActionMessage}</p>}
+                </div>
+                {visible && (visibleNavigationImages.length === 0 ? (
+                  <p className="p-3 text-xs text-gray-400">{librarySearch.trim() ? 'No matching images.' : 'No images in this view.'}</p>
+                ) : (
+                  <div className="min-h-0 flex-1">
+                    <AutoSizer disableWidth>{({ height }) => (
+                      <FixedSizeList<LibraryRowData>
+                        ref={libraryListRef}
+                        className="scrollbar-thin"
+                        height={height || 320}
+                        width="100%"
+                        itemCount={visibleNavigationImages.length}
+                        itemSize={64}
+                        itemKey={(index, data) => data.images[index].id}
+                        itemData={{
+                          images: visibleNavigationImages,
+                          activeId: image?.id,
+                          selected: selectedImages,
+                          directories: directoryPathByImageId,
+                          onClick: handleThumbnailClick,
+                          onDoubleClick: handleThumbnailDoubleClick,
+                          onKeyDown: handleThumbnailKeyDown,
+                          onToggleSelected: updateThumbSelection,
+                          onToggleFavorite: toggleFavorite,
+                          onContextMenu: showAssetContextMenu,
+                          onDragStart: startImageFileDrag,
+                        }}
+                        initialScrollOffset={libraryScrollOffsetRef.current}
+                        onScroll={({ scrollOffset }) => { libraryScrollOffsetRef.current = scrollOffset; }}
+                      >
+                        {LibraryRow}
+                      </FixedSizeList>
+                    )}</AutoSizer>
+                  </div>
+                ))}
               </div>
-              <button
-                onClick={handleBulkCompare}
-                disabled={selectedWorkspaceCount < 2 || selectedWorkspaceCount > 4}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-purple-300 light:hover:text-purple-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                title={selectedWorkspaceCount < 2 ? 'Select at least 2 images to compare' : selectedWorkspaceCount > 4 ? 'Select at most 4 images to compare' : 'Compare selected'}
-                aria-label="Compare selected"
-              >
-                <GitCompare className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-red-300 light:hover:text-red-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                title={selectedWorkspaceCount === 0 ? 'Select images to delete' : 'Delete selected'}
-                aria-label="Delete selected"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={clearImageSelection}
-                disabled={selectedWorkspaceCount === 0}
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
-                title={selectedWorkspaceCount === 0 ? 'No selection to clear' : 'Clear selection'}
-                aria-label="Clear selection"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            </>
             )}
-          </div>
-
-          {!isThumbRailCollapsed && (
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-            {visibleNavigationImages.map((candidate, visibleIndex) => (
-              <WorkspaceThumbnailButton
-                key={candidate.id}
-                image={candidate}
-                isActive={candidate.id === image?.id}
-                isSelected={selectedImages.has(candidate.id)}
-                directoryPath={directoryPathByImageId[candidate.id]}
-                onClick={(event) => handleThumbnailClick(event, candidate, visibleIndex)}
-                onDoubleClick={(event) => handleThumbnailDoubleClick(event, candidate)}
-                onKeyDown={(event) => handleThumbnailKeyDown(event, candidate)}
-                onToggleSelected={(event) => updateThumbSelection(event, candidate, visibleIndex)}
-                onToggleFavorite={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void toggleFavorite(candidate.id);
-                }}
-                onContextMenu={(event) => showAssetContextMenu(event, candidate)}
-                onDragStart={startImageFileDrag}
-              />
-            ))}
-          </div>
-          )}
+          />
         </aside>
 
-        {!isThumbRailCollapsed && (
+        {!isSidebarCollapsed && (
         <div
-          className="w-1 cursor-ew-resize bg-gray-800 hover:bg-purple-500/50"
-          onPointerDown={beginThumbRailResize}
-          onPointerMove={handleThumbRailResize}
-          onPointerUp={endThumbRailResize}
-          onPointerCancel={endThumbRailResize}
-          title="Resize thumbnail rail"
+          className="w-1 shrink-0 touch-none cursor-ew-resize bg-gray-800 hover:bg-accent/50 focus-visible:bg-accent focus-visible:outline-none"
+          onPointerDown={beginSidebarResize}
+          onPointerMove={handleSidebarResize}
+          onPointerUp={endSidebarResize}
+          onPointerCancel={endSidebarResize}
+          role="separator"
+          aria-label="Resize workspace sidebar"
+          aria-orientation="vertical"
+          aria-valuemin={MIN_SIDEBAR_WIDTH}
+          aria-valuemax={MAX_SIDEBAR_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onKeyDown={event => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            setSidebarWidth(sidebarWidth + (event.key === 'ArrowLeft' ? -16 : 16));
+          }}
         />
         )}
 
@@ -1396,67 +1242,36 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           )}
         </div>
 
-        {!isPanelCollapsed && (
-          <div
-            className="w-1 cursor-ew-resize bg-gray-800 hover:bg-purple-500/50"
-            onPointerDown={beginPanelResize}
-            onPointerMove={handlePanelResize}
-            onPointerUp={endPanelResize}
-            onPointerCancel={endPanelResize}
-            title="Resize ComfyUI context panel"
-          />
-        )}
-
-        <aside className="min-h-0 shrink-0 border-l border-gray-800 bg-gray-900/95 transition-[width] duration-200" style={{ width: isPanelCollapsed ? 44 : panelWidth }}>
-          <WorkspaceContextPanel collapsed={isPanelCollapsed} onToggle={togglePanelCollapsed} active={shouldShowBrowser && viewState.visible} request={compositionRequest} onOpenLibrary={onOpenPromptLibrary} onViewSource={onViewPromptSource} imagePanel={<WorkspaceImageInspector image={image} metadata={metadata} directoryPath={directoryPath} thumbnail={thumbnail} currentPosition={currentPosition} normalizedNavigationImages={normalizedNavigationImages} canNavigatePrevious={canNavigatePrevious} canNavigateNext={canNavigateNext} onNavigatePrevious={onNavigatePrevious} onNavigateNext={onNavigateNext} isGenerating={isGenerating} isCopying={isCopying} generateFromMetadata={generateFromMetadata} copyToComfyUI={copyToComfyUI} onOpenQueue={onOpenQueue} copyStatus={copyStatus} generateStatus={generateStatus} assetActionMessage={assetActionMessage} startImageFileDrag={startImageFileDrag} showInspectorSelectionContextMenu={showInspectorSelectionContextMenu} showInspectorFieldContextMenu={showInspectorFieldContextMenu} copyInspectorValue={copyInspectorValue} onUseComposer={(positive, negative) => {
-  if (!canUseAdvancedPromptLibrary) { showProModal('prompt_library_advanced'); return; }
-  setCompositionRequest({ id: Date.now(), positive, negative });
-}} />} />
-        </aside>
       </div>
-      {inspectorContextMenu && (
-        <div
-          className="fixed z-[96] min-w-[160px] overflow-hidden rounded-lg border border-gray-700 bg-gray-900 py-1 text-sm text-gray-100 shadow-2xl"
-          style={{ left: inspectorContextMenu.x, top: inspectorContextMenu.y }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
-            onClick={copyInspectorContextValue}
-          >
-            <Copy className="h-4 w-4" />
-            Copy {inspectorContextMenu.label}
-          </button>
-          {inspectorContextMenu.blockText && <button className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800" onClick={() => {
-            extraction.open(inspectorContextMenu.blockText!, image ? buildSavedPromptSource(image, directoryPath) : null);
-            setInspectorContextMenu(null);
-          }}>Save Selection as Block</button>}
-        </div>
-      )}
       {assetContextMenu && (
         <div
-          className="fixed z-[95] w-56 overflow-hidden rounded-lg border border-gray-700 bg-gray-900 py-1 text-sm text-gray-100 shadow-2xl"
-          style={{ left: assetContextMenu.x, top: assetContextMenu.y }}
+          className={workspaceCardClass + ' fixed z-[95] w-56 overflow-y-auto bg-gray-900 py-1 text-xs text-gray-100 shadow-xl'}
+          style={{
+            left: assetContextMenu.x,
+            top: assetContextMenu.above ? undefined : assetContextMenu.y,
+            bottom: assetContextMenu.above ? window.innerHeight - assetContextMenu.y : undefined,
+            maxHeight: Math.max(0, (assetContextMenu.above ? assetContextMenu.y : window.innerHeight - assetContextMenu.y) - 8),
+          }}
           onClick={(event) => event.stopPropagation()}
         >
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => inspectAsset(assetContextMenu.image)}
           >
-            <Info className="h-4 w-4" />
+            <Info className="h-3.5 w-3.5" />
             Inspect Asset
           </button>
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => {
               void openWorkflowInComfyUI(assetContextMenu.image);
             }}
           >
-            <Workflow className="h-4 w-4" />
+            <Workflow className="h-3.5 w-3.5" />
             Open Workflow in ComfyUI
           </button>
           <button
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+            className={`flex w-full items-center gap-2 px-2.5 py-2 text-left ${
               getCompareTargetImages(assetContextMenu.image).length >= 2 && getCompareTargetImages(assetContextMenu.image).length <= 4
                 ? 'hover:bg-gray-800'
                 : 'cursor-not-allowed text-gray-500'
@@ -1464,39 +1279,57 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             disabled={getCompareTargetImages(assetContextMenu.image).length < 2 || getCompareTargetImages(assetContextMenu.image).length > 4}
             onClick={() => openCompareMode(getCompareTargetImages(assetContextMenu.image))}
           >
-            <GitCompare className="h-4 w-4" />
+            <GitCompare className="h-3.5 w-3.5" />
             Compare Mode
           </button>
           <button
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+            className={`flex w-full items-center gap-2 px-2.5 py-2 text-left ${
               getImagePrompt(assetContextMenu.image) ? 'hover:bg-gray-800' : 'cursor-not-allowed text-gray-500'
             }`}
             disabled={!getImagePrompt(assetContextMenu.image)}
             onClick={() => copyAssetPrompt(assetContextMenu.image)}
           >
-            <Copy className="h-4 w-4" />
+            <Copy className="h-3.5 w-3.5" />
             Copy Prompt
           </button>
           <div className="my-1 border-t border-gray-700" />
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
+            onClick={() => {
+              const target = assetContextMenu.image;
+              setAssetContextMenu(null);
+              void savePrompt(target, {
+                directoryPath: directoryPathByImageId[target.id] ?? (image?.id === target.id ? directoryPath : undefined),
+                readAuthoritativeShadow: true,
+              }).then(result => {
+                setAssetActionMessage(result.status === 'already-saved' ? 'Prompt already saved.' : 'Prompt saved.');
+              }).catch(error => {
+                setAssetActionMessage(error instanceof Error ? error.message : 'Could not save prompt.');
+              });
+            }}
+          >
+            <Bookmark size={14} />
+            Save prompt
+          </button>
+          <button
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => exportAssetImage(assetContextMenu.image)}
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
             Export Image
           </button>
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-800"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => exportAssetWorkflow(assetContextMenu.image)}
           >
-            <Workflow className="h-4 w-4" />
+            <Workflow className="h-3.5 w-3.5" />
             Export Workflow
           </button>
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-red-300 hover:bg-red-950/40 light:text-red-800 light:hover:bg-red-500/10"
+            className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-red-300 hover:bg-red-950/40 light:text-red-800 light:hover:bg-red-500/10"
             onClick={() => deleteAsset(assetContextMenu.image)}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-3.5 w-3.5" />
             Delete
           </button>
         </div>
