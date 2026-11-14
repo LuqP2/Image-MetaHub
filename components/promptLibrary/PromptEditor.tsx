@@ -32,7 +32,7 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
   compact?: boolean;
   withinPanel?: boolean;
   renderActions?: (result: ReturnType<typeof compilePrompt>, visible: boolean, channel?: 'positive' | 'negative') => React.ReactNode;
-  appendText?: { id: number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
+  appendText?: { id: string | number; text: string; channel: 'positive' | 'negative'; block?: PromptBlock };
 }) {
   const sessionDraft = getDraft(draftContext);
   const [draft, setDraft] = useState(() => {
@@ -224,8 +224,8 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
     onTextChange={text => update({ text, editor: { ...editor, variables: rememberBlockFields(text, editor.variables) } })}
     onVariableChange={variable => updateEditor({ variables: rememberBlockFields(draft.text || '', [...editor.variables.filter(entry => entry.name !== variable.name), variable]) })}
     onContextMenu={context} />;
-  if (compact && kind === 'block') return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900/50">
-    <header className="flex shrink-0 items-center gap-2 border-b border-gray-700 p-3"><h3 className="mr-auto text-sm font-semibold">{initial.id ? 'Edit saved block' : 'New block'}</h3></header>
+  if (compact && kind === 'block') return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-gray-800">
+    <header className="flex shrink-0 items-center gap-2 border-b border-gray-800 p-3"><h3 className="mr-auto text-sm font-semibold">{initial.id ? 'Edit saved block' : 'New block'}</h3></header>
     <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
       {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
       {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || conflictMessage}</p>}
@@ -236,22 +236,22 @@ export default function PromptEditor({ initial, kind, onSaved, onClose, onDirty,
       {blockContent}
       <div className="space-y-3 text-xs"><details className="space-y-3 text-xs text-gray-400"><summary className="cursor-pointer">Notes and preview image</summary><label className="block">Notes<textarea aria-label="Notes" rows={2} className={fieldClass} value={editor.notes} onChange={e => updateEditor({ notes: e.target.value })} /></label>{preview.url && <img src={preview.url} alt="Linked preview" className="max-h-32 w-full object-contain" />}<button className={buttonClass} onClick={linkLibrary}>Link selected Library image</button>{window.electronAPI && <button className={buttonClass} onClick={async () => { const response = await window.electronAPI.promptLibraryChoosePreview(); if (response.success && response.data) updateEditor({ preview: response.data }); else if (response.success === false) setError(response.error); }}>Link image file</button>}<button className={buttonClass} onClick={() => updateEditor({ preview: 'hidden' })}>Hide preview</button></details>
       </div>
-      <div className="flex justify-end gap-2 border-t border-gray-700 pt-3"><button className={buttonClass} disabled={busy} onClick={onClose}>Cancel</button><button className={buttonClass} disabled={busy || !dirty || conflict} onClick={() => void save()}>{busy ? 'Saving…' : 'Save block'}</button></div>
+      <div className="flex justify-end gap-2 border-t border-gray-800 pt-3"><button className={buttonClass} disabled={busy} onClick={onClose}>Cancel</button><button className={buttonClass} disabled={busy || !dirty || conflict} onClick={() => void save()}>{busy ? 'Saving…' : 'Save block'}</button></div>
     </div>
     {textSelection.menu}
     {extraction.dialog}
   </section>;
-  if (compact && kind === 'prompt') return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900/50">
-    <header className="flex shrink-0 items-center gap-2 border-b border-gray-700 p-3">
+  if (compact && kind === 'prompt') return <section aria-label="Prompt editor" className="flex h-full min-h-0 flex-col overflow-hidden rounded border border-gray-800">
+    <header className="flex shrink-0 items-center gap-2 border-b border-gray-800 p-3">
       <h3 className="mr-auto text-sm font-semibold">{initial.id ? 'Edit saved prompt' : 'Compose prompt'}</h3>
       <button className={buttonClass} disabled={busy} onClick={onClose}>{initial.id ? 'Cancel edit' : 'Clear'}</button>
       <button className={buttonClass} disabled={busy} aria-expanded={saveDetails} onClick={() => setSaveDetails(!saveDetails)}>{initial.id ? 'Save changes' : 'Save to library'}</button>
     </header>
-    <div className="shrink-0 border-b border-gray-700 px-3 py-2">{modeControl}</div>
+    <div className="shrink-0 border-b border-gray-800 px-3 py-2">{modeControl}</div>
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
       {fieldStatus && <p role="status" className="text-xs text-accent">{fieldStatus}</p>}
       {(error || conflict) && <p role="alert" className="text-xs text-amber-300">{error || conflictMessage}</p>}
-      {saveDetails && <section aria-label="Save composition" className="space-y-3 rounded-lg border border-gray-700 p-3">
+      {saveDetails && <section aria-label="Save composition" className="space-y-3 rounded border border-gray-800 p-3">
         <label className="block text-xs">Title (optional)<input aria-label="Title" className={fieldClass} value={editor.title} onChange={e => updateEditor({ title: e.target.value })} /></label>
         <PromptCategoryInput value={editor.category} suggestions={categories} disabled={busy} onChange={category => updateEditor({ category })} />
         <label className="block text-xs">Folder<select aria-label="Prompt folder" className={fieldClass} value={editor.folderId || ''} onChange={event => updateEditor({ folderId: event.target.value })}><option value="">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><PromptTagsInput tags={editor.tags} suggestions={suggestions} disabled={busy} onChange={tags => updateEditor({ tags })} />

@@ -147,7 +147,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
     if (response.success && response.data.status === 'available') void onViewSource(response.data.absolutePath);
     else setError('Source unavailable');
   };
-  return <section aria-label="Prompt details" className="flex h-full min-h-0 flex-col rounded-xl border border-gray-700 bg-gray-900/50">
+  return <section aria-label="Prompt details" className={`flex h-full min-h-0 flex-col ${workspace ? 'rounded border border-gray-800' : 'rounded-xl border border-gray-700 bg-gray-900/50'}`}>
     <header className={`flex shrink-0 items-center border-b border-gray-700 ${workspace ? 'gap-1 p-2' : 'gap-2 p-3'}`}>
       {position && <><button className="app-top-icon-button" aria-label="Previous item" title="Previous" disabled={!onPrevious} onClick={onPrevious}><ChevronLeft size={16} /></button><span className="shrink-0 text-[11px] text-gray-400">{position}</span><button className="app-top-icon-button" aria-label="Next item" title="Next" disabled={!onNext} onClick={onNext}><ChevronRight size={16} /></button></>}
       <div className="min-w-0 flex-1"><PromptInlineText value={editor.title} label="Title" placeholder={block ? 'Untitled block' : 'Untitled prompt'} disabled={savingDetails} onSave={title => saveDetails({ title })} /></div>
@@ -162,7 +162,7 @@ export default function PromptDetails({ item, onEdit, onClose, onFavorite, onDup
         <PromptTagsInput compact tags={editor.tags} suggestions={suggestions} disabled={savingDetails} onChange={tags => { void saveDetails({ tags }).catch(() => {}); }} />
         {savingDetails && <p role="status" className="text-[11px] text-gray-500">Saving…</p>}
       </div>
-      <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className="rounded-lg border border-gray-700 p-2 text-xs text-gray-400">
+      <details open={previewOpen} onToggle={e => { const open = e.currentTarget.open; setPreviewOpen(open); localStorage.setItem('imh-prompt-details-preview-open', String(open)); }} className={`border p-2 text-xs text-gray-400 ${workspace ? 'rounded border-gray-800' : 'rounded-lg border-gray-700'}`}>
         <summary className="cursor-pointer">Preview image</summary>
         {preview.url ? <img src={preview.url} alt="Linked preview" className="mt-2 max-h-44 w-full rounded bg-gray-950/50 object-contain" /> : <p className="pt-2">{editor.preview && editor.preview !== 'hidden' ? preview.status : 'No preview image.'}</p>}
         <div className="mt-2 flex flex-wrap gap-2">

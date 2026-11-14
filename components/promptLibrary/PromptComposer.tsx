@@ -70,7 +70,7 @@ export default function PromptComposer({ document, blocks, prompts = [], disable
     {(['positive', 'negative'] as const).map(channel => <section key={channel} className="space-y-2" aria-label={channel === 'positive' ? 'Prompt composition' : 'Negative prompt composition'}>
       {channel === 'positive' ? <h3 className="text-sm font-semibold">Prompt</h3> : <button type="button" className="flex items-center gap-2 text-xs font-semibold" aria-expanded={negativeVisible} onClick={() => setShowNegative(!negativeVisible)}>{negativeVisible ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{negativeVisible ? 'Negative prompt' : 'Add negative prompt'}</button>}
       {(channel === 'positive' || negativeVisible) && <>
-        {!document[channel].length && <p className="rounded-lg border border-dashed border-gray-700 p-3 text-xs text-gray-400">Build your prompt by adding blocks in the order you want, or write your own text.</p>}
+        {!document[channel].length && <p className={`border border-dashed p-3 text-xs text-gray-400 ${compact ? 'rounded border-gray-800' : 'rounded-lg border-gray-700'}`}>Build your prompt by adding blocks in the order you want, or write your own text.</p>}
         <Reorder.Group as="div" axis="y" values={document[channel]} onReorder={parts => change(channel, parts)} className="space-y-2">{document[channel].map((part, index) => {
           const original = part.kind === 'block' ? blockById.get(part.blockId || '') || null : null;
           return <PromptPartCard key={part.id} part={part} index={index} count={document[channel].length} channel={channel} disabled={disabled} compact={compact} highlighted={highlighted.includes(part.id)} original={original}
