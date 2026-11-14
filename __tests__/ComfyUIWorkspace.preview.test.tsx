@@ -154,6 +154,25 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     expect(reparse).toHaveBeenCalledWith(image, 'C:/synthetic', { compactRawMetadata: false });
   });
 
+  it('reports a missing original workflow without sending a generated graph to ComfyUI', async () => {
+    const image = createImage('metadata-only');
+    const loadWorkflow = vi.fn();
+    window.electronAPI.comfyUIViewLoadWorkflow = loadWorkflow;
+
+    render(<ComfyUIWorkspace
+      image={image}
+      navigationImages={[image]}
+      currentIndex={0}
+      isActive={false}
+      workflowLoadRequest={{ id: 1, imageId: image.id, title: image.name, preferNewTab: true }}
+      onOpenQueue={vi.fn()}
+      onOpenSettings={vi.fn()}
+    />);
+
+    await waitFor(() => expect(useImageStore.getState().error).toBe('This image has no original ComfyUI workflow.'));
+    expect(loadWorkflow).not.toHaveBeenCalled();
+  });
+
   it('inspects on single click and opens the full image viewer on double click or Enter', () => {
     const image = createImage('alpha');
     const onInspectImage = vi.fn();

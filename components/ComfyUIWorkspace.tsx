@@ -678,6 +678,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.';
         setConnectionMessage(message);
+        useImageStore.getState().setError(message);
       }
     };
 
@@ -1052,7 +1053,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
       setConnectionMessage(result?.error || 'Failed to load workflow in ComfyUI.');
     } catch (error) {
-      setConnectionMessage(error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.');
+      const message = error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.';
+      setConnectionMessage(message);
+      useImageStore.getState().setError(message);
     }
   }, [directoryPath, directoryPathByImageId, image?.id, inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl]);
 
