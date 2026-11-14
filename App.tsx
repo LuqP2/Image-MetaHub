@@ -40,6 +40,8 @@ import SettingsModal from './components/SettingsModal';
 import { OPEN_VISUAL_SEARCH_SETTINGS_EVENT } from './components/SemanticSearchBar';
 import VisualSearchOnboarding from './components/VisualSearchOnboarding';
 import ChangelogModal from './components/ChangelogModal';
+import ReleaseTrialExtensionNotice from './components/ReleaseTrialExtensionNotice';
+import { TRIAL_EXTENSION_RELEASE } from './utils/trialPeriod.mjs';
 import TrialExtensionModal from './components/TrialExtensionModal';
 import UpdateNotificationModal, { type UpdateNotificationStatus } from './components/UpdateNotificationModal';
 import ComparisonModal from './components/ComparisonModal';
@@ -562,6 +564,7 @@ export default function App() {
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isTrialExtensionModalOpen, setIsTrialExtensionModalOpen] = useState(false);
+  const [changelogReady, setChangelogReady] = useState(false);
   const [offerTrialAfterChangelog, setOfferTrialAfterChangelog] = useState(false);
   const [pendingTrialExtensionOffer, setPendingTrialExtensionOffer] = useState(false);
   const [updateModalState, setUpdateModalState] = useState<{
@@ -949,8 +952,21 @@ export default function App() {
     if (canExtendTrial) setIsTrialExtensionModalOpen(true);
   }, [pendingTrialExtensionOffer, licenseInitialized, isChangelogModalOpen, canExtendTrial]);
 
+  const persistChangelogViewed = async (version: string) => {
+    setLastViewedVersion(version);
+    if (window.electronAPI?.markChangelogViewed) {
+      try {
+        const result = await window.electronAPI.markChangelogViewed(version);
+        if (!result?.success) console.warn('Failed to persist last viewed changelog version:', result?.error);
+      } catch (error) {
+        console.warn('Failed to persist last viewed changelog version:', error);
+      }
+    }
+  };
+
   const handleCloseChangelog = () => {
     setIsChangelogModalOpen(false);
+    if (currentVersion === TRIAL_EXTENSION_RELEASE) void persistChangelogViewed(currentVersion);
     if (offerTrialAfterChangelog) {
       setOfferTrialAfterChangelog(false);
       setPendingTrialExtensionOffer(true);
@@ -1692,20 +1708,9 @@ export default function App() {
 
       // Check if this is a new version since last view (or first run)
       if (currentLastViewed !== version) {
-        setOfferTrialAfterChangelog(!!currentLastViewed);
+        setOfferTrialAfterChangelog(!!currentLastViewed && version !== TRIAL_EXTENSION_RELEASE);
         setIsChangelogModalOpen(true);
-        setLastViewedVersion(version);
-
-        if (window.electronAPI?.markChangelogViewed) {
-          try {
-            const result = await window.electronAPI.markChangelogViewed(version);
-            if (!result?.success) {
-              console.warn('Failed to persist last viewed changelog version:', result?.error);
-            }
-          } catch (error) {
-            console.warn('Failed to persist last viewed changelog version:', error);
-          }
-        }
+        if (version !== TRIAL_EXTENSION_RELEASE) await persistChangelogViewed(version);
 
         // Navigation-change onboarding: shown once ever to users updating from a previous
         // version (not on a fresh install), gated by a dedicated flag so it never repeats on
@@ -1717,6 +1722,7 @@ export default function App() {
           );
         }
       }
+      setChangelogReady(true);
     };
 
     checkForNewVersion();
@@ -5014,6 +5020,11 @@ export default function App() {
           isOpen={isChangelogModalOpen}
           onClose={handleCloseChangelog}
           currentVersion={currentVersion}
+        />
+
+        <ReleaseTrialExtensionNotice
+          changelogReady={changelogReady && licenseInitialized}
+          changelogOpen={isChangelogModalOpen}
         />
 
         <TrialExtensionModal

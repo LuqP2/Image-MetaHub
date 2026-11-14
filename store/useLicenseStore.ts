@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { getTrialPeriod, TRIAL_DURATION_DAYS, TRIAL_EXTENSION_DAYS } from '../utils/trialPeriod.mjs';
 import type { LicenseClientStatus, LicensePlan } from '../types';
 
 let suppressElectronStorageWrites = false;
@@ -40,15 +41,7 @@ const electronStorage: StateStorage = {
 // Check if running in Electron
 const isElectron = !!window.electronAPI;
 
-// Trial duration (shared across UI)
-export const TRIAL_DURATION_DAYS = 7;
-export const TRIAL_EXTENSION_DAYS = 3;
-
-// Preserve the original trial date; the extra period starts only on explicit opt-in.
-export const getTrialPeriod = (state: { trialStartDate: number | null; trialExtensionStartDate?: number | null }) => ({
-  startDate: state.trialExtensionStartDate ?? state.trialStartDate,
-  durationDays: state.trialExtensionStartDate ? TRIAL_EXTENSION_DAYS : TRIAL_DURATION_DAYS,
-});
+export { getTrialPeriod, TRIAL_DURATION_DAYS, TRIAL_EXTENSION_DAYS };
 
 // Type definitions
 type LicenseStatus = 'free' | 'trial' | 'expired' | 'pro' | 'lifetime';
@@ -66,6 +59,7 @@ interface LicenseState {
   trialStartDate: number | null;
   trialActivated: boolean;
   trialExtensionStartDate: number | null;
+  trialRelease023: { grantedAt: number | null; noticeDismissed: boolean } | null;
 
   // License info
   licenseStatus: LicenseStatus;
@@ -125,7 +119,7 @@ const checkIfTrialExpired = (trialStartDate: number | null, durationDays = TRIAL
   }
 
   // Check if trial period ended
-  return now > trialEnd;
+  return now >= trialEnd;
 };
 
 export const mergePersistedLicenseState = (
@@ -175,6 +169,7 @@ export const useLicenseStore = create<LicenseState>()(
       trialStartDate: null,
       trialActivated: false,
       trialExtensionStartDate: null,
+      trialRelease023: null,
       licenseStatus: 'free',
       licenseKey: null,
       licenseEmail: null,
@@ -248,7 +243,7 @@ export const useLicenseStore = create<LicenseState>()(
         const state = get();
         if (!state.initialized || !state.trialAvailable || state.licenseStatus !== 'expired'
           || !state.trialActivated || !state.trialStartDate || state.trialExtensionStartDate
-          || !checkIfTrialExpired(state.trialStartDate) || Date.now() < state.trialStartDate) return false;
+          || state.trialRelease023?.grantedAt || !checkIfTrialExpired(state.trialStartDate) || Date.now() < state.trialStartDate) return false;
 
         let trialExtensionStartDate = Date.now();
         if (isElectron) {

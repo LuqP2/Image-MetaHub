@@ -663,6 +663,7 @@ export interface ElectronAPI {
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   activateTrial: () => Promise<TrialActivationResult>;
   activateTrialExtension: () => Promise<TrialExtensionActivationResult>;
+  dismissReleaseTrialExtensionNotice: () => Promise<{ success: boolean; error?: string }>;
   getLicenseStatus: () => Promise<LicenseClientStatus>;
   activateLicense: (key: string, email: string) => Promise<LicenseActivationResult>;
   refreshLicense: () => Promise<LicenseClientStatus>;
