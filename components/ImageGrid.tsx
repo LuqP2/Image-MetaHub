@@ -1,3 +1,5 @@
+import RelatedImagesMenu from './contextMenu/RelatedImagesMenu';
+import type { RelatedImagesMode } from '../utils/relatedImages';
 import { VariableSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import MasonryGridLayout from './MasonryGridLayout';
@@ -1078,6 +1080,7 @@ interface ImageGridProps {
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
+  onFindRelated?: (image: IndexedImage, mode: RelatedImagesMode) => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onFindVisuallySimilar?: (image: IndexedImage) => void;
   /** Whether the visual-similar action is usable (feature on + model installed). */
@@ -1114,6 +1117,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   activeCollection = null,
   isCollectionsView = false,
   onImageRenamed,
+  onFindRelated,
   onFindSimilar,
   onFindVisuallySimilar,
   canFindVisuallySimilar = false,
@@ -2565,6 +2569,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
           </button>
 
+          {onFindRelated && contextMenu.image && (
+            <RelatedImagesMenu
+              image={contextMenu.image}
+              horizontalClass={submenuHorizontalClass}
+              onFindRelated={onFindRelated}
+              onClose={hideContextMenu}
+            />
+          )}
           {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>Add to Board</button>}
           <div
             className="relative"

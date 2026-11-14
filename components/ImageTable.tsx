@@ -1,3 +1,5 @@
+import RelatedImagesMenu from './contextMenu/RelatedImagesMenu';
+import type { RelatedImagesMode } from '../utils/relatedImages';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FixedSizeList as List } from 'react-window';
@@ -32,6 +34,8 @@ import { clearInternalImageDragData, setInternalImageDragData } from '../utils/i
 import { useSavePrompt } from '../hooks/useSavePrompt';
 
 interface ImageTableProps {
+  initialScrollTop?: number;
+  onScrollPositionChange?: (scrollTop: number) => void;
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
@@ -39,6 +43,7 @@ interface ImageTableProps {
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
+  onFindRelated?: (image: IndexedImage, mode: RelatedImagesMode) => void;
   onFindSimilar?: (image: IndexedImage) => void;
   onFindVisuallySimilar?: (image: IndexedImage) => void;
   canFindVisuallySimilar?: boolean;
@@ -92,6 +97,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
   activeCollection = null,
   isCollectionsView = false,
   onImageRenamed,
+  initialScrollTop = 0,
+  onScrollPositionChange,
+  onFindRelated,
   onFindSimilar,
   onFindVisuallySimilar,
   canFindVisuallySimilar = false,
@@ -639,6 +647,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
                   ref={listRef}
                   width={width}
                   overscanCount={5}
+                  initialScrollOffset={initialScrollTop}
+                  onScroll={onScrollPositionChange ? ({ scrollOffset }) => onScrollPositionChange(scrollOffset) : undefined}
                   itemKey={(index) => {
                     const item = groupedRows[index];
                     return item?.type === 'group-header' ? item.group.id : item?.image.id ?? index;
@@ -677,6 +687,14 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
           <div className="border-t border-gray-600 my-1"></div>
 
+          {onFindRelated && contextMenu.image && (
+            <RelatedImagesMenu
+              image={contextMenu.image}
+              horizontalClass={submenuHorizontalClass}
+              onFindRelated={onFindRelated}
+              onClose={hideContextMenu}
+            />
+          )}
           {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>Add to Board</button>}
           <div
             className="relative"

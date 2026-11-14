@@ -1,3 +1,4 @@
+import { findRelatedImages, type RelatedImagesMode } from './utils/relatedImages';
 import { useBoardUIStore } from './store/useBoardUIStore';
 import { useLibraryCanvas } from './hooks/useLibraryCanvas';
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
@@ -575,7 +576,47 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<LibraryView>('library');
+  const [libraryView, setBaseLibraryView] = useState<LibraryView>('library');
+  const [relatedImages, setRelatedImages] = useState<(NonNullable<ReturnType<typeof findRelatedImages>> & {
+    mode: RelatedImagesMode;
+  }) | null>(null);
+  const [relatedPage, setRelatedPage] = useState(1);
+  const relatedSelectionRef = useRef<Pick<ReturnType<typeof useImageStore.getState>,
+    'selectedImages' | 'focusedImageIndex' | 'previewImage'> | null>(null);
+  const closeRelatedImages = useCallback(() => {
+    const selection = relatedSelectionRef.current;
+    if (!selection) return;
+    relatedSelectionRef.current = null;
+    const { images } = useImageStore.getState();
+    const byId = new Map(images.map((image) => [image.id, image]));
+    useImageStore.setState({
+      ...selection,
+      selectedImages: new Set([...selection.selectedImages].filter((id) => byId.has(id))),
+      previewImage: selection.previewImage ? byId.get(selection.previewImage.id) ?? null : null,
+    });
+    setRelatedImages(null);
+  }, []);
+  const setLibraryView = useCallback((view: LibraryView) => {
+    closeRelatedImages();
+    setBaseLibraryView(view);
+  }, [closeRelatedImages]);
+  const openRelatedImages = useCallback((source: IndexedImage, mode: RelatedImagesMode) => {
+    const state = useImageStore.getState();
+    const image = state.images.find((candidate) => candidate.id === source.id);
+    if (!image) return;
+    const result = findRelatedImages(state.images, image, mode);
+    if (!result) return;
+
+    relatedSelectionRef.current ??= {
+      selectedImages: state.selectedImages,
+      focusedImageIndex: state.focusedImageIndex,
+      previewImage: state.previewImage,
+    };
+    useImageStore.setState({ selectedImages: new Set(), focusedImageIndex: null, previewImage: null });
+    setRelatedPage(1);
+    setRelatedImages({ ...result, mode });
+  }, []);
+  const setGalleryPage = relatedImages ? setRelatedPage : setCurrentPage;
   const [sourcePromptId, setSourcePromptId] = useState<string | null>(null);
   const modelManager = useModelManager();
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
@@ -648,12 +689,23 @@ export default function App() {
   );
   const { reparseImages: reparseViewerImages } = useReparseMetadata();
 
+  const libraryTableScrollTopRef = useRef(0);
+  const collectionsTableScrollTopRef = useRef(0);
+  const handleLibraryTableScroll = useCallback((scrollTop: number) => {
+    libraryTableScrollTopRef.current = scrollTop;
+  }, []);
+  const handleCollectionsTableScroll = useCallback((scrollTop: number) => {
+    collectionsTableScrollTopRef.current = scrollTop;
+  }, []);
+
   const resetLibraryGridScrollPosition = useCallback(() => {
+    libraryTableScrollTopRef.current = 0;
     libraryGridScrollTopRef.current = 0;
     libraryMasonryScrollTopRef.current = 0;
   }, []);
 
   const resetCollectionsGridScrollPosition = useCallback(() => {
+    collectionsTableScrollTopRef.current = 0;
     collectionsGridScrollTopRef.current = 0;
   }, []);
 
@@ -834,7 +886,8 @@ export default function App() {
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
-    isCanvasActive: libraryView === 'canvas',
+    relatedImageIds: relatedImages?.imageIds,
+    isCanvasActive: !relatedImages && libraryView === 'canvas',
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
     isHotkeyHelpOpen,
@@ -2104,7 +2157,7 @@ export default function App() {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
-    if (modal.navigationSource === 'find-similar' || modal.navigationSource === 'canvas') {
+    if (modal.navigationSource === 'find-similar' || modal.navigationSource === 'canvas' || modal.navigationSource === 'related-images') {
       return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
     }
 
@@ -2840,7 +2893,7 @@ export default function App() {
 
   // Memoized so the grid (and paginatedImages / libraryGridSignature / currentImageGroups) get a
   // stable array identity and don't re-render on every unrelated App render while a scope is active.
-  const displayImages = useMemo(
+  const baseDisplayImages = useMemo(
     () =>
       // Collections still owns its in-view display during coexistence (removed in a later phase).
       libraryView === 'collections'
@@ -2850,6 +2903,13 @@ export default function App() {
         : scopedBaseImages,
     [libraryView, collectionFilteredImages, findSimilarIdSet, scopedBaseImages],
   );
+  const displayImages = useMemo(() => {
+    if (!relatedImages) return baseDisplayImages;
+    return safeImages.filter((image) => relatedImages.imageIds.has(image.id))
+      .sort((a, b) => b.lastModified - a.lastModified);
+  }, [baseDisplayImages, relatedImages, safeImages]);
+  const relatedTotalPages = itemsPerPage === -1 ? 1 : Math.ceil(displayImages.length / itemsPerPage);
+  const galleryPage = relatedImages ? Math.min(relatedPage, Math.max(1, relatedTotalPages)) : currentPage;
   const comfyUIWorkspaceSourceImages = comfyUIWorkspaceApplyLibraryFilters ? displayImages : safeImages;
 
   const libraryGridSignature = useMemo(() => {
@@ -3108,7 +3168,7 @@ export default function App() {
     setFindSimilarState(null);
   }, [openComparisonModal, setComparisonImages]);
 
-  const handleOpenFindSimilarImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[], navigationSource: 'find-similar' | 'canvas' = 'find-similar') => {
+  const handleOpenImageInResultSet = useCallback((image: IndexedImage, navigationImages: IndexedImage[], navigationSource: 'find-similar' | 'canvas' | 'related-images' = 'find-similar') => {
     const navigationImageIds = navigationImages.length > 0
       ? navigationImages.map((entry) => entry.id)
       : [image.id];
@@ -3158,9 +3218,22 @@ export default function App() {
     setSelectedImage(image);
   }, [beginModalOpenFlow, openImageModals, resolveViewerHost, reuseImageViewer, setSelectedImage]);
 
+  const handleGalleryImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+    if (!relatedImages) {
+      handleGridImageClick(image, event);
+    } else if (event.button === 1) {
+      event.preventDefault();
+      handleOpenImageModalInBackground(image, displayImages, 'related-images');
+    } else if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      handleImageSelection(image, event, displayImages);
+    } else {
+      handleOpenImageInResultSet(image, displayImages, 'related-images');
+    }
+  }, [displayImages, handleGridImageClick, handleImageSelection, handleOpenImageInResultSet, handleOpenImageModalInBackground, relatedImages]);
+
   const handleOpenBoardImage = useCallback((image: IndexedImage, navigationImages: IndexedImage[]) => {
-    handleOpenFindSimilarImage(image, navigationImages, 'canvas');
-  }, [handleOpenFindSimilarImage]);
+    handleOpenImageInResultSet(image, navigationImages, 'canvas');
+  }, [handleOpenImageInResultSet]);
   const openModelPromptPicker = useCallback((modelName: string) => {
     setModelPromptPickerState({
       modelName,
@@ -3403,13 +3476,13 @@ export default function App() {
   }, [beginModalOpenFlow, openImageModals, resolveViewerHost, setError, setSelectedImage, slideshowPlaylistPreview.images]);
 
   useEffect(() => {
-    const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
+    const scopedTotalPages = Math.ceil(baseDisplayImages.length / itemsPerPage);
     if (currentPage > scopedTotalPages && scopedTotalPages > 0) {
       resetLibraryGridScrollPosition();
       resetCollectionsGridScrollPosition();
       setCurrentPage(1);
     }
-  }, [currentPage, displayImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
+  }, [currentPage, baseDisplayImages.length, itemsPerPage, resetCollectionsGridScrollPosition, resetLibraryGridScrollPosition]);
 
   useEffect(() => {
     if (libraryView !== 'collections') {
@@ -3429,13 +3502,13 @@ export default function App() {
       if (itemsPerPage === -1) {
         return displayImages;
       }
-      return displayImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+      return displayImages.slice((galleryPage - 1) * itemsPerPage, galleryPage * itemsPerPage);
     },
-    [displayImages, currentPage, itemsPerPage]
+    [displayImages, galleryPage, itemsPerPage]
   );
   const canGroupCurrentImages =
     libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection));
-  const effectiveImageGroupBy = canGroupCurrentImages && sortOrder !== 'random' ? groupBy : 'none';
+  const effectiveImageGroupBy = !relatedImages && canGroupCurrentImages && sortOrder !== 'random' ? groupBy : 'none';
   const imageGroupingSortOrder = sortOrder as ImageGroupingSortOrder;
 
   // Group By model/cluster sections over the WHOLE filtered set (not the current page), so
@@ -3741,6 +3814,15 @@ export default function App() {
           case 'focus-main':
             await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
             break;
+          case 'find-related': {
+            if (viewerCommand.mode !== 'session' && viewerCommand.mode !== 'date') {
+              throw new Error('Unsupported related images filter.');
+            }
+            openRelatedImages(requireImage(viewerCommand.imageId), viewerCommand.mode);
+            await api.imageViewerWindowAction({ sessionId, action: 'minimize' });
+            await api.imageViewerWindowAction({ sessionId, action: 'focus-main' });
+            break;
+          }
           case 'find-similar': {
             const image = requireImage(viewerCommand.imageId);
             openFindSimilar(image, resolveModalNavigationImages(session));
@@ -3968,7 +4050,7 @@ export default function App() {
         respond({ success: true });
       })().catch((error) => respond({ success: false, error: error instanceof Error ? error.message : 'Viewer command failed.' }));
     });
-  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
+  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openRelatedImages, openImageModals, reparseViewerImages, resolveModalNavigationImages]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals
@@ -4089,7 +4171,7 @@ export default function App() {
   }, [addImagesToCollection, displayImages, setSuccess]);
 
   const shouldShowLibraryPlaceholder =
-    libraryView === 'library' &&
+    !relatedImages && libraryView === 'library' &&
     safeFilteredImages.length === 0 &&
     (isStartupHydrating || isLoading || activeFolderHasProgress);
 
@@ -4142,7 +4224,7 @@ export default function App() {
         restrictToRequestedSelection={!canUseBatchExport && (batchExportRequest?.imageIds?.length ?? 0) === 1}
       />
 
-      <div ref={globalHeaderRef} className="shrink-0" hidden={canvasUIHidden}>
+      <div ref={globalHeaderRef} className="shrink-0" hidden={canvasUIHidden && !relatedImages}>
         <BrowserCompatibilityWarning />
         <Header
           workspaceToolbarRef={setComfyUIWorkspaceToolbarHost}
@@ -4150,7 +4232,7 @@ export default function App() {
           onOpenLicense={handleOpenLicenseSettings}
           onOpenTrialExtension={() => setIsTrialExtensionModalOpen(true)}
           onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
-          libraryView={libraryView}
+          libraryView={relatedImages ? 'library' : libraryView}
           onLibraryViewChange={(view) => { if (view === 'models' && !canUseModelManager) { showProModal('model_manager'); return; } setLibraryView(view); }}
           onNavigateExplore={(dimension) => {
             setExploreDimension(dimension);
@@ -4165,7 +4247,7 @@ export default function App() {
         />
       </div>
 
-      {hasLeftSidebar && (
+      {hasLeftSidebar && !relatedImages && (
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -4275,7 +4357,7 @@ export default function App() {
 
       <div
         className="flex min-h-0 flex-1 flex-col"
-        style={{ marginLeft: mainContentMarginLeft, marginRight: mainContentMarginRight }}
+        style={{ marginLeft: relatedImages ? 0 : mainContentMarginLeft, marginRight: mainContentMarginRight }}
       >
         {!canvasUIHidden && <TrialExpiredBanner />}
 
@@ -4294,7 +4376,7 @@ export default function App() {
           onSubmit={handleSaveCurrentFilteredAsCollection}
         />
 
-        <main className={`flex-1 flex flex-col min-h-0 w-full ${libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' ? 'p-0' : 'mx-auto p-4'}`}>
+        <main className={`flex-1 flex flex-col min-h-0 w-full ${!relatedImages && (libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas') ? 'p-0' : 'mx-auto p-4'}`}>
           {showGeneratorSetupNotice && !canvasUIHidden && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
               <div className="flex-1 text-sm">
@@ -4364,11 +4446,11 @@ export default function App() {
             </div>
           )}
 
-          {!isStartupHydrating && !isLoading && !hasDirectories && !['prompts', 'models', 'canvas'].includes(libraryView) && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!relatedImages && !isStartupHydrating && !isLoading && !hasDirectories && !['prompts', 'models', 'canvas'].includes(libraryView) && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {(hasDirectories || ['prompts', 'models', 'canvas'].includes(libraryView)) && (
+          {(relatedImages || hasDirectories || ['prompts', 'models', 'canvas'].includes(libraryView)) && (
             <>
-                {libraryView === 'library' && (
+                {!relatedImages && libraryView === 'library' && (
                   <AnalyticsSummaryStrip
                     images={safeFilteredImages}
                     allImages={safeImages}
@@ -4381,10 +4463,10 @@ export default function App() {
                     }}
                   />
                 )}
-                {libraryView === 'library' && (
+                {!relatedImages && libraryView === 'library' && (
                   <VisualSearchOnboarding hasImages={safeFilteredImages.length > 0} />
                 )}
-                {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+                {!relatedImages && (libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     canvasAction={window.electronAPI && libraryView === 'library' ? libraryCanvas.action : undefined}
                     isLibraryView={libraryView === 'library'}
@@ -4463,13 +4545,13 @@ export default function App() {
                   />
                 )}
 
-                {libraryView === 'library' && activeImageScope?.type === 'managedModel' && (
+                {!relatedImages && libraryView === 'library' && activeImageScope?.type === 'managedModel' && (
                   <div className="mx-5 mb-2 flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
                     <span>{displayImages.length} of {scopedImageIds?.size ?? 0} matching files{activeImageScope.managedModel?.mode !== 'total' ? ` · ${activeImageScope.managedModel?.mode}` : ''}</span>
                     <button className="rounded border border-cyan-500/30 px-3 py-1 text-xs" onClick={handleClearOtherModelFilters}>Clear other filters</button>
                   </div>
                 )}
-                {libraryView === 'library' && findSimilarGridFilter && (
+                {!relatedImages && libraryView === 'library' && findSimilarGridFilter && (
                   <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
                     <div className="min-w-0">
                       <span className="font-medium">Find Similar filter</span>
@@ -4494,7 +4576,7 @@ export default function App() {
                   </div>
                 )}
 
-                {libraryView === 'library' && semanticSimilarSourceName && (
+                {!relatedImages && libraryView === 'library' && semanticSimilarSourceName && (
                   <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-100">
                     <div className="min-w-0">
                       <span className="font-medium">Visually similar</span>
@@ -4523,10 +4605,28 @@ export default function App() {
                   </div>
                 )}
 
+              {relatedImages && (
+                <div className="mb-3 flex flex-wrap items-center gap-3" role="status">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 py-1 pl-3 pr-1 text-sm text-cyan-100">
+                    <span>{relatedImages.mode === 'session' ? 'Session' : 'Date'} · {relatedImages.label}</span>
+                    <button
+                      type="button"
+                      className="rounded-full p-1 hover:bg-cyan-500/20 focus-visible:outline focus-visible:outline-cyan-400"
+                      onClick={closeRelatedImages}
+                      aria-label="Remove related images filter and return"
+                      title="Return to previous view"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <span className="text-sm text-gray-400">{displayImages.length} {displayImages.length === 1 ? 'image' : 'images'}</span>
+                </div>
+              )}
+
               <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
-                {libraryView === 'models' ? (
+                {!relatedImages && libraryView === 'models' ? (
                   canUseModelManager && <ModelsWorkspace />
-                ) : libraryView === 'library' ? (
+                ) : relatedImages || libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
                       Loading folder...
@@ -4536,28 +4636,34 @@ export default function App() {
                       <div className="mb-4 rounded-full bg-gray-800 p-6 text-gray-500">
                         <Search size={48} strokeWidth={1.5} />
                       </div>
-                      <h3 className="mb-2 text-xl font-semibold text-gray-200">No images match your filters</h3>
-                      <p className="mb-6 max-w-sm text-sm text-gray-400">
-                        Try adjusting your search terms or clearing some of the active filters to find what you're looking for.
-                      </p>
-                      <button
-                        onClick={handleClearAllFilters}
-                        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 focus:outline-none focus:ring-4 focus:ring-blue-800"
-                      >
-                        Clear All Filters
-                      </button>
+                      <h3 className="mb-2 text-xl font-semibold text-gray-200">{relatedImages ? 'No related images remain in the library' : 'No images match your filters'}</h3>
+                      {!relatedImages && (
+                        <>
+                          <p className="mb-6 max-w-sm text-sm text-gray-400">
+                            Try adjusting your search terms or clearing some of the active filters to find what you're looking for.
+                          </p>
+                          <button
+                            onClick={handleClearAllFilters}
+                            className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 focus:outline-none focus:ring-4 focus:ring-blue-800"
+                          >
+                            Clear All Filters
+                          </button>
+                        </>
+                      )}
                     </div>
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
+                          key={relatedImages ? `related-${relatedImages.mode}-${relatedImages.label}` : 'library'}
                           images={imagesForGrid}
-                          onImageClick={handleGridImageClick}
+                          onImageClick={handleGalleryImageClick}
                           selectedImages={safeSelectedImages}
-                          currentPage={currentPage}
+                          currentPage={galleryPage}
                           totalPages={totalPages}
-                          onPageChange={setCurrentPage}
+                          onPageChange={setGalleryPage}
                           onBatchExport={handleOpenBatchExport}
                           onDeleteSelected={handleDeleteSelectedImages}
                           onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
+                          onFindRelated={openRelatedImages}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onFindVisuallySimilar={runVisualSimilar}
                           canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4568,18 +4674,22 @@ export default function App() {
                           clusterByImageId={clusterByImageId}
                           jumpToGroupRequest={pendingJumpGroupRequest}
                           layout={libraryGridLayout}
-                          initialScrollTop={libraryGridLayout === 'masonry' ? libraryMasonryScrollTopRef.current : libraryGridScrollTopRef.current}
-                          onScrollPositionChange={handleLibraryGridScrollPositionChange}
+                          initialScrollTop={relatedImages ? 0 : libraryGridLayout === 'masonry' ? libraryMasonryScrollTopRef.current : libraryGridScrollTopRef.current}
+                          onScrollPositionChange={relatedImages ? undefined : handleLibraryGridScrollPositionChange}
                           scrollResetKey={libraryGridSignature}
                           hasRightSidebar={hasRightSidebar}
                         />
                       ) : (
                         <ImageTable
+                          key={relatedImages ? `related-${relatedImages.mode}-${relatedImages.label}` : 'library'}
                           images={imagesForGrid}
-                          onImageClick={handleGridImageClick}
+                          onImageClick={handleGalleryImageClick}
                           selectedImages={safeSelectedImages}
+                          initialScrollTop={relatedImages ? 0 : libraryTableScrollTopRef.current}
+                          onScrollPositionChange={relatedImages ? undefined : handleLibraryTableScroll}
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
+                          onFindRelated={openRelatedImages}
                           onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                           onFindVisuallySimilar={runVisualSimilar}
                           canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4630,6 +4740,7 @@ export default function App() {
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
+                        onFindRelated={openRelatedImages}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onFindVisuallySimilar={runVisualSimilar}
                         canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4649,10 +4760,13 @@ export default function App() {
                         images={imagesForGrid}
                         onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
+                        initialScrollTop={collectionsTableScrollTopRef.current}
+                        onScrollPositionChange={handleCollectionsTableScroll}
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed} onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
+                        onFindRelated={openRelatedImages}
                         onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         onFindVisuallySimilar={runVisualSimilar}
                         canFindVisuallySimilar={canFindVisuallySimilar}
@@ -4742,12 +4856,12 @@ export default function App() {
                 ) : null}
               </div>
 
-              {!canvasUIHidden && (libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' || (libraryView === 'collections' && Boolean(activeCollection))) && (
+              {(relatedImages || !canvasUIHidden) && (relatedImages || libraryView === 'library' || libraryView === 'comfyui' || libraryView === 'editor' || libraryView === 'canvas' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
-                  windowsOnly={libraryView === 'comfyui' || libraryView === 'canvas'}
-                  currentPage={currentPage}
+                  windowsOnly={!relatedImages && (libraryView === 'comfyui' || libraryView === 'canvas')}
+                  currentPage={galleryPage}
                   totalPages={totalPages}
-                  onPageChange={setCurrentPage}
+                  onPageChange={setGalleryPage}
                   itemsPerPage={itemsPerPage}
                   onItemsPerPageChange={setItemsPerPage}
                   viewMode={viewMode}
@@ -4755,7 +4869,7 @@ export default function App() {
                   libraryGridLayout={libraryGridLayout}
                   onLibraryGridLayoutChange={libraryView === 'library' ? setLibraryGridLayout : undefined}
                   filteredCount={displayImages.length}
-                  totalCount={libraryView === 'collections' ? collectionTotalImages.length : selectionTotalImages}
+                  totalCount={relatedImages ? displayImages.length : libraryView === 'collections' ? collectionTotalImages.length : selectionTotalImages}
                   directoryCount={
                     libraryView === 'collections'
                       ? collectionFilteredDirectoryCount
@@ -4767,7 +4881,7 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-                  customText={libraryView === 'comfyui' ? 'ComfyUI Workspace' : libraryView === 'editor' ? 'Image Editor' : libraryView === 'canvas' ? 'Canvas' : undefined}
+                  customText={relatedImages ? undefined : libraryView === 'comfyui' ? 'ComfyUI Workspace' : libraryView === 'editor' ? 'Image Editor' : libraryView === 'canvas' ? 'Canvas' : undefined}
                   windowItems={footerWindowItems}
                   onWindowSelect={(modalId) => {
                     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
@@ -4777,7 +4891,7 @@ export default function App() {
                     handleActivateImageModal(modalId);
                   }}
                   onWindowClose={handleCloseImageModalFromFooter}
-                  showSortControls={canGroupCurrentImages}
+                  showSortControls={!relatedImages && canGroupCurrentImages}
                   sortOrder={sortOrder}
                   onSortOrderChange={imageStoreSetSortOrder}
                   onReshuffle={reshuffle}
@@ -4820,6 +4934,10 @@ export default function App() {
             closeOnSlideshowExit={modal.closeOnSlideshowExit}
             diagnosticsFlowId={modal.diagnosticsFlowId}
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
+            onFindRelated={(image, mode) => {
+              openRelatedImages(image, mode);
+              handleMinimizeImageModal(modal.modalId);
+            }}
             onFindSimilar={(image) => openFindSimilar(image, resolveModalNavigationImages(modal))}
             onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
             onOpenImageEditor={(image) => handleOpenImageEditorFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
@@ -4889,7 +5007,7 @@ export default function App() {
           currentViewImages={findSimilarState?.currentViewImages}
           initialCriteria={findSimilarState?.initialCriteria}
           onClose={closeFindSimilar}
-          onOpenImage={handleOpenFindSimilarImage}
+          onOpenImage={handleOpenImageInResultSet}
           onApplyGridFilter={handleApplyFindSimilarGridFilter}
         />
 

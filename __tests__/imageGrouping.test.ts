@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IndexedImage } from '../types';
 import { groupImages } from '../utils/imageGrouping';
+import { findRelatedImages } from '../utils/relatedImages';
 
 const makeImage = (id: string, name: string, lastModified: number, models: string[] = []): IndexedImage => ({
   id,
@@ -130,5 +131,34 @@ describe('imageGrouping', () => {
       { id: 'cluster-cluster-1', label: 'Sunsets', count: 2 },
       { id: 'cluster-__none__', label: 'No cluster', count: 1 },
     ]);
+  });
+});
+
+describe('Find Related Images', () => {
+  it('recovers the complete session across folders, including images that bridge a gap', () => {
+    const start = new Date(2026, 10, 12, 14, 0).getTime();
+    const minute = 60_000;
+    const favorite = { ...makeImage('favorite', 'favorite.png', start), directoryId: 'a', isFavorite: true };
+    const bridge = { ...makeImage('bridge', 'bridge.png', start + 45 * minute), directoryId: 'b' };
+    const last = makeImage('last', 'last.png', start + 90 * minute);
+    const other = makeImage('other', 'other.png', start + 136 * minute);
+    const library = [other, last, favorite, bridge];
+    const result = findRelatedImages(library, favorite, 'session');
+    const group = groupImages(library, 'session').groups.find(({ count }) => count === 3);
+
+    expect(result).toEqual({
+      label: group?.label,
+      imageIds: new Set(['favorite', 'bridge', 'last']),
+    });
+  });
+
+  it('includes separate sessions on the same local date and excludes the next date', () => {
+    const early = makeImage('early', 'early.png', new Date(2026, 10, 12, 6).getTime());
+    const late = makeImage('late', 'late.png', new Date(2026, 10, 12, 23, 50).getTime());
+    const nextDay = makeImage('next', 'next.png', new Date(2026, 10, 13, 0, 5).getTime());
+    const library = [early, late, nextDay];
+
+    expect(findRelatedImages(library, late, 'date')?.imageIds).toEqual(new Set(['early', 'late']));
+    expect(findRelatedImages(library, late, 'session')?.imageIds).toEqual(new Set(['late', 'next']));
   });
 });
