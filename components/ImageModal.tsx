@@ -190,6 +190,7 @@ interface ImageModalProps {
   onRequestDelete?: (imageId: string) => Promise<{ success: boolean; error?: string; handledNavigation?: boolean }>;
   onRequestRename?: (imageId: string, newName: string) => Promise<{ success: boolean; error?: string; newImageId?: string; newRelativePath?: string }>;
   onRequestReparse?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
+  onRemoveAutoTags?: (imageId: string, tag?: string) => Promise<{ success: boolean; error?: string }>;
   onRequestAutoTag?: (imageId: string) => Promise<{ success: boolean; error?: string }>;
   onRequestTagSuggestions?: (query: string) => Promise<TagInfo[]>;
   onRequestGenerate?: (request: ImageViewerGenerateRequest) => Promise<{ success: boolean; error?: string }>;
@@ -540,7 +541,7 @@ const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
   'i'
 );
 
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void | Promise<void | boolean>; renderValue?: (displayValue: string) => React.ReactNode }> = ({ label, value, isPrompt = false, onCopy, renderValue }) => {
+const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; labelAction?: React.ReactNode; onCopy?: (value: string) => void | Promise<void | boolean>; renderValue?: (displayValue: string) => React.ReactNode }> = ({ label, value, isPrompt = false, labelAction, onCopy, renderValue }) => {
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -562,7 +563,10 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   return (
     <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50 relative group hover:bg-gray-800/80 transition-colors">
       <div className="flex justify-between items-start">
-        <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
+          {labelAction}
+        </div>
         {onCopy && (
             <motion.button
               onClick={handleCopy}
@@ -926,6 +930,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onRequestDelete,
   onRequestRename,
   onRequestReparse,
+  onRemoveAutoTags,
   onRequestAutoTag,
   onRequestTagSuggestions,
   onRequestGenerate,
@@ -3493,8 +3498,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     removeTagFromImage(image.id, tag);
   };
 
-  const handleRemoveAutoTag = (tag: string) => {
-    removeAutoTagFromImage(image.id, tag);
+  const handleRemoveAutoTag = async (tag?: string) => {
+    if (!onRemoveAutoTags) {
+      removeAutoTagFromImage(image.id, tag);
+      return;
+    }
+    try {
+      const result = await onRemoveAutoTags(image.id, tag);
+      if (!result.success) throw new Error(result.error || 'Could not remove auto-tags.');
+    } catch (error) {
+      setAutoTagError({ imageId: image.id, message: error instanceof Error ? error.message : String(error) });
+    }
   };
 
   const handleAutoTagImage = async () => {
@@ -3547,7 +3561,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handlePromoteAutoTag = async (tag: string) => {
     await addTagToImage(image.id, tag);
-    removeAutoTagFromImage(image.id, tag);
+    void handleRemoveAutoTag(tag);
   };
 
   if (isMinimized) {
@@ -4349,6 +4363,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                    {currentAutoTags.length > 0 && (
+                      <button type="button" className="ml-auto text-xs text-gray-400 hover:text-red-400" onClick={() => {
+                        if (window.confirm('Delete all auto-tags from this image?')) void handleRemoveAutoTag();
+                      }}>
+                        Clear All
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleAutoTagImage()}
@@ -4455,30 +4476,37 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     setSelectedImage(targetImage);
                   }}
                 />
-                <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)} />
-                {effectiveMetadata?.prompt && (
-                  <button
-                    type="button"
-                    disabled={isShadowLoading || Boolean(shadowError)}
-                    onClick={async () => {
-                      try {
-                        const result = await savePrompt(liveImage, {
-                          directoryPath,
-                          showOriginal,
-                          shadowMetadata,
-                          shadowReady: !isShadowLoading && !shadowError,
-                        });
-                        setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
-                      } catch (cause) {
-                        setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
-                      }
-                    }}
-                    className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
-                    aria-pressed={isPromptSaved}
-                  >
-                    <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} /> {isPromptSaved ? 'Saved' : 'Save Prompt'}
-                  </button>
-                )}
+                <MetadataItem
+                  label="Prompt"
+                  value={effectiveMetadata?.prompt}
+                  isPrompt
+                  onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)}
+                  labelAction={
+                    <button
+                      type="button"
+                      disabled={isShadowLoading || Boolean(shadowError)}
+                      onClick={async () => {
+                        try {
+                          const result = await savePrompt(liveImage, {
+                            directoryPath,
+                            showOriginal,
+                            shadowMetadata,
+                            shadowReady: !isShadowLoading && !shadowError,
+                          });
+                          setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+                        } catch (cause) {
+                          setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+                        }
+                      }}
+                      className="inline-flex rounded p-0.5 text-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+                      title={isPromptSaved ? 'Prompt saved' : 'Save prompt'}
+                      aria-label="Save prompt"
+                      aria-pressed={isPromptSaved}
+                    >
+                      <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} />
+                    </button>
+                  }
+                />
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />
                 
                 {/* Shadow Resources List */}

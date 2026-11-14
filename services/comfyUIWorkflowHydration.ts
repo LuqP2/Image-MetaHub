@@ -15,3 +15,20 @@ export async function hydrateImageForEmbeddedComfyWorkflow(
 
   return hydrateImageRawMetadata(image, directoryPath);
 }
+
+// The workspace needs the saved UI graph, including node placement, when it exists.
+export async function getOriginalComfyUIWorkflowJson(
+  image: IndexedImage,
+  directoryPath?: string,
+): Promise<string> {
+  let { workflow, prompt } = extractEmbeddedComfyWorkflow(image);
+  if (!Array.isArray(workflow?.nodes) && hasCompactedRuntimeMetadata(image)) {
+    const hydrated = await hydrateImageRawMetadata(image, directoryPath);
+    const embedded = extractEmbeddedComfyWorkflow(hydrated);
+    workflow = embedded.workflow;
+    prompt = embedded.prompt ?? prompt;
+  }
+  if (Array.isArray(workflow?.nodes)) return JSON.stringify(workflow);
+  if (prompt) return JSON.stringify({ prompt });
+  throw new Error('This image has no original ComfyUI workflow.');
+}

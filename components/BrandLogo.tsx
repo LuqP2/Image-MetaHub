@@ -8,7 +8,7 @@ const BrandLogo: React.FC<BrandLogoProps> = ({ variant }) => {
   const isHeader = variant === 'header';
   const lightSource = 'logo-navy-transparent.png';
   const darkSource = 'logo-white-transparent.png';
-  const sizeClassName = isHeader ? 'h-10 w-10' : 'h-64 w-64';
+  const sizeClassName = isHeader ? 'h-8 w-8' : 'h-64 w-64';
   const alt = isHeader ? '' : 'Image MetaHub';
 
   return (

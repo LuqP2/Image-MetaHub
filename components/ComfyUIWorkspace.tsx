@@ -40,6 +40,7 @@ import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { copyTextToClipboard } from '../utils/imageUtils';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { getOriginalComfyUIWorkflowJson } from '../services/comfyUIWorkflowHydration';
 import { formatImageForComfyUI } from '../utils/comfyUIFormatter';
 import { FileOperations } from '../services/fileOperations';
 import { useImageStore } from '../store/useImageStore';
@@ -646,7 +647,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
       try {
         const bounds = browserHostRef.current ? getBounds(browserHostRef.current) : undefined;
-        const workflowJson = formatImageForComfyUI(workflowImage);
+        const workflowJson = await getOriginalComfyUIWorkflowJson(
+          workflowImage,
+          directoryPathByImageId[workflowImage.id] ?? (workflowImage.id === image?.id ? directoryPath : undefined),
+        );
         const result = await window.electronAPI.comfyUIViewLoadWorkflow({
           url: targetUrl,
           bounds,
@@ -679,6 +683,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
     void loadWorkflow();
   }, [
+    directoryPath,
+    directoryPathByImageId,
     image,
     isElectron,
     normalizedNavigationImages,
@@ -1017,7 +1023,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
     try {
       const bounds = browserHostRef.current ? getBounds(browserHostRef.current) : undefined;
-      const workflowJson = formatImageForComfyUI(contextImage);
+      const workflowJson = await getOriginalComfyUIWorkflowJson(
+        contextImage,
+        directoryPathByImageId[contextImage.id] ?? (contextImage.id === image?.id ? directoryPath : undefined),
+      );
       const result = await window.electronAPI.comfyUIViewLoadWorkflow({
         url: targetUrl,
         bounds,
@@ -1045,7 +1054,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     } catch (error) {
       setConnectionMessage(error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.');
     }
-  }, [inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl]);
+  }, [directoryPath, directoryPathByImageId, image?.id, inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl]);
 
   const exportAssetImage = useCallback((contextImage: IndexedImage) => {
     exportImages(getContextTargetImages(contextImage));

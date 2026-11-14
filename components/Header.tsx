@@ -352,7 +352,7 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-    <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
+    <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-3 py-1.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <div className="flex shrink-0 items-center gap-2 pr-2">
@@ -379,13 +379,13 @@ const Header: React.FC<HeaderProps> = ({
 
           {libraryView && onLibraryViewChange && (
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
-              <div className="app-top-segmented w-max">
-                {viewTabs.map((tab, index) => {
+              <nav aria-label="Workspaces" className="flex w-max items-center gap-1">
+                {viewTabs.map((tab) => {
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
-                    <React.Fragment key={tab.id}>
-                    {index > 0 && <span aria-hidden="true" className="select-none px-0.5 text-xs text-gray-600">|</span>}
                     <button
+                      key={tab.id}
+                      aria-current={libraryView === tab.id ? 'page' : undefined}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -420,7 +420,7 @@ const Header: React.FC<HeaderProps> = ({
                         onOpenDroppedImageInComfyUI?.(imageId);
                         clearInternalImageDragData();
                       } : undefined}
-                      className={`app-top-segment whitespace-nowrap ${
+                      className={`app-top-segment !h-8 !px-2.5 whitespace-nowrap ${
                         libraryView === tab.id ? 'app-top-segment-active' : ''
                       } ${
                         isComfyUITab && isComfyUIDragTarget
@@ -439,14 +439,13 @@ const Header: React.FC<HeaderProps> = ({
                         />
                       )}
                     </button>
-                    </React.Fragment>
                   );
                 })}
                 {classicTabs.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={tab.run}
-                    className="app-top-segment whitespace-nowrap"
+                    className="app-top-segment !h-8 !px-2.5 whitespace-nowrap"
                     title={`${tab.label} (opens Explore)`}
                   >
                     <span>{tab.label}</span>
@@ -457,7 +456,7 @@ const Header: React.FC<HeaderProps> = ({
                     ) : null}
                   </button>
                 ))}
-              </div>
+              </nav>
             </div>
           )}
 
@@ -496,7 +495,7 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          <div className="app-top-segmented">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setEnableSafeMode(!enableSafeMode)}
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent ${enableSafeMode ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : 'text-gray-500 hover:text-gray-200'}`}

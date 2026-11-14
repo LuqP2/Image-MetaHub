@@ -54,6 +54,30 @@ describe('Auto-Tag regeneration', () => {
     vi.unstubAllGlobals();
   });
 
+  it('clears one image and removes a specific auto-tag across the library without deleting manual tags', () => {
+    useImageStore.setState({
+      images: [
+        image('one', ['rejected', 'one-only']),
+        { ...image('two', ['rejected', 'two-only']), tags: ['rejected'] },
+        image('three', ['rejected']),
+      ],
+      selectedAutoTags: ['rejected'],
+    });
+
+    useImageStore.getState().removeAutoTagFromImage('one');
+    expect(useImageStore.getState().images.map(item => item.autoTags)).toEqual([
+      [], ['rejected', 'two-only'], ['rejected'],
+    ]);
+
+    useImageStore.getState().removeAutoTags('rejected');
+    expect(useImageStore.getState().images.map(item => item.autoTags)).toEqual([[], ['two-only'], []]);
+    expect(useImageStore.getState().images[1].tags).toEqual(['rejected']);
+    expect(useImageStore.getState().selectedAutoTags).toEqual([]);
+
+    useImageStore.getState().removeAutoTags();
+    expect(useImageStore.getState().availableAutoTags).toEqual([]);
+  });
+
   it('generates tags for one image without changing the other image or saving a partial library cache', async () => {
     vi.stubGlobal('Worker', MockAutoTagWorker);
     vi.mocked(saveAutoTagCache).mockClear();

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ComfyUIWorkspace from '../components/ComfyUIWorkspace';
 import type { IndexedImage } from '../types';
+import * as fileIndexer from '../services/fileIndexer';
 import { useImageStore } from '../store/useImageStore';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 const promptMocks = vi.hoisted(() => ({ save: vi.fn() }));
@@ -121,6 +122,36 @@ describe('ComfyUIWorkspace image viewer entry point', () => {
     });
     vi.restoreAllMocks();
     delete window.electronAPI;
+  });
+
+  it('loads the original UI workflow from the source of a compacted image', async () => {
+    const image = createImage('compacted');
+    image.metadata = { ...image.metadata, _rawMetadataCompacted: true };
+    const originalWorkflow = { nodes: [{ id: 8, type: 'CustomNode', pos: [300, 20] }], links: [] };
+    const reparse = vi.spyOn(fileIndexer, 'reparseIndexedImage').mockResolvedValue({
+      ...image,
+      metadata: { ...image.metadata, workflow: JSON.stringify(originalWorkflow) },
+    });
+    const loadWorkflow = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI.comfyUIViewLoadWorkflow = loadWorkflow;
+
+    render(<ComfyUIWorkspace
+      image={image}
+      navigationImages={[image]}
+      currentIndex={0}
+      directoryPath="C:/synthetic"
+      isActive={false}
+      workflowLoadRequest={{ id: 1, imageId: image.id, title: image.name, preferNewTab: true }}
+      onOpenQueue={vi.fn()}
+      onOpenSettings={vi.fn()}
+    />);
+
+    await waitFor(() => expect(loadWorkflow).toHaveBeenCalledWith(expect.objectContaining({
+      workflow: JSON.stringify(originalWorkflow),
+      title: image.name,
+      preferNewTab: true,
+    })));
+    expect(reparse).toHaveBeenCalledWith(image, 'C:/synthetic', { compactRawMetadata: false });
   });
 
   it('inspects on single click and opens the full image viewer on double click or Enter', () => {

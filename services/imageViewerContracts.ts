@@ -132,7 +132,7 @@ export type ImageViewerCommand =
   | { type: 'set-rating'; imageId: string; rating: ImageRating | null }
   | { type: 'add-tag'; imageId: string; tag: string }
   | { type: 'remove-tag'; imageId: string; tag: string }
-  | { type: 'remove-auto-tag'; imageId: string; tag: string }
+  | { type: 'remove-auto-tag'; imageId: string; tag?: string }
   | { type: 'set-search'; query: string }
   | { type: 'generate'; request: ImageViewerGenerateRequest }
   | { type: 'image-saved'; request: ImageViewerSaveRequest }

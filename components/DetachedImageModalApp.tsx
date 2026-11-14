@@ -258,6 +258,7 @@ const DetachedImageModalApp: React.FC = () => {
         };
       }}
       onRequestReparse={(imageId) => sendCommand({ type: 'reparse-image', imageId })}
+      onRemoveAutoTags={(imageId, tag) => sendCommand({ type: 'remove-auto-tag', imageId, tag })}
       onRequestAutoTag={(imageId) => sendCommand({ type: 'auto-tag-image', imageId })}
       onRequestGenerate={(request) => sendCommand({ type: 'generate', request })}
       onRequestBatchExport={(imageId) => sendCommand({ type: 'open-batch-export', imageId })}
