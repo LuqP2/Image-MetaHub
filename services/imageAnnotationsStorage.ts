@@ -3,9 +3,7 @@
 import type { ClusterPreference, ImageAnnotations, IndexedImage, ShadowMetadata, SmartCollection, TagInfo, UserDataSemanticPatch } from '../types';
 import { commitLegacyUserDataPatch, type LegacyUserDataDomain } from './legacyUserDataMigrationSource';
 import {
-  getIndexedDbErrorName,
   openPreferencesDatabase,
-  resetPreferencesDatabase,
   PREFERENCES_STORE_NAMES,
 } from './preferencesDb';
 
@@ -36,7 +34,6 @@ export async function patchLegacyUserData(domain: LegacyUserDataDomain, imageId:
 }
 const inMemoryManualTags: Set<string> = new Set();
 let isPersistenceDisabled = false;
-let hasResetAttempted = false;
 
 function disablePersistence(error?: unknown) {
   if (isPersistenceDisabled) {
@@ -118,18 +115,11 @@ export const resolveTagRuleMatchedImageIds = (
   );
 };
 
-async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
-  const db = await openPreferencesDatabase({
+async function openDatabase(): Promise<IDBDatabase | null> {
+  return openPreferencesDatabase({
     context: 'image annotations storage',
     disablePersistence,
-    allowReset,
   });
-
-  if (db) {
-    hasResetAttempted = false;
-  }
-
-  return db;
 }
 
 /**
@@ -178,24 +168,7 @@ export async function loadAllAnnotations(): Promise<Map<string, ImageAnnotations
       };
     });
   } catch (error) {
-    const errorName = getIndexedDbErrorName(error);
-
-    // If the object store doesn't exist, reset the database and retry once
-    if (errorName === 'NotFoundError' && !hasResetAttempted) {
-      console.warn('Image annotations store not found. Resetting database...', error);
-      try {
-        db.close();
-      } catch (closeError) {
-        console.warn('Failed to close database before reset', closeError);
-      }
-
-      hasResetAttempted = true;
-      const resetSuccessful = await resetPreferencesDatabase('image annotations storage', disablePersistence);
-      if (resetSuccessful) {
-        return loadAllAnnotations();
-      }
-    }
-
+    db.close();
     console.error('Failed to load image annotations from IndexedDB:', error);
     disablePersistence(error);
     return new Map(inMemoryAnnotations);

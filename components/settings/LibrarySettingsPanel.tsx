@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { DesktopRuntimeInfo } from '../../types';
+import { createAnnotationBackup } from '../../services/annotationBackup';
 import { useSemanticStore } from '../../store/useSemanticStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { clearLibraryCaches, LIBRARY_CACHE_REBUILD_KEY, resetAllCaches } from '../../utils/cacheReset';
@@ -58,6 +59,38 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const [runtimeInfo, setRuntimeInfo] = useState<DesktopRuntimeInfo | null>(null);
   const [cacheLocationError, setCacheLocationError] = useState<string | null>(null);
   const [cacheClearState, setCacheClearState] = useState<'idle' | 'clearing' | 'reloading'>('idle');
+
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [backupFeedback, setBackupFeedback] = useState<{ message: string; error: boolean } | null>(null);
+
+  const handleExportBackup = async () => {
+    const api = window.electronAPI;
+    if (!api?.showSaveDialog || !api?.writeFile) return;
+
+    setIsExportingBackup(true);
+    setBackupFeedback(null);
+    try {
+      const backup = await createAnnotationBackup();
+      const result = await api.showSaveDialog({
+        title: 'Export tags and favorites',
+        defaultPath: `Image-MetaHub-annotations-${backup.exportedAt.slice(0, 10)}.json`,
+        filters: [{ name: 'JSON backup', extensions: ['json'] }],
+      });
+      if (result.canceled) return;
+      if (!result.success || !result.path) throw new Error(result.error || 'Could not select a backup file.');
+
+      const written = await api.writeFile(result.path, JSON.stringify(backup, null, 2));
+      if (!written.success) throw new Error(written.error || 'Could not write the backup file.');
+      setBackupFeedback({ message: 'Backup saved.', error: false });
+    } catch (error) {
+      setBackupFeedback({
+        message: `Backup failed. ${error instanceof Error ? error.message : String(error)}`,
+        error: true,
+      });
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
 
   const hardwareConcurrency =
     typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
@@ -243,6 +276,30 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           <p className="text-sm text-gray-500">Detected {hardwareConcurrency} logical cores.</p>
         ) : null}
       </SettingsSectionCard>
+
+      {window.electronAPI?.showSaveDialog && window.electronAPI?.writeFile && (
+        <SettingsSectionCard title="Backup">
+          <SettingRow
+            label="Tags and favorites"
+            description="Save a JSON backup of your tag names, image tags and favorites. The backup includes image identifiers, which may contain local paths."
+            control={
+              <button
+                type="button"
+                disabled={isExportingBackup}
+                onClick={handleExportBackup}
+                className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+              >
+                {isExportingBackup ? 'Exporting…' : 'Export backup'}
+              </button>
+            }
+          />
+          {backupFeedback && (
+            <p role={backupFeedback.error ? 'alert' : 'status'} className={backupFeedback.error ? 'text-sm text-red-400' : 'text-sm text-gray-300'}>
+              {backupFeedback.message}
+            </p>
+          )}
+        </SettingsSectionCard>
+      )}
 
       <SettingsSectionCard title={isPortable ? 'Portable storage' : 'Cache location'}>
         <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">

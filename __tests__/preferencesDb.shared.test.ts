@@ -288,7 +288,7 @@ describe('shared preferences IndexedDB', () => {
       request.onerror = () => reject(request.error);
     });
     const { openPreferencesDatabase, PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
-    const db = await openPreferencesDatabase({ context: 'synthetic migration', disablePersistence: () => {}, allowReset: false });
+    const db = await openPreferencesDatabase({ context: 'synthetic migration', disablePersistence: () => {} });
     expect(PREFERENCES_DB_VERSION).toBe(13); expect(db?.version).toBe(13);
     expect(db?.objectStoreNames.contains(PREFERENCES_STORE_NAMES.huggingFaceWatches)).toBe(true); db?.close();
     const { loadWatchPreferences } = await import('../services/modelLibrary/watchStorage');
@@ -311,7 +311,7 @@ describe('shared preferences IndexedDB', () => {
     const binding = { repoId: 'synthetic/repo', filePath: 'one.safetensors', linkedRevision: 'main', linkedRemoteFingerprint: 'git:oid:a', verification: 'manual' as const, resolvedCommit: 'b'.repeat(40), size: 100, fetchedAt: 1 };
     const first = { ...emptyHuggingFaceWatch(binding), ignoredEventIds: ['keep'] };
     const second = emptyHuggingFaceWatch({ ...binding, filePath: 'two.safetensors' });
-    const db = (await openPreferencesDatabase({ context: 'synthetic legacy HF', disablePersistence: () => {}, allowReset: false }))!;
+    const db = (await openPreferencesDatabase({ context: 'synthetic legacy HF', disablePersistence: () => {} }))!;
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(PREFERENCES_STORE_NAMES.huggingFaceWatches, 'readwrite');
       const store = tx.objectStore(PREFERENCES_STORE_NAMES.huggingFaceWatches);
@@ -479,55 +479,79 @@ describe('shared preferences IndexedDB', () => {
     expect(manualTags).toEqual(['seed-me']);
   });
 
-  it('resets and reopens the shared preferences database on VersionError', async () => {
-    const indexedDb = globalThis.indexedDB as IDBFactory;
-
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDb.open('image-metahub-preferences', 7);
-
+  it('preserves preferences when an older build attempts to open a newer database', async () => {
+    const { PREFERENCES_DB_NAME, PREFERENCES_DB_VERSION, openPreferencesDatabase } =
+      await import('../services/preferencesDb');
+    const indexedDb = globalThis.indexedDB;
+    const deleteDatabase = vi.spyOn(indexedDb, 'deleteDatabase');
+    const newerVersion = PREFERENCES_DB_VERSION + 1;
+    const annotation = { imageId: 'synthetic-image', isFavorite: true, tags: ['synthetic-tag'] };
+    const openNewerDatabase = () => new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDb.open(PREFERENCES_DB_NAME, newerVersion);
       request.onupgradeneeded = () => {
-        const db = request.result;
-        db.createObjectStore('folderSelection', { keyPath: 'id' });
-        db.createObjectStore('imageAnnotations', { keyPath: 'imageId' });
-        db.createObjectStore('clusterPreferences', { keyPath: 'clusterId' });
-        db.createObjectStore('smartCollections', { keyPath: 'id' });
-        db.createObjectStore('shadowMetadata', { keyPath: 'imageId' });
-        db.createObjectStore('manualTags', { keyPath: 'name' });
+        const store = request.result.createObjectStore('imageAnnotations', { keyPath: 'imageId' });
+        store.put(annotation);
       };
-
-      request.onsuccess = () => {
-        request.result.close();
-        resolve();
-      };
+      request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    (await openNewerDatabase()).close();
 
-    const folderStorage = await import('../services/folderSelectionStorage');
-    const imageStorage = await import('../services/imageAnnotationsStorage');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const disablePersistence = vi.fn();
+    try {
+      await expect(openPreferencesDatabase({ context: 'older build', disablePersistence })).resolves.toBeNull();
+      expect(disablePersistence).toHaveBeenCalledWith(expect.objectContaining({ name: 'VersionError' }));
+      expect(deleteDatabase).not.toHaveBeenCalled();
 
-    await folderStorage.saveSelectedFolders(['D:/recovered']);
-    await imageStorage.saveAnnotation({
-      imageId: 'recovered-image',
+      const db = await openNewerDatabase();
+      try {
+        const saved = await new Promise((resolve, reject) => {
+          const request = db.transaction('imageAnnotations').objectStore('imageAnnotations').get(annotation.imageId);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        expect(saved).toEqual(annotation);
+      } finally {
+        db.close();
+      }
+    } finally {
+      deleteDatabase.mockRestore();
+      consoleError.mockRestore();
+      consoleWarn.mockRestore();
+    }
+  });
+
+  it('exports persisted favorites, image tags and unused manual tags', async () => {
+    const { saveAnnotation, ensureManualTagExists } = await import('../services/imageAnnotationsStorage');
+    const { createAnnotationBackup } = await import('../services/annotationBackup');
+    await saveAnnotation({
+      imageId: 'synthetic-favorite',
       isFavorite: true,
-      tags: ['recovered'],
+      tags: [],
       addedAt: 1,
       updatedAt: 1,
     });
-
-    await expect(folderStorage.loadSelectedFolders()).resolves.toEqual(['D:/recovered']);
-    const annotations = await imageStorage.loadAllAnnotations();
-    expect(annotations.get('recovered-image')).toMatchObject({
-      isFavorite: true,
-      tags: ['recovered'],
+    await saveAnnotation({
+      imageId: 'synthetic-tagged',
+      isFavorite: false,
+      tags: ['assigned'],
+      addedAt: 1,
+      updatedAt: 1,
     });
+    await ensureManualTagExists('unused');
 
-    expect(consoleErrorSpy.mock.calls.flat().map(String).join(' ')).not.toContain('Disabling persistence');
-
-    consoleErrorSpy.mockRestore();
-    consoleWarnSpy.mockRestore();
+    await expect(createAnnotationBackup()).resolves.toMatchObject({
+      format: 'image-metahub-annotations',
+      version: 1,
+      manualTags: ['unused'],
+      annotations: [
+        { imageId: 'synthetic-favorite', isFavorite: true, tags: [] },
+        { imageId: 'synthetic-tagged', isFavorite: false, tags: ['assigned'] },
+      ],
+    });
   });
 
   it('keeps excluded folders in memory when opening the shared preferences DB fails', async () => {

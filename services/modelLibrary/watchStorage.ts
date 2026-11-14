@@ -2,7 +2,7 @@ import { openPreferencesDatabase, PREFERENCES_STORE_NAMES } from '../preferences
 import type { ModelWatchRecord } from './types';
 
 async function database() {
-  const db = await openPreferencesDatabase({ context: 'model watch preferences', disablePersistence: () => {}, allowReset: false });
+  const db = await openPreferencesDatabase({ context: 'model watch preferences', disablePersistence: () => {} });
   if (!db) throw new Error('Model preferences could not be saved.');
   return db;
 }
