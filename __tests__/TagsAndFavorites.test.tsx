@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import TagsAndFavorites from '../components/TagsAndFavorites';
 import { useImageStore } from '../store/useImageStore';
 
@@ -97,6 +97,37 @@ describe('TagsAndFavorites manual tag browser', () => {
     expect(screen.getByText('0')).toBeTruthy();
   });
 
+  it('updates usage counts and hides a tag when its last image is removed', () => {
+    seedSidebarState({
+      availableTags: [{ name: 'rejected', count: 20 }, { name: 'unused', count: 0 }],
+      images: [{ id: 'remaining-image', tags: ['rejected'] }],
+    });
+
+    render(<TagsAndFavorites />);
+    expect(screen.getByText('rejected').parentElement?.textContent).toBe('rejected1');
+    act(() => useImageStore.setState({ images: [] }));
+    expect(screen.queryByText('rejected')).toBeNull();
+    expect(screen.getByText('unused')).toBeTruthy();
+  });
+
+  it('opens the auto-tag menu below the cursor and deletes only the chosen auto-tag', () => {
+    const removeAutoTags = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    seedSidebarState({
+      availableAutoTags: [{ name: 'generated', count: 2 }],
+      removeAutoTags,
+    });
+
+    render(<TagsAndFavorites />);
+    fireEvent.contextMenu(screen.getByText('generated'), { clientX: 100, clientY: 120 });
+    const remove = screen.getByRole('button', { name: 'Delete from All Images' });
+    expect(remove.closest('div.fixed')?.getAttribute('style')).toContain('top: 128px');
+    expect(screen.getByRole('button', { name: 'Rename Tag' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Include' })).toBeTruthy();
+    fireEvent.click(remove);
+    expect(removeAutoTags).toHaveBeenCalledWith('generated');
+  });
+
   it('hides filter and image-removal actions for empty tags', () => {
     seedSidebarState({
       availableTags: [{ name: 'ghost-tag', count: 0 }],
@@ -115,6 +146,7 @@ describe('TagsAndFavorites manual tag browser', () => {
   it('uses the context menu to set an include filter', () => {
     const { setSelectedTags, setExcludedTags } = seedSidebarState({
       availableTags: [{ name: 'ghost-tag', count: 2 }],
+      images: [{ id: 'img-1', tags: ['ghost-tag'] }],
     });
 
     render(<TagsAndFavorites />);
@@ -128,6 +160,7 @@ describe('TagsAndFavorites manual tag browser', () => {
   it('toggles tag match mode from any to all', () => {
     const { setSelectedTagsMatchMode } = seedSidebarState({
       availableTags: [{ name: 'ghost-tag', count: 2 }],
+      images: [{ id: 'img-1', tags: ['ghost-tag'] }],
       selectedTagsMatchMode: 'any',
     });
 
@@ -209,6 +242,7 @@ describe('TagsAndFavorites manual tag browser', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deleteTag, purgeTag } = seedSidebarState({
       availableTags: [{ name: 'used-tag', count: 3 }],
+      images: [{ id: 'img-1', tags: ['used-tag'] }],
     });
 
     render(<TagsAndFavorites />);

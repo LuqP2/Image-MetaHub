@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import type { IndexedImage, ShadowMetadata } from '../types';
-import { buildSavedPromptSource, composeSavedPromptInput, useIsPromptSaved } from '../hooks/useSavePrompt';
+import { buildSavedPromptSource, composeSavedPromptInput, useIsPromptSaved, usePromptBookmark } from '../hooks/useSavePrompt';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 
 const image = (overrides: Partial<IndexedImage> = {}): IndexedImage => ({
@@ -81,6 +81,32 @@ describe('saved prompt composition', () => {
         directoryPath: 'D:\\Library', relativePath: 'nested/image.png', fileSize: 8, contentModifiedMs: 9,
       },
     });
+  });
+
+  it('saves on the first bookmark click and removes the matching prompt on the second', async () => {
+    const target = image();
+    const prompt = {
+      ...composeSavedPromptInput(target, null),
+      id: 'saved-bookmark',
+      createdAt: 1,
+    };
+    const other = { ...prompt, id: 'other', negativePrompt: 'different negative' };
+    const save = vi.fn().mockResolvedValue({ status: 'saved', prompt });
+    const remove = vi.fn().mockResolvedValue({ id: prompt.id, removed: true });
+    window.electronAPI = {
+      savedPromptsSave: async (...args: unknown[]) => ({ success: true, data: await save(...args) }),
+      savedPromptsRemove: async (...args: unknown[]) => ({ success: true, data: await remove(...args) }),
+    } as never;
+    useSavedPromptStore.setState({ prompts: [other] });
+    const { result } = renderHook(() => usePromptBookmark(prompt.positivePrompt, prompt.negativePrompt));
+
+    expect(result.current.isPromptSaved).toBe(false);
+    await act(async () => { await result.current.togglePromptBookmark(target, {}); });
+    expect(result.current.isPromptSaved).toBe(true);
+    await act(async () => { await result.current.togglePromptBookmark(target, {}); });
+    expect(remove).toHaveBeenCalledWith(prompt.id);
+    expect(result.current.isPromptSaved).toBe(false);
+    expect(useSavedPromptStore.getState().prompts).toEqual([other]);
   });
 
   it('reports a saved state only for the exact positive and negative prompt pair', () => {

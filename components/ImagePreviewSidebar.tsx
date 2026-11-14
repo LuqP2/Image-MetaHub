@@ -38,7 +38,7 @@ import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorM
 import BatchExportModal from './BatchExportModal';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataHydrationOptions } from '../services/rawMetadataHydration';
 import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
-import { useIsPromptSaved, useSavePrompt } from '../hooks/useSavePrompt';
+import { usePromptBookmark } from '../hooks/useSavePrompt';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -98,7 +98,7 @@ const formatDurationSeconds = (seconds: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void | Promise<void | boolean> }> = ({ label, value, isPrompt = false, onCopy }) => {
+const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; labelAction?: React.ReactNode; onCopy?: (value: string) => void | Promise<void | boolean> }> = ({ label, value, isPrompt = false, labelAction, onCopy }) => {
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -120,7 +120,10 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   return (
     <div className="relative rounded-md border border-gray-700/50 bg-gray-900/50 p-3 transition-colors hover:bg-gray-800/80 group">
       <div className="flex justify-between items-start">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+          {labelAction}
+        </div>
         {onCopy && (
             <button
               onClick={handleCopy}
@@ -220,7 +223,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const activeImage = previewImageFromStore || previewImage;
   const { metadata: shadowMetadata, isLoading: isShadowLoading, error: shadowError, saveMetadata: saveShadowMetadata } = useShadowMetadata(activeImage);
-  const savePrompt = useSavePrompt();
   const blockExtraction = usePromptBlockExtraction();
   const selectedBlockTextRef = useRef<string | null>(null);
   const allImages = useImageStore((state) => state.images);
@@ -317,7 +319,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   // Calculate these BEFORE the early return to maintain hook order
   const nMeta: BaseMetadata | undefined = activeImage?.metadata?.normalizedMetadata;
   const effectiveMetadata = activeImage ? buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal) : undefined;
-  const isPromptSaved = useIsPromptSaved(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
+  const { isPromptSaved, isBookmarkPending, togglePromptBookmark } = usePromptBookmark(effectiveMetadata?.prompt, effectiveMetadata?.negativePrompt);
   const rawMetadataImage = hydratedRawMetadataImage?.id === activeImage?.id ? hydratedRawMetadataImage : activeImage;
   const ensureFullRawMetadata = useCallback(async (
     options: RawMetadataHydrationOptions = {},
@@ -735,7 +737,14 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
               {activeImage.autoTags && activeImage.autoTags.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                    <button type="button" className="text-xs text-gray-400 hover:text-red-400" onClick={() => {
+                      if (window.confirm('Delete all auto-tags from this image?')) removeAutoTagFromImage(activeImage.id);
+                    }}>
+                      Clear All
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
                     {activeImage.autoTags.map(tag => (
                       <div key={`auto-${tag}`} className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 rounded-full overflow-hidden">
@@ -821,31 +830,38 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 }}
               />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
-              <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
-              {effectiveMetadata?.prompt && (
-                <button
-                  type="button"
-                  disabled={isShadowLoading || Boolean(shadowError)}
-                  onClick={async () => {
-                    if (!activeImage) return;
-                    try {
-                      const result = await savePrompt(activeImage, {
-                        directoryPath: activeImageDirectoryPath,
-                        showOriginal,
-                        shadowMetadata,
-                        shadowReady: !isShadowLoading && !shadowError,
-                      });
-                      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
-                    } catch (cause) {
-                      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
-                    }
-                  }}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isPromptSaved ? 'border-accent bg-accent text-gray-950 hover:bg-accent/90' : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}
-                  aria-pressed={isPromptSaved}
-                >
-                  <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} /> {isPromptSaved ? 'Saved' : 'Save Prompt'}
-                </button>
-              )}
+              <MetadataItem
+                label="Prompt"
+                value={effectiveMetadata?.prompt}
+                isPrompt
+                onCopy={(v) => copyToClipboard(v, "Prompt")}
+                labelAction={
+                  <button
+                    type="button"
+                    disabled={isBookmarkPending || isShadowLoading || Boolean(shadowError)}
+                    onClick={async () => {
+                      if (!activeImage) return;
+                      try {
+                        const message = await togglePromptBookmark(activeImage, {
+                          directoryPath: activeImageDirectoryPath,
+                          showOriginal,
+                          shadowMetadata,
+                          shadowReady: !isShadowLoading && !shadowError,
+                        });
+                        if (message) setSuccess(message);
+                      } catch (cause) {
+                        setError(cause instanceof Error ? cause.message : 'Could not update prompt bookmark.');
+                      }
+                    }}
+                    className="inline-flex rounded p-0.5 text-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+                    title={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
+                    aria-label={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
+                    aria-pressed={isPromptSaved}
+                  >
+                    <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} />
+                  </button>
+                }
+              />
               <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
               <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={(v) => copyToClipboard(v, "Model")} />
               {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (

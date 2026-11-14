@@ -2,6 +2,7 @@ import LibraryRatingFilter from './LibraryRatingFilter';
 import LibraryFavoriteFilter from './LibraryFavoriteFilter';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
@@ -13,11 +14,13 @@ type TagContextMenuState = {
   x: number;
   y: number;
   tag: TagInfo;
+  automatic: boolean;
 };
 
 type RenameDialogState = {
   isOpen: boolean;
   sourceTag: string;
+  automatic?: boolean;
   value: string;
 };
 
@@ -26,7 +29,7 @@ const TagsAndFavorites: React.FC = () => {
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
   const selectedRatings = useImageStore((state) => state.selectedRatings);
   const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
-  const availableTags = useImageStore((state) => state.availableTags);
+  const catalogTags = useImageStore((state) => state.availableTags);
   const availableAutoTags = useImageStore((state) => state.availableAutoTags);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
@@ -39,6 +42,8 @@ const TagsAndFavorites: React.FC = () => {
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const renameTag = useImageStore((state) => state.renameTag);
+  const renameAutoTag = useImageStore((state) => state.renameAutoTag);
+  const removeAutoTags = useImageStore((state) => state.removeAutoTags);
   const clearTag = useImageStore((state) => state.clearTag);
   const deleteTag = useImageStore((state) => state.deleteTag);
   const purgeTag = useImageStore((state) => state.purgeTag);
@@ -58,7 +63,7 @@ const TagsAndFavorites: React.FC = () => {
     sourceTag: '',
     value: '',
   });
-  const [collectionSourceTag, setCollectionSourceTag] = useState<string | null>(null);
+  const [collectionSourceTag, setCollectionSourceTag] = useState<TagContextMenuState | null>(null);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -131,6 +136,18 @@ const TagsAndFavorites: React.FC = () => {
     return counts;
   }, [images, isIndexing]);
 
+  const availableTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const image of images) {
+      for (const tag of image.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    // Keep deliberately empty catalog tags. Counts for assigned tags come from the live library.
+    return catalogTags.flatMap(tag => {
+      const count = counts.get(tag.name);
+      return count ? [{ ...tag, count }] : tag.count === 0 ? [tag] : [];
+    });
+  }, [catalogTags, images]);
+
   // Filter tags by search query
   const filteredTags = tagSearchQuery
     ? availableTags.filter(tag =>
@@ -178,23 +195,7 @@ const TagsAndFavorites: React.FC = () => {
   };
 
   const handleAutoTagCycle = (tagName: string) => {
-    const currentMode = getAutoTagFilterMode(tagName);
-    const nextMode = getNextFilterMode(currentMode);
-
-    if (nextMode === 'include') {
-      setSelectedAutoTags([...selectedAutoTags.filter(t => t !== tagName), tagName]);
-      setExcludedAutoTags(excludedAutoTags.filter(t => t !== tagName));
-      return;
-    }
-
-    if (nextMode === 'exclude') {
-      setSelectedAutoTags(selectedAutoTags.filter(t => t !== tagName));
-      setExcludedAutoTags([...excludedAutoTags.filter(t => t !== tagName), tagName]);
-      return;
-    }
-
-    setSelectedAutoTags(selectedAutoTags.filter(t => t !== tagName));
-    setExcludedAutoTags(excludedAutoTags.filter(t => t !== tagName));
+    setTagFilterMode(tagName, getNextFilterMode(getAutoTagFilterMode(tagName)), true);
   };
 
   const clearSelectedTags = () => {
@@ -207,38 +208,33 @@ const TagsAndFavorites: React.FC = () => {
     setExcludedAutoTags([]);
   };
 
-  const setTagFilterMode = (tagName: string, mode: InclusionFilterMode) => {
-    if (mode === 'include') {
-      setSelectedTags([...selectedTags.filter(t => t !== tagName), tagName]);
-      setExcludedTags(excludedTags.filter(t => t !== tagName));
-      return;
-    }
-
-    if (mode === 'exclude') {
-      setSelectedTags(selectedTags.filter(t => t !== tagName));
-      setExcludedTags([...excludedTags.filter(t => t !== tagName), tagName]);
-      return;
-    }
-
-    setSelectedTags(selectedTags.filter(t => t !== tagName));
-    setExcludedTags(excludedTags.filter(t => t !== tagName));
+  const setTagFilterMode = (tagName: string, mode: InclusionFilterMode, automatic = false) => {
+    const included = (automatic ? selectedAutoTags : selectedTags).filter(tag => tag !== tagName);
+    const excluded = (automatic ? excludedAutoTags : excludedTags).filter(tag => tag !== tagName);
+    if (mode === 'include') included.push(tagName);
+    if (mode === 'exclude') excluded.push(tagName);
+    (automatic ? setSelectedAutoTags : setSelectedTags)(included);
+    (automatic ? setExcludedAutoTags : setExcludedTags)(excluded);
   };
 
-  const handleTagContextMenu = (event: React.MouseEvent, tag: TagInfo) => {
+  const handleTagContextMenu = (event: React.MouseEvent, tag: TagInfo, automatic = false) => {
     event.preventDefault();
     event.stopPropagation();
-
-    const menuWidth = 220;
-    const menuHeight = 260;
-    const maxX = Math.max(12, window.innerWidth - menuWidth - 12);
-    const maxY = Math.max(12, window.innerHeight - menuHeight - 12);
-
-    setContextMenu({
-      x: Math.min(event.clientX, maxX),
-      y: Math.min(event.clientY, maxY),
-      tag,
-    });
+    setContextMenu({ x: event.clientX, y: event.clientY, tag, automatic });
   };
+
+  React.useLayoutEffect(() => {
+    const menu = contextMenuRef.current;
+    if (!contextMenu || !menu) return;
+    const margin = 8;
+    const { width, height } = menu.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(contextMenu.x, window.innerWidth - width - margin));
+    const below = contextMenu.y + margin;
+    const top = below + height + margin <= window.innerHeight
+      ? below
+      : Math.max(margin, contextMenu.y - height - margin);
+    Object.assign(menu.style, { left: `${left}px`, top: `${top}px` });
+  }, [contextMenu]);
 
   const closeContextMenu = () => setContextMenu(null);
 
@@ -251,6 +247,7 @@ const TagsAndFavorites: React.FC = () => {
       isOpen: true,
       sourceTag: contextMenu.tag.name,
       value: contextMenu.tag.name,
+      automatic: contextMenu.automatic,
     });
     closeContextMenu();
   };
@@ -272,7 +269,8 @@ const TagsAndFavorites: React.FC = () => {
     }
 
     closeRenameDialog();
-    await renameTag(sourceTag, nextName);
+    if (renameDialog.automatic) renameAutoTag(sourceTag, nextName);
+    else await renameTag(sourceTag, nextName);
   };
 
   const handleTagAction = async (action: () => Promise<void>) => {
@@ -285,7 +283,7 @@ const TagsAndFavorites: React.FC = () => {
       return;
     }
 
-    setCollectionSourceTag(contextMenu.tag.name);
+    setCollectionSourceTag(contextMenu);
     closeContextMenu();
   };
 
@@ -294,8 +292,21 @@ const TagsAndFavorites: React.FC = () => {
       return;
     }
 
-    const normalizedTag = normalizeCollectionTagNames(collectionSourceTag).join(', ');
-    const normalizedTags = normalizeCollectionTagNames(collectionSourceTag);
+    if (collectionSourceTag.automatic) {
+      await createCollection({
+        kind: 'manual',
+        name: values.name,
+        description: values.description || undefined,
+        imageIds: images.filter(image => image.autoTags?.includes(collectionSourceTag.tag.name)).map(image => image.id),
+        sortIndex: collections.length,
+        coverImageId: null,
+        type: 'custom',
+      });
+      setCollectionSourceTag(null);
+      return;
+    }
+    const normalizedTag = normalizeCollectionTagNames(collectionSourceTag.tag.name).join(', ');
+    const normalizedTags = normalizeCollectionTagNames(collectionSourceTag.tag.name);
     const snapshotImageIds = values.autoUpdate
       ? []
       : images
@@ -368,6 +379,14 @@ const TagsAndFavorites: React.FC = () => {
       return;
     }
 
+    if (contextMenu.automatic) {
+      if (window.confirm(`Delete auto-tag "${contextMenu.tag.name}" from all images?`)) {
+        removeAutoTags(contextMenu.tag.name);
+        closeContextMenu();
+      }
+      return;
+    }
+
     const confirmed = window.confirm(
       `Purge tag "${contextMenu.tag.name}"?\n\nThis will remove it from all images and then delete the tag from the library. This cannot be undone.`,
     );
@@ -384,7 +403,9 @@ const TagsAndFavorites: React.FC = () => {
     totalFavoriteCount === 0 &&
     availableAutoTags.length === 0 &&
     totalRatedCount === 0 &&
-    selectedRatings.length === 0
+    selectedRatings.length === 0 &&
+    selectedTags.length === 0 &&
+    excludedTags.length === 0
   ) {
     return null;
   }
@@ -426,7 +447,7 @@ const TagsAndFavorites: React.FC = () => {
               )}
 
               {/* Tags Section */}
-              {availableTags.length > 0 && (
+              {(availableTags.length > 0 || selectedTags.length > 0 || excludedTags.length > 0) && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -535,6 +556,15 @@ const TagsAndFavorites: React.FC = () => {
                         </span>
                       )}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Delete all auto-tags from all images in the library?')) removeAutoTags();
+                      }}
+                      className="text-xs text-gray-400 hover:text-red-400"
+                    >
+                      Clear All
+                    </button>
                     {(selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
                       <button
                         onClick={clearSelectedAutoTags}
@@ -568,6 +598,7 @@ const TagsAndFavorites: React.FC = () => {
                       filteredAutoTags.slice(0, 50).map((tag) => (
                         <div
                           key={tag.name}
+                          onContextMenu={(event) => handleTagContextMenu(event, tag, true)}
                           className="flex items-center space-x-2 cursor-pointer group py-1 px-2 rounded hover:bg-gray-700/50"
                         >
                           <TriStateToggle
@@ -605,11 +636,10 @@ const TagsAndFavorites: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
-          className="fixed z-50 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-lg"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className="fixed z-[100] min-w-[220px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-lg"
           onClick={(event) => event.stopPropagation()}
         >
           {contextMenu.tag.count > 0 && (
@@ -618,7 +648,7 @@ const TagsAndFavorites: React.FC = () => {
                 type="button"
                 className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
                 onClick={() => {
-                  setTagFilterMode(contextMenu.tag.name, 'include');
+                  setTagFilterMode(contextMenu.tag.name, 'include', contextMenu.automatic);
                   closeContextMenu();
                 }}
               >
@@ -628,7 +658,7 @@ const TagsAndFavorites: React.FC = () => {
                 type="button"
                 className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
                 onClick={() => {
-                  setTagFilterMode(contextMenu.tag.name, 'exclude');
+                  setTagFilterMode(contextMenu.tag.name, 'exclude', contextMenu.automatic);
                   closeContextMenu();
                 }}
               >
@@ -638,7 +668,7 @@ const TagsAndFavorites: React.FC = () => {
                 type="button"
                 className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
                 onClick={() => {
-                  setTagFilterMode(contextMenu.tag.name, 'neutral');
+                  setTagFilterMode(contextMenu.tag.name, 'neutral', contextMenu.automatic);
                   closeContextMenu();
                 }}
               >
@@ -663,7 +693,7 @@ const TagsAndFavorites: React.FC = () => {
           >
             Create Collection
           </button>
-          {contextMenu.tag.count > 0 && (
+          {!contextMenu.automatic && contextMenu.tag.count > 0 && (
             <button
               type="button"
               className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
@@ -693,12 +723,13 @@ const TagsAndFavorites: React.FC = () => {
                 className="w-full px-4 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-900/30"
                 onClick={() => void handlePurgeFromMenu()}
               >
-                <span className="block">Clear and Delete</span>
-                <span className="block text-xs text-red-200/80">Removes the tag from images, then deletes the tag</span>
+                <span className="block">{contextMenu.automatic ? 'Delete from All Images' : 'Clear and Delete'}</span>
+                {!contextMenu.automatic && <span className="block text-xs text-red-200/80">Removes the tag from images, then deletes the tag</span>}
               </button>
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       <CollectionFormModal
@@ -706,17 +737,17 @@ const TagsAndFavorites: React.FC = () => {
         title="Create Collection"
         submitLabel="Create Collection"
         initialValues={{
-          name: collectionSourceTag ?? '',
+          name: collectionSourceTag?.tag.name ?? '',
           description: '',
-          sourceTag: collectionSourceTag ?? '',
+          sourceTag: collectionSourceTag?.tag.name ?? '',
           autoUpdate: true,
           includeTargetImages: false,
         }}
         onClose={() => setCollectionSourceTag(null)}
         onSubmit={handleCreateCollection}
-        showSourceTag
+        showSourceTag={!collectionSourceTag?.automatic}
         disableSourceTag
-        showAutoUpdate
+        showAutoUpdate={!collectionSourceTag?.automatic}
       />
 
       {renameDialog.isOpen && (

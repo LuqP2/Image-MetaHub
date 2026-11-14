@@ -857,7 +857,9 @@ interface ImageState {
   bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
   addTagToImage: (imageId: string, tag: string) => Promise<void>;
   removeTagFromImage: (imageId: string, tag: string) => Promise<void>;
-  removeAutoTagFromImage: (imageId: string, tag: string) => void;
+  removeAutoTagFromImage: (imageId: string, tag?: string) => void;
+  removeAutoTags: (tag?: string) => void;
+  renameAutoTag: (source: string, target: string) => void;
   bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
   bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
   renameTag: (sourceTag: string, targetTag: string) => Promise<void>;
@@ -2386,6 +2388,54 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
     };
 
+    const editAutoTags = (edit: (image: IndexedImage) => string[] | undefined) => {
+        const changedByDirectory = new Map<string, IndexedImage[]>();
+        set(state => {
+            let changed = false;
+            const images = state.images.map(image => {
+                const autoTags = edit(image);
+                if (!autoTags) return image;
+                changed = true;
+                const updated = { ...image, autoTags };
+                if (image.directoryId) {
+                    const batch = changedByDirectory.get(image.directoryId) ?? [];
+                    batch.push(updated);
+                    changedByDirectory.set(image.directoryId, batch);
+                }
+                return updated;
+            });
+            if (!changed) return state;
+            const available = new Set(images.flatMap(image => image.autoTags ?? []));
+            const nextState = {
+                ...state,
+                images,
+                selectedAutoTags: state.selectedAutoTags.filter(tag => available.has(tag)),
+                excludedAutoTags: state.excludedAutoTags.filter(tag => available.has(tag)),
+            };
+            return { ...nextState, ...filterAndSort(nextState) };
+        });
+        get().refreshAvailableAutoTags();
+        if (changedByDirectory.size === 0) return;
+
+        const { directories, scanSubfolders } = get();
+        void import('../services/cacheManager')
+            .then(({ default: cacheManager }) => Promise.all(directories.map(directory => {
+                const images = changedByDirectory.get(directory.id);
+                if (!directory.transient && images) {
+                    return cacheManager.patchCachedImages(directory.path, directory.name, images, scanSubfolders);
+                }
+            })))
+            .catch(error => {
+                console.warn('Failed to persist edited auto-tags:', error);
+                set({ error: 'Failed to save auto-tag changes.' });
+            });
+    };
+
+    const withoutAutoTag = (image: IndexedImage, tag?: string) => {
+        if (!image.autoTags?.length) return;
+        if (tag === undefined) return [];
+        if (image.autoTags.includes(tag)) return image.autoTags.filter(value => value !== tag);
+    };
 
     return {
         // Initial State
@@ -4285,37 +4335,19 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeAutoTagFromImage: (imageId, tag) => {
-            set(state => {
-                const updatedImages = state.images.map(img => {
-                    if (img.id === imageId && img.autoTags) {
-                        return {
-                            ...img,
-                            autoTags: img.autoTags.filter(t => t !== tag),
-                        };
-                    }
-                    return img;
-                });
+            editAutoTags(image => image.id === imageId ? withoutAutoTag(image, tag) : undefined);
+        },
 
-                const newState = {
-                    ...state,
-                    images: updatedImages,
-                };
+        removeAutoTags: (tag) => {
+            editAutoTags(image => withoutAutoTag(image, tag));
+        },
 
-                return { ...newState, ...filterAndSort(newState) };
-            });
-            const state = get();
-            const image = state.images.find(entry => entry.id === imageId);
-            const directory = state.directories.find(entry => entry.id === image?.directoryId);
-            if (image && directory && !directory.transient) {
-                void import('../services/cacheManager')
-                    .then(({ default: cacheManager }) => cacheManager.patchCachedImages(
-                        directory.path,
-                        directory.name,
-                        [image],
-                        state.scanSubfolders,
-                    ))
-                    .catch(error => console.warn('Failed to persist removed auto-tag:', error));
-            }
+        renameAutoTag: (source, target) => {
+            const name = normalizeTagName(target);
+            if (!name || name === source) return;
+            editAutoTags(image => image.autoTags?.includes(source)
+                ? [...new Set(image.autoTags.map(tag => tag === source ? name : tag))]
+                : undefined);
         },
 
         bulkAddTag: async (imageIds, tag) => {
