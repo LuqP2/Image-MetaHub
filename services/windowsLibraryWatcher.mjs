@@ -37,6 +37,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
   let inventory = new Map();
   const notifications = new Map();
   const writes = new Map();
+  const emittedSignatures = new Map();
   const links = new Map();
   let closed = false;
   let busy = true;
@@ -120,6 +121,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
     clearTimeout(writeTimer);
     notifications.clear();
     writes.clear();
+    emittedSignatures.clear();
     inventory.clear();
   }
   const watcher = Object.assign(events, { close });
@@ -260,6 +262,8 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         }
         if (now - pending.since >= (options.awaitWriteFinish?.stabilityThreshold ?? 2000)) {
           writes.delete(key);
+          if (pending.event === 'change' && emittedSignatures.get(key) === signature) continue;
+          emittedSignatures.set(key, signature);
           events.emit(pending.event, pending.target);
         }
       }
@@ -271,6 +275,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
 
   function remove(key, old) {
     writes.delete(key);
+    emittedSignatures.delete(key);
     links.get(key)?.handle.close();
     links.delete(key);
     events.emit(old.directory ? 'unlinkDir' : 'unlink', old.target);

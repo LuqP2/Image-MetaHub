@@ -107,7 +107,7 @@ import {
   normalizeFilesystemPath,
 } from './utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from './utils/directoryActivity';
-import { resolveMediaType, canEditRasterFile } from './utils/mediaTypes.js';
+import { canEditRasterFile } from './utils/mediaTypes.js';
 import { resolveNavigationAfterDeletion } from './utils/viewerNavigation';
 import { FileOperations } from './services/fileOperations';
 import { renameIndexedImage } from './services/imageRenameService';
@@ -198,21 +198,6 @@ interface PendingWatchedRemovalCacheDelta {
 }
 
 const getImageTimestamp = (image: IndexedImage): number => image.contentModifiedMs ?? image.lastModified ?? 0;
-
-const getDetectedMediaLabel = (
-  files: Array<{ name: string; type: string }>,
-): string => {
-  const mediaTypes = new Set(files.map((file) => resolveMediaType(file.name, file.type)));
-  const plural = files.length !== 1;
-
-  if (mediaTypes.size !== 1) return plural ? 'media files' : 'media file';
-  switch (mediaTypes.values().next().value) {
-    case 'model3d': return plural ? '3D models' : '3D model';
-    case 'video': return plural ? 'videos' : 'video';
-    case 'audio': return plural ? 'audio files' : 'audio file';
-    default: return plural ? 'images' : 'image';
-  }
-};
 
 const areStringArraysEqual = (left: string[] | null, right: string[]): boolean =>
   Array.isArray(left) &&
@@ -1478,11 +1463,6 @@ export default function App() {
       const directory = directories.find(d => d.id === directoryId);
 
       if (!directory || !files || files.length === 0) return;
-
-      // Show toast notification
-      setNewImagesToast({
-        message: `${files.length} new ${getDetectedMediaLabel(files)} detected in ${directory.name}`,
-      });
 
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
@@ -4469,6 +4449,17 @@ export default function App() {
                   : 'Reloading library…'}
             </div>
           )}
+          {safeDirectories.map(directory => {
+            const progress = directoryProgress[directory.id];
+            if (progress?.source !== 'watcher') return null;
+            return (
+              <div key={directory.id} role="status" className="shrink-0 border-b border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-300">
+                {progress.current >= progress.total
+                  ? `Saving index for ${directory.name}…`
+                  : `Indexing ${directory.name}… ${progress.current.toLocaleString()} / ${progress.total.toLocaleString()}`}
+              </div>
+            );
+          })}
           {error && (
             <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4 flex items-center justify-between">
               <span>{error}</span>

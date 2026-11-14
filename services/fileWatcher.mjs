@@ -191,6 +191,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       pendingMap.set(mediaPath, {
         forceReindex: Boolean(existing?.forceReindex || forceReindex),
         provenanceBytesChanged: Boolean(existing?.provenanceBytesChanged || provenanceBytesChanged),
+        sidecarChanged: Boolean(existing?.sidecarChanged || !provenanceBytesChanged),
         initialScan: (existing?.initialScan ?? true) && initialScan && provenanceBytesChanged,
       });
 
@@ -393,6 +394,7 @@ async function processBatch(directoryId, dirPath, mainWindow, watcher, observers
         type: path.extname(filePath).slice(1),
         forceReindex: pendingInfo.forceReindex === true,
         provenanceBytesChanged: pendingInfo.provenanceBytesChanged !== false,
+        sidecarChanged: pendingInfo.sidecarChanged === true,
           initialScan: pendingInfo.initialScan === true,
         relativePath: toRelativePath(dirPath, filePath),
       };

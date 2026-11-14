@@ -53,10 +53,19 @@ it('enumerates without file stats and reconciles notifications received during e
     expect(observed).toEqual([created]);
     expect(lstat.mock.calls.map(([file]) => file)).toEqual([created]);
     expect(stat.mock.calls.every(([file]) => file === created)).toBe(true);
+    const previousStatCount = stat.mock.calls.length;
+    notify('change', 'created.png');
+    await until(() => stat.mock.calls.length > previousStatCount);
+    await delay(60);
+    expect(observed).toEqual([created]);
+    await fs.promises.appendFile(created, 'changed');
+    notify('change', 'created.png');
+    await until(() => observed.length === 2);
+    expect(observed).toEqual([created, created]);
     notify('change', 'existing.png');
     watcher.close();
     await delay(100);
-    expect(observed).toEqual([created]);
+    expect(observed).toEqual([created, created]);
     expect(handle.close).toHaveBeenCalledOnce();
   } finally {
     watcher?.close();
