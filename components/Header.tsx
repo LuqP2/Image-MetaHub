@@ -352,10 +352,10 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-    <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-3 py-1.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
+    <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-3 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
       <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <div className="flex shrink-0 items-center gap-2 pr-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 py-1.5 pr-2">
             <BrandLogo variant="header" />
             <div className="hidden xl:flex flex-col">
               <span className="text-sm font-semibold text-gray-100">
@@ -378,7 +378,7 @@ const Header: React.FC<HeaderProps> = ({
           )}
 
           {libraryView && onLibraryViewChange && (
-            <div className="-my-1.5 min-w-0 max-w-full overflow-x-auto scrollbar-thin">
+            <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
               <nav aria-label="Workspaces" className="flex w-max items-center gap-1">
                 {viewTabs.map((tab) => {
                   const isComfyUITab = tab.id === 'comfyui';
@@ -462,7 +462,7 @@ const Header: React.FC<HeaderProps> = ({
 
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 py-1.5">
           {libraryView === 'comfyui' && <div ref={workspaceToolbarRef} className="flex items-center gap-1" />}
           <span className="app-top-divider" />
 
