@@ -222,11 +222,16 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
     }
   }
 
-  function stable(target, event) {
+  function stable(target, event, forceReindexUnchanged = false) {
     if (options.isRelevantFile && !options.isRelevantFile(target)) return;
     const key = keyFor(target);
     const previous = writes.get(key);
-    writes.set(key, { target, event: previous?.event === 'add' ? 'add' : event, since: Date.now() });
+    writes.set(key, {
+      target,
+      event: previous?.event === 'add' ? 'add' : event,
+      since: Date.now(),
+      forceReindexUnchanged: Boolean(previous?.forceReindexUnchanged || forceReindexUnchanged),
+    });
     scheduleWriteCheck();
   }
 
@@ -254,7 +259,7 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
           notify(path.dirname(pending.target), path.basename(pending.target));
           continue;
         }
-        const signature = [stats.size, stats.mtimeMs, stats.ctimeMs].join(':');
+        const signature = [stats.size, stats.mtimeMs, stats.ctimeMs, stats.dev, stats.ino].join(':');
         const now = Date.now();
         if (pending.signature !== signature) {
           pending.signature = signature;
@@ -262,9 +267,17 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         }
         if (now - pending.since >= (options.awaitWriteFinish?.stabilityThreshold ?? 2000)) {
           writes.delete(key);
-          if (pending.event === 'change' && emittedSignatures.get(key) === signature) continue;
+          const previousSignature = emittedSignatures.get(key);
+          if (pending.event === 'change' && previousSignature === signature) continue;
           emittedSignatures.set(key, signature);
-          events.emit(pending.event, pending.target);
+          // A changed inode/ctime can identify a new revision even when size and mtime match.
+          const sameSizeAndMtime = previousSignature?.split(':').slice(0, 2).join(':') ===
+            signature.split(':').slice(0, 2).join(':');
+          if (pending.event === 'change' && (pending.forceReindexUnchanged || sameSizeAndMtime)) {
+            events.emit(pending.event, pending.target, { forceReindexUnchanged: true });
+          } else {
+            events.emit(pending.event, pending.target);
+          }
         }
       }
     } finally {
@@ -292,7 +305,8 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
       inventory.set(key, { target, directory: false, link: info.isSymbolicLink(), actual: old?.actual });
       if (old && old.target !== target) remove(key, old);
       // A path seen by the initial enumeration may have been created after subscribe.
-      stable(target, (old && old.target === target) || duringStartup ? 'change' : 'add');
+      stable(target, (old && old.target === target) || duringStartup ? 'change' : 'add',
+        Boolean(old && event === 'rename'));
       return;
     }
     if (!kind && !old?.directory && key !== keyFor(root)) {
@@ -327,11 +341,14 @@ export function createWindowsLibraryWatcher(directoryPath, options, io = fs) {
         const previous = inventory.get(childKey);
         if (!previous) {
           stable(child.target, 'add');
-        } else if (event === 'unknown' ||
-            (previous.actual && child.actual && keyFor(previous.actual) !== keyFor(child.actual)) ||
-            (event === 'rename' && target !== root)) {
-          // A replacement directory can contain different files at the same paths.
-          stable(child.target, 'change');
+        } else {
+          const targetChanged = previous.actual && child.actual && keyFor(previous.actual) !== keyFor(child.actual);
+          const directoryReplaced = event === 'rename' && target !== root;
+          if (targetChanged) emittedSignatures.delete(childKey);
+          if (event === 'unknown' || targetChanged || directoryReplaced) {
+            // A replacement directory can contain different files at the same paths.
+            stable(child.target, 'change', Boolean(targetChanged || directoryReplaced));
+          }
         }
       }
       inventory.set(childKey, child);

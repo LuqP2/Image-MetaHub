@@ -283,6 +283,8 @@ export type WatchedFile = {
   initialScan?: boolean;
   provenanceBytesChanged?: boolean;
   sidecarChanged?: boolean;
+  /** Native watcher detected a replacement or a revision not reflected in size/mtime. */
+  forceReindexUnchanged?: boolean;
 };
 
 export type IndexedImageTransferMode = 'copy' | 'move';

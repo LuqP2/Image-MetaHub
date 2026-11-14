@@ -182,7 +182,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
     });
 
     let batchChain = Promise.resolve();
-    const enqueueMedia = (mediaPath, forceReindex = false, provenanceBytesChanged = true) => {
+    const enqueueMedia = (mediaPath, forceReindex = false, provenanceBytesChanged = true, forceReindexUnchanged = false) => {
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
       }
@@ -192,6 +192,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
         forceReindex: Boolean(existing?.forceReindex || forceReindex),
         provenanceBytesChanged: Boolean(existing?.provenanceBytesChanged || provenanceBytesChanged),
         sidecarChanged: Boolean(existing?.sidecarChanged || !provenanceBytesChanged),
+        forceReindexUnchanged: Boolean(existing?.forceReindexUnchanged || forceReindexUnchanged),
         initialScan: (existing?.initialScan ?? true) && initialScan && provenanceBytesChanged,
       });
 
@@ -227,7 +228,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
       enqueueMedia(filePath, false);
     });
 
-    watcher.on('change', (filePath) => {
+    watcher.on('change', (filePath, details) => {
       const ext = path.extname(filePath).toLowerCase();
 
       if (ext === '.json') {
@@ -239,7 +240,7 @@ export function startWatching(directoryId, dirPath, mainWindow, observers = {}) 
         return;
       }
 
-      enqueueMedia(filePath, true);
+      enqueueMedia(filePath, true, true, details?.forceReindexUnchanged === true);
     });
 
     const enqueueRemoval = (removedPath, kind) => {
@@ -395,6 +396,7 @@ async function processBatch(directoryId, dirPath, mainWindow, watcher, observers
         forceReindex: pendingInfo.forceReindex === true,
         provenanceBytesChanged: pendingInfo.provenanceBytesChanged !== false,
         sidecarChanged: pendingInfo.sidecarChanged === true,
+        forceReindexUnchanged: pendingInfo.forceReindexUnchanged === true,
           initialScan: pendingInfo.initialScan === true,
         relativePath: toRelativePath(dirPath, filePath),
       };

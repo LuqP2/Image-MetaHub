@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { createCacheDebugSnapshot, isCacheDebugEnabled, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { waitForDirectoryActivityToSettle } from '../utils/directoryActivity';
+import { enqueueWatchedFileJob, shouldIndexWatchedFile } from '../utils/watchedFileIndexing';
 import { inferMimeTypeFromName, isImageFileName } from '../utils/mediaTypes.js';
 import { normalizeBirthtimeMs } from '../utils/fileTimestamps.js';
 import { buildProvenanceIdentityLookupKey } from '../utils/provenancePath.mjs';
@@ -1920,13 +1921,7 @@ export function useImageLoader() {
                 `${directory.id}::${file.relativePath || file.normalizedName}`;
             const newFiles = normalizedFiles.filter(file => {
                 const imageId = getWatchedImageId(file);
-                const existing = existingImages.get(imageId);
-                if (!existing) return true;
-                if (file.forceReindex !== true) return false;
-                if (file.sidecarChanged || file.provenanceBytesChanged === false) return true;
-                return file.contentModifiedMs == null ||
-                    existing.contentModifiedMs !== file.contentModifiedMs ||
-                    existing.fileSize !== file.size;
+                return shouldIndexWatchedFile(existingImages.get(imageId), file);
             });
             const forceReindexExistingIds = new Set(
                 newFiles
@@ -2097,13 +2092,7 @@ export function useImageLoader() {
     }, [addImages, mergeImages, setDirectoryProgress]);
 
     const processNewWatchedFiles = useCallback((directory: Directory, files: WatchedFile[]) => {
-        const jobs = watchedFileJobsRef.current;
-        const previousJob = jobs.get(directory.id) ?? Promise.resolve();
-        const job = previousJob.then(() => indexWatchedFiles(directory, files)).finally(() => {
-            if (jobs.get(directory.id) === job) jobs.delete(directory.id);
-        });
-        jobs.set(directory.id, job);
-        return job;
+        return enqueueWatchedFileJob(watchedFileJobsRef.current, directory.id, () => indexWatchedFiles(directory, files));
     }, [indexWatchedFiles]);
 
     return {
