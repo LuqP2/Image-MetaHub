@@ -65,7 +65,7 @@ import {
   recordPerformanceCounter,
   recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
-import { clearInternalImageDragData, setInternalImageDragData } from '../utils/internalImageDrag';
+import { clearInternalImageDragData, setInternalImageDragData, setNativeGalleryDrag } from '../utils/internalImageDrag';
 import { isMacPlatform } from '../utils/platform';
 import { canNativeDragIndexedFile } from '../utils/model3DTransfer';
 import { useSavePrompt } from '../hooks/useSavePrompt';
@@ -389,18 +389,18 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     suppressNextClickRef.current = true;
     _activeExternalDragPayload = null;
     _nativeDragStarted = false;
+    const currentSelectedImages = useImageStore.getState().selectedImages;
+    const imageIds = currentSelectedImages.has(image.id) ? Array.from(currentSelectedImages) : [image.id];
 
     // Avoid starting a native drag while Chromium is already dragging (#651).
-    if (isWindows && canDragExternally && directoryPath && !e.shiftKey) {
+    if (isWindows && canDragExternally && directoryPath) {
       e.preventDefault();
       clearActiveDragImageIds();
-      clearInternalImageDragData();
-      window.electronAPI?.startFileDrag({ directoryPath, relativePath: relativeImagePath, imageId: image.id });
+      setNativeGalleryDrag(joinDisplayPath(directoryPath, relativeImagePath), image.id, imageIds);
+      window.electronAPI?.startFileDrag({ directoryPath, relativePath: relativeImagePath, source: 'gallery' });
       return;
     }
 
-    const currentSelectedImages = useImageStore.getState().selectedImages;
-    const imageIds = currentSelectedImages.has(image.id) ? Array.from(currentSelectedImages) : [image.id];
     _activeDragImageIds = imageIds;
     setInternalImageDragData(e.dataTransfer, image.id, imageIds);
     e.dataTransfer.effectAllowed = 'copyMove';
@@ -496,7 +496,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       <div
         ref={mergedRef}
         data-image-id={image.id}
-        title={isWindows && canDragExternally && directoryPath ? 'Drag file out of Image MetaHub. Hold Shift to drag within the app.' : undefined}
         className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer border border-gray-700/50 ${
           isSelected 
             ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 

@@ -7,7 +7,7 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { ImageStack, IndexedImage } from '../types';
 import { groupImages } from '../utils/imageGrouping';
-import { clearInternalImageDragData, INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
+import { clearInternalImageDragData, getInternalImageDragId, getInternalImageDragIds } from '../utils/internalImageDrag';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
 const featureAccessMock = vi.hoisted(() => ({ canUseBulkTagging: true, showProModal: vi.fn() }));
@@ -252,10 +252,11 @@ describe('ImageGrid Windows drag', () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([false, true])('chooses one drag type at dragstart (Shift: %s)', (shiftKey) => {
+  it('starts one native file drag and preserves the selection for matching in-app drops', () => {
     vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
     const startFileDrag = vi.fn();
-    vi.stubGlobal('electronAPI', { startFileDrag });
+    const getPathForFile = vi.fn();
+    vi.stubGlobal('electronAPI', { startFileDrag, getPathForFile });
     const image = createImage({ id: 'dir-1::nested/image.png' });
     const otherImage = createImage({ id: 'dir-1::second.png', name: 'second.png' });
     setupImageGridState([image, otherImage]);
@@ -263,25 +264,27 @@ describe('ImageGrid Windows drag', () => {
     const { container } = render(<Harness images={[image, otherImage]} />);
     const card = container.querySelector('[data-image-id="dir-1::nested/image.png"]')!;
     const dataTransfer = { setData: vi.fn() };
-    const dragStart = new MouseEvent('dragstart', { bubbles: true, cancelable: true, shiftKey });
+    const dragStart = new MouseEvent('dragstart', { bubbles: true, cancelable: true });
     Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer });
 
     fireEvent(card, dragStart);
     fireEvent(card, new MouseEvent('drag', { bubbles: true, clientX: 0, clientY: 0 }));
 
-    expect(dragStart.defaultPrevented).toBe(!shiftKey);
-    if (shiftKey) {
-      expect(startFileDrag).not.toHaveBeenCalled();
-      expect(dataTransfer.setData).toHaveBeenCalledWith(INTERNAL_IMAGE_DRAG_TYPE, JSON.stringify({
-        imageIds: [image.id, otherImage.id],
-        primaryImageId: image.id,
-      }));
-    } else {
-      expect(dataTransfer.setData).not.toHaveBeenCalled();
-      expect(startFileDrag).toHaveBeenCalledExactlyOnceWith({
-        directoryPath: 'D:/library', relativePath: 'nested/image.png', imageId: image.id,
-      });
-    }
+    expect(dragStart.defaultPrevented).toBe(true);
+    expect(dataTransfer.setData).not.toHaveBeenCalled();
+    expect(startFileDrag).toHaveBeenCalledExactlyOnceWith({
+      directoryPath: 'D:/library', relativePath: 'nested/image.png', source: 'gallery',
+    });
+
+    const drop = { types: ['Files'], files: [new File([], 'image.png')], getData: () => '' } as unknown as DataTransfer;
+    getPathForFile.mockReturnValue('D:/other/nested/image.png');
+    expect(getInternalImageDragIds(drop)).toEqual([]);
+    expect(getInternalImageDragId(drop)).toBeNull();
+    getPathForFile.mockReturnValue('d:/Library/nested/image.png');
+    expect(getInternalImageDragIds(drop)).toEqual([image.id, otherImage.id]);
+    expect(getInternalImageDragId(drop)).toBe(image.id);
+    fireEvent.pointerDown(window);
+    expect(getInternalImageDragIds(drop)).toEqual([]);
   });
 });
 

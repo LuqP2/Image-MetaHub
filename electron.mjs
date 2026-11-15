@@ -6735,7 +6735,7 @@ function setupFileOperationHandlers() {
         ? fileIcon
         : nativeImage.createFromPath(getIconPath());
 
-      if (mainWindow && !mainWindow.isDestroyed()) {
+      if (payload.source !== 'gallery' && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('native-file-drag-started', {
           directoryPath,
           relativePath,
