@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Linux Drag-and-Drop**: Fixed image thumbnails dragged from the Library into ComfyUI not being received on Linux, including Wayland environments. Native file dragging now starts immediately, using the same approach as the image viewer and Windows implementation. Internal drag-and-drop and multi-selection are preserved.
 - **Image-to-Image Lineage**: Fixed missing source image thumbnails in the image viewer, including detached viewer windows. Source images can now be opened directly from lineage cards, even when they are outside the currently active Library filter.
 - **ComfyUI Workflow Clipboard**: Fixed copying ComfyUI workflows from the image viewer and preview sidebar. The original embedded workflow is now copied to the clipboard, including when cached metadata has been compacted, preserving the original node graph and layout. Images without an original embedded workflow now display an appropriate error message.
+- **ComfyUI Metadata**: Fixed missing prompts and incorrect seeds in images generated with Pixaroma nodes. Image MetaHub now reads the saved expanded prompt and the seed passed to KSampler.
 
 ## [0.23.0] - [2026-11-14]
 

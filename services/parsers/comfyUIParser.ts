@@ -698,6 +698,7 @@ function createNodeMap(workflow: any, prompt: any): Graph {
         const id = wNode.id.toString();
         if (graph[id]) {
             graph[id].widgets_values = wNode.widgets_values || [];
+            graph[id].properties = wNode.properties;
             graph[id].mode = wNode.mode || 0;
             graph[id].class_type = graph[id].class_type || wNode.type;
         } else {
@@ -706,6 +707,7 @@ function createNodeMap(workflow: any, prompt: any): Graph {
                 class_type: wNode.type,
                 inputs: {},
                 widgets_values: wNode.widgets_values || [],
+                properties: wNode.properties,
                 mode: wNode.mode || 0,
             };
         }
@@ -910,7 +912,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
 
   // Phase 2: Advanced extraction using terminal node
   const advancedSeed = extractAdvancedSeed(terminalNode, graph);
-  if (advancedSeed.seed !== null) {
+  if (advancedSeed.seed !== null && !(Array.isArray(terminalNode?.inputs.seed) && typeof results.seed === 'number')) {
     results.seed = advancedSeed.seed;
     if (advancedSeed.approximateSeed) {
       results.approximateSeed = true;
