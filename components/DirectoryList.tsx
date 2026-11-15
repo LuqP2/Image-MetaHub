@@ -5,7 +5,7 @@ import { useImageStore } from '../store/useImageStore';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { getActiveDragImageIds, clearActiveDragImageIds } from './ImageGrid';
-import { INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
+import { clearInternalImageDragData, getInternalImageDragIds } from '../utils/internalImageDrag';
 import { getFilesystemPathComparisonKey } from '../utils/filesystemPath';
 
 interface DirectoryListProps {
@@ -546,7 +546,9 @@ export default function DirectoryList({
     e.preventDefault();
     e.stopPropagation();
     if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = e.ctrlKey || e.altKey ? 'copy' : 'move';
+      // Electron's native drag advertises copy. The transfer mode is chosen on drop.
+      const isFileDrag = Array.from(e.dataTransfer.types || []).includes('Files');
+      e.dataTransfer.dropEffect = isFileDrag || e.ctrlKey || e.altKey ? 'copy' : 'move';
     }
     setDragOverPath(normalizePath(path));
   }, []);
@@ -567,20 +569,11 @@ export default function DirectoryList({
       return;
     }
 
-    // Prefer module-level variable (works in Electron native drag)
-    // Fall back to dataTransfer for browser env
-    let imageIds: string[] = getActiveDragImageIds();
+    // The gallery's native drop resolves the selection after matching the OS file.
+    let imageIds = getActiveDragImageIds();
     clearActiveDragImageIds();
-
-    if (imageIds.length === 0) {
-      try {
-        const data = e.dataTransfer.getData(INTERNAL_IMAGE_DRAG_TYPE);
-        if (data) {
-          const payload = JSON.parse(data);
-          imageIds = payload.imageIds || [];
-        }
-      } catch (_) { /* ignore */ }
-    }
+    if (imageIds.length === 0) imageIds = getInternalImageDragIds(e.dataTransfer);
+    clearInternalImageDragData();
 
     // Electron native drags (from the image viewer, including detached windows) arrive
     // as a plain OS file drop with no internal payload. The recorded drag source is only

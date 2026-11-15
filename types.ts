@@ -720,7 +720,7 @@ export interface ElectronAPI {
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
   dirname: (filePath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
-  startFileDrag: (args: { directoryPath: string; relativePath: string; imageId?: string }) => void;
+  startFileDrag: (args: { directoryPath: string; relativePath: string; imageId?: string; source?: 'gallery' }) => void;
   onNativeFileDragStarted: (callback: (args: { directoryPath: string; relativePath: string; imageId?: string }) => void) => () => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   copyTextToClipboard: (text: string) => Promise<{ success: boolean; error?: string }>;

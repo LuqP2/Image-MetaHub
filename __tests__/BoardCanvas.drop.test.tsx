@@ -10,7 +10,7 @@ vi.mock('../components/boards/BoardMiniMap', () => ({ default: () => null }));
 import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
-import { clearInternalImageDragData, INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
+import { clearInternalImageDragData, INTERNAL_IMAGE_DRAG_TYPE, setNativeGalleryDrag } from '../utils/internalImageDrag';
 const flow = vi.hoisted(() => ({ screenToFlowPosition: vi.fn().mockReturnValue({ x: 75, y: -20 }), getViewport: vi.fn(), fitView: vi.fn() }));
 vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), ReactFlow: ({ children }) => <div>{children}</div>, Background: () => null, MiniMap: () => null, Panel: ({ children }) => <div>{children}</div>, useReactFlow: () => flow, useViewport: () => ({ x: 0, y: 0, zoom: 1 }) }));
 afterEach(() => { vi.unstubAllGlobals(); cleanup(); clearInternalImageDragData(); });
@@ -73,12 +73,20 @@ describe('Canvas asset drop', () => {
     expect(current.past).toHaveLength(1);
   });
 
-  it('places all dragged references at converted board coordinates', () => {
+  it.each(['HTML', 'native'] as const)('places all %s dragged references at converted board coordinates', (type) => {
     const document = createBoardDocument(); useBoardStore.getState().adoptBoard(document);
     const drop = vi.fn();
     const view = render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn(), dropAssets: drop }}><BoardCanvas boardId={document.id} /></BoardEditorContext.Provider>);
     const event = new MouseEvent('drop', { bubbles: true, cancelable: true, clientX: 500, clientY: 340 });
-    Object.defineProperty(event, 'dataTransfer', { value: { types: [INTERNAL_IMAGE_DRAG_TYPE], getData: () => JSON.stringify({ imageIds: ['first', 'second'] }) } });
+    let dataTransfer;
+    if (type === 'native') {
+      vi.stubGlobal('electronAPI', { getPathForFile: () => 'D:/library/image.png' });
+      setNativeGalleryDrag('D:/library/image.png', 'first', ['first', 'second']);
+      dataTransfer = { types: ['Files'], files: [new File([], 'image.png')] };
+    } else {
+      dataTransfer = { types: [INTERNAL_IMAGE_DRAG_TYPE], getData: () => JSON.stringify({ imageIds: ['first', 'second'] }) };
+    }
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
     fireEvent(view.container.querySelector('.board-stage')!, event);
     expect(flow.screenToFlowPosition).toHaveBeenCalledWith({ x: 500, y: 340 });
     expect(drop).toHaveBeenCalledWith(['first', 'second'], { x: 75, y: -20 });

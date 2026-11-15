@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import Header from '../components/Header';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { clearInternalImageDragData, setNativeGalleryDrag } from '../utils/internalImageDrag';
 
 vi.mock('../services/comfyUIApiClient', () => ({
   ComfyUIApiClient: class {
@@ -70,6 +71,25 @@ describe('Header classic mode', () => {
     useImageStore.getState().resetState();
   });
   afterEach(() => cleanup());
+
+  it('opens the dragged gallery image in ComfyUI from a native file drop', () => {
+    vi.stubGlobal('electronAPI', { getPathForFile: () => 'D:/library/source.png' });
+    try {
+      const openImage = vi.fn();
+      renderHeader({ onOpenDroppedImageInComfyUI: openImage });
+      setNativeGalleryDrag('D:/library/source.png', 'source', ['source', 'other']);
+      const tab = screen.getByRole('button', { name: /^ComfyUI$/i });
+      const dataTransfer = { types: ['Files'], files: [new File([], 'source.png')] };
+
+      expect(fireEvent.dragOver(tab, { dataTransfer })).toBe(false);
+      fireEvent.drop(tab, { dataTransfer });
+
+      expect(openImage).toHaveBeenCalledExactlyOnceWith('source');
+    } finally {
+      clearInternalImageDragData();
+      vi.unstubAllGlobals();
+    }
+  });
 
   it('opens the Model Manager paywall without navigating on Free', () => {
     modelAccess.allowed = false;
