@@ -1,12 +1,13 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import ImageGrid from '../components/ImageGrid';
+import ImageGrid, { clearActiveDragImageIds } from '../components/ImageGrid';
 import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { ImageStack, IndexedImage } from '../types';
 import { groupImages } from '../utils/imageGrouping';
+import { clearInternalImageDragData, INTERNAL_IMAGE_DRAG_TYPE } from '../utils/internalImageDrag';
 
 const renameIndexedImageMock = vi.hoisted(() => vi.fn());
 const featureAccessMock = vi.hoisted(() => ({ canUseBulkTagging: true, showProModal: vi.fn() }));
@@ -242,6 +243,47 @@ const SelectionHarness = ({ images, selectionScope }: { images: IndexedImage[]; 
     />
   );
 };
+
+describe('ImageGrid Windows drag', () => {
+  afterEach(() => {
+    clearActiveDragImageIds();
+    clearInternalImageDragData();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])('chooses one drag type at dragstart (Shift: %s)', (shiftKey) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+    const startFileDrag = vi.fn();
+    vi.stubGlobal('electronAPI', { startFileDrag });
+    const image = createImage({ id: 'dir-1::nested/image.png' });
+    const otherImage = createImage({ id: 'dir-1::second.png', name: 'second.png' });
+    setupImageGridState([image, otherImage]);
+    useImageStore.setState({ selectedImages: new Set([image.id, otherImage.id]) });
+    const { container } = render(<Harness images={[image, otherImage]} />);
+    const card = container.querySelector('[data-image-id="dir-1::nested/image.png"]')!;
+    const dataTransfer = { setData: vi.fn() };
+    const dragStart = new MouseEvent('dragstart', { bubbles: true, cancelable: true, shiftKey });
+    Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer });
+
+    fireEvent(card, dragStart);
+    fireEvent(card, new MouseEvent('drag', { bubbles: true, clientX: 0, clientY: 0 }));
+
+    expect(dragStart.defaultPrevented).toBe(!shiftKey);
+    if (shiftKey) {
+      expect(startFileDrag).not.toHaveBeenCalled();
+      expect(dataTransfer.setData).toHaveBeenCalledWith(INTERNAL_IMAGE_DRAG_TYPE, JSON.stringify({
+        imageIds: [image.id, otherImage.id],
+        primaryImageId: image.id,
+      }));
+    } else {
+      expect(dataTransfer.setData).not.toHaveBeenCalled();
+      expect(startFileDrag).toHaveBeenCalledExactlyOnceWith({
+        directoryPath: 'D:/library', relativePath: 'nested/image.png', imageId: image.id,
+      });
+    }
+  });
+});
 
 describe('ImageGrid context menu', () => {
   it('adds the current multi-selection to a board from its context menu', () => {

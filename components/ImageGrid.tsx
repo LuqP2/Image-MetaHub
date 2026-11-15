@@ -71,8 +71,7 @@ import { canNativeDragIndexedFile } from '../utils/model3DTransfer';
 import { useSavePrompt } from '../hooks/useSavePrompt';
 
 // macOS ignores Electron's startDrag() unless it is invoked synchronously from the
-// dragstart handler, so native external drag has to be kicked off differently there
-// than on Windows (see handleDragStart / handleDrag).
+// dragstart handler.
 const IS_MAC_RENDERER = isMacPlatform();
 
 // Module-level variable to track internal image drag state (survives native file drag)
@@ -214,6 +213,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     && !!window.electronAPI?.startFileDrag
     && canNativeDragIndexedFile(image.name);
   const canDragImage = typeof window !== 'undefined';
+  const isWindows = typeof navigator !== 'undefined' && /^Win/i.test(navigator.platform);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const isModel3D = isModel3DFileName(image.name, image.fileType);
@@ -387,23 +387,32 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     suppressNextClickRef.current = true;
+    _activeExternalDragPayload = null;
+    _nativeDragStarted = false;
+
+    // Avoid starting a native drag while Chromium is already dragging (#651).
+    if (isWindows && canDragExternally && directoryPath && !e.shiftKey) {
+      e.preventDefault();
+      clearActiveDragImageIds();
+      clearInternalImageDragData();
+      window.electronAPI?.startFileDrag({ directoryPath, relativePath: relativeImagePath, imageId: image.id });
+      return;
+    }
+
     const currentSelectedImages = useImageStore.getState().selectedImages;
     const imageIds = currentSelectedImages.has(image.id) ? Array.from(currentSelectedImages) : [image.id];
     _activeDragImageIds = imageIds;
     setInternalImageDragData(e.dataTransfer, image.id, imageIds);
-    _nativeDragStarted = false;
     e.dataTransfer.effectAllowed = 'copyMove';
 
-    if (canDragExternally && image.directoryId) {
+    if (!isWindows && canDragExternally && image.directoryId) {
       const [, relativeFromId] = image.id.split('::');
       const relativePath = relativeFromId || image.name;
       _activeExternalDragPayload = { directoryPath: image.directoryId, relativePath };
-    } else {
-      _activeExternalDragPayload = null;
     }
 
     // macOS: Electron's startDrag() only takes effect when called synchronously from
-    // dragstart. The Windows path (handleDrag) defers it until the cursor leaves the
+    // dragstart. The Linux path (handleDrag) defers it until the cursor leaves the
     // window, but macOS ignores a mid-drag startDrag — which is why dropping a card onto
     // ComfyUI/Finder stopped working (#466). Hand the drag off to the OS now so the real
     // file is dragged. This makes the drag OS-level, so the internal move-to-folder DnD is
@@ -459,6 +468,10 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       return;
     }
 
+    if (isWindows) {
+      // Canceling dragstart for a native drag skips Chromium's dragend cleanup.
+      suppressNextClickRef.current = false;
+    }
     pointerDownRef.current = { x: clientX, y: clientY };
   };
 
@@ -483,6 +496,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       <div
         ref={mergedRef}
         data-image-id={image.id}
+        title={isWindows && canDragExternally && directoryPath ? 'Drag file out of Image MetaHub. Hold Shift to drag within the app.' : undefined}
         className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer border border-gray-700/50 ${
           isSelected 
             ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
