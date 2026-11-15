@@ -4,18 +4,13 @@
  */
 
 import { useState, useCallback } from 'react';
-import { BaseMetadata, IndexedImage } from '../types';
-import { formatImageForComfyUI, formatMetadataForComfyUI } from '../utils/comfyUIFormatter';
-import { hydrateImageForEmbeddedComfyWorkflow } from '../services/comfyUIWorkflowHydration';
+import type { IndexedImage } from '../types';
+import { getOriginalComfyUIWorkflowJson } from '../services/comfyUIWorkflowHydration';
 import { copyTextToClipboard } from '../utils/imageUtils';
 import {
   getClipboardErrorMessage,
-  getNormalizedMetadata,
-  hasPromptMetadata,
-  NO_METADATA_MESSAGE,
   TEMPORARY_STATUS_TIMEOUT_MS,
 } from '../utils/imageMetadata';
-import { useImageStore } from '../store/useImageStore';
 
 interface CopyStatus {
   success: boolean;
@@ -25,30 +20,13 @@ interface CopyStatus {
 export function useCopyToComfyUI() {
   const [isCopying, setIsCopying] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus | null>(null);
-  const directories = useImageStore((state) => state.directories);
 
-  const copyToComfyUI = useCallback(async (image: IndexedImage, metadataOverride?: BaseMetadata) => {
-    const metadata = metadataOverride ?? getNormalizedMetadata(image);
-    if (!hasPromptMetadata(metadata)) {
-      setCopyStatus({
-        success: false,
-        message: NO_METADATA_MESSAGE,
-      });
-      setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
-      return;
-    }
-
+  const copyToComfyUI = useCallback(async (image: IndexedImage, directoryPath?: string) => {
     setIsCopying(true);
     setCopyStatus(null);
 
     try {
-      const directoryPath = directories.find((directory) => directory.id === image.directoryId)?.path;
-      const sourceImage = metadataOverride
-        ? image
-        : await hydrateImageForEmbeddedComfyWorkflow(image, directoryPath);
-      const workflowJSON = metadataOverride
-        ? formatMetadataForComfyUI(metadataOverride)
-        : formatImageForComfyUI(sourceImage);
+      const workflowJSON = await getOriginalComfyUIWorkflowJson(image, directoryPath);
 
       // Copy to clipboard
       const result = await copyTextToClipboard(workflowJSON);
@@ -75,7 +53,7 @@ export function useCopyToComfyUI() {
     } finally {
       setIsCopying(false);
     }
-  }, [directories]);
+  }, []);
 
   return {
     copyToComfyUI,

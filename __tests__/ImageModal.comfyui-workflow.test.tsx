@@ -6,6 +6,7 @@ import ImagePreviewSidebar from '../components/ImagePreviewSidebar';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
+import * as imageUtils from '../utils/imageUtils';
 
 vi.mock('../hooks/useCopyToA1111', () => ({
   useCopyToA1111: () => ({ copyToA1111: vi.fn(), isCopying: false, copyStatus: null }),
@@ -13,10 +14,6 @@ vi.mock('../hooks/useCopyToA1111', () => ({
 
 vi.mock('../hooks/useGenerateWithA1111', () => ({
   useGenerateWithA1111: () => ({ generateWithA1111: vi.fn(), isGenerating: false, generateStatus: null }),
-}));
-
-vi.mock('../hooks/useCopyToComfyUI', () => ({
-  useCopyToComfyUI: () => ({ copyToComfyUI: vi.fn(), isCopying: false, copyStatus: null }),
 }));
 
 vi.mock('../hooks/useGenerateWithComfyUI', () => ({
@@ -156,6 +153,40 @@ describe('ImageModal ComfyUI workflow action', () => {
       id: image.id,
       name: image.name,
     }));
+  });
+
+  it.each(['modal', 'sidebar'] as const)('copies the embedded UI workflow from the %s', async (surface) => {
+    const image = createImage();
+    const workflow = {
+      nodes: [{ id: 71, type: 'VAEDecode', pos: [1282, 187] }],
+      links: [],
+      version: 0.4,
+    };
+    image.metadata = {
+      ...image.metadata,
+      imagemetahub_data: { workflow },
+    } as IndexedImage['metadata'];
+    const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    useImageStore.setState({ images: [image], filteredImages: [image], previewImage: image });
+
+    render(surface === 'modal'
+      ? <ImageModal image={image} onClose={vi.fn()} directoryPath="C:/synthetic" isActive />
+      : <ImagePreviewSidebar width={400} isResizing={false} onResizeStart={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy Workflow JSON' }));
+
+    await waitFor(() => expect(clipboard).toHaveBeenCalledWith(JSON.stringify(workflow)));
+    await screen.findByText(/Workflow JSON copied!/);
+  });
+
+  it('reports a missing original workflow without writing to the clipboard', async () => {
+    const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    render(<ImageModal image={createImage()} onClose={vi.fn()} directoryPath="C:/synthetic" isActive />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy Workflow JSON' }));
+
+    await screen.findByText(/This image has no original ComfyUI workflow/);
+    expect(clipboard).not.toHaveBeenCalled();
   });
 
   it.each(['modal', 'sidebar'] as const)('saves the captured prompt selection from the %s context menu', async (surface) => {

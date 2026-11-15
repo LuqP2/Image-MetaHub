@@ -4961,9 +4961,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     showProModal('comfyui');
                     return;
                   }
-                  copyToComfyUI(generationImage, effectiveMetadata);
+                  copyToComfyUI(liveImage, directoryPath);
                 }}
-                disabled={canUseComfyUI && (isCopyingComfyUI || !effectiveMetadata?.prompt)}
+                disabled={canUseComfyUI && isCopyingComfyUI}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isCopyingComfyUI && canUseComfyUI ? (
