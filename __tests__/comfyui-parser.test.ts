@@ -187,6 +187,30 @@ describe('Qwen Image 2.1 metadata', () => {
     }
   });
 
+  it('reads the saved Pixaroma prompt and the executed seed upstream of Qwen', () => {
+    const runSeed = 8907989457720738;
+    const prompt = {
+      ...makePrompt(''),
+      '2': { class_type: 'PixaromaAIPrompt', inputs: {
+        AIPromptState: JSON.stringify({ idea: 'Colorize this image' }),
+      } },
+      '4': { ...makePrompt()['4'], inputs: { ...makePrompt()['4'].inputs, seed: ['6', 0] } },
+      '6': { class_type: 'PixaromaSeed', inputs: { seed: runSeed } },
+    };
+    const sampler = { id: 4, type: 'KSampler', widgets_values: [0, 'randomize', 25, 1, 'euler', 'simple', 1] };
+    const promptNode = { id: 2, type: 'PixaromaAIPrompt', properties: {
+      aiPromptLast: { text: 'Restore the original colors with natural lighting.', error: false },
+    } };
+
+    for (const parse of [resolvePromptFromGraph, resolveEnginePromptFromGraph]) {
+      const result = parse({ nodes: [promptNode, sampler] }, prompt);
+      expect(result.prompt).toBe('Restore the original colors with natural lighting.');
+      expect(result.negativePrompt).toBe('');
+      expect(result.seed).toBe(runSeed);
+      expect(parse({ nodes: [sampler] }, prompt).prompt).toBe('Colorize this image');
+    }
+  });
+
   it('keeps both Qwen prompts separate through CFGGuider and SamplerCustomAdvanced', () => {
     const prompt = {
       '1': { class_type: 'TextEncodeQwenImage21', inputs: {

@@ -3,6 +3,7 @@ export interface ParserNode {
   class_type: string;
   inputs: Record<string, any[] | any>;
   widgets_values?: any[];
+  properties?: Record<string, unknown>;
   mode?: number;
 }
 

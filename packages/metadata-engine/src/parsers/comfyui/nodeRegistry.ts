@@ -71,6 +71,23 @@ function extractQwenImage21Prompt(
   return typeof widget === 'string' ? widget : null;
 }
 
+function extractPixaromaPrompt(node: ParserNode): string | null {
+  const last = node.properties?.aiPromptLast as
+    { text?: unknown; error?: unknown; muted?: unknown } | undefined;
+  if (!last?.error && !last?.muted && typeof last?.text === 'string' && last.text.trim()) {
+    return last.text;
+  }
+
+  const state = node.inputs?.AIPromptState;
+  if (typeof state !== 'string') return null;
+  try {
+    const idea = JSON.parse(state)?.idea;
+    return typeof idea === 'string' && idea.trim() ? idea : null;
+  } catch {
+    return null;
+  }
+}
+
 function extractRgthreePowerLoras(node: ParserNode): string[] {
   const loras: string[] = [];
   const addLora = (value: unknown) => {
@@ -310,7 +327,27 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'SAMPLING', roles: ['SINK'],
     inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent_image: { type: 'LATENT' }, },
     outputs: { LATENT: { type: 'LATENT' } },
-    param_mapping: { seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, denoise: { source: 'widget', key: 'denoise' }, model: { source: 'trace', input: 'model' }, prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, },
+    param_mapping: {
+      seed: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          const input = node.inputs.seed;
+          if (Array.isArray(input) && input.length === 2) {
+            const seed = traverse(input, state, graph, []);
+            if (typeof seed === 'number') return seed;
+          }
+          return node.widgets_values?.[0] ?? (Array.isArray(input) ? null : input);
+        },
+      },
+      steps: { source: 'widget', key: 'steps' },
+      cfg: { source: 'widget', key: 'cfg' },
+      sampler_name: { source: 'widget', key: 'sampler_name' },
+      scheduler: { source: 'widget', key: 'scheduler' },
+      denoise: { source: 'widget', key: 'denoise' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+    },
     // CORRECTED: Some workflows export with a placeholder at index 1 (similar to KSampler Efficient)
     widget_order: ['seed', '__unknown__', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
   },
@@ -397,6 +434,11 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
         extractQwenImage21Prompt(node, state, graph, traverse, 'negative_prompt') },
     },
     widget_order: ['prompt', 'negative_prompt', 'resolution'],
+  },
+  PixaromaAIPrompt: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {}, outputs: { text: { type: 'STRING' } },
+    param_mapping: { prompt: { source: 'custom_extractor', extractor: extractPixaromaPrompt } },
   },
   Krea2EditGroundedEncode: {
     category: 'CONDITIONING',
@@ -839,6 +881,11 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     outputs: { seed: { type: 'INT' }, 'seed+1': { type: 'INT' } },
     param_mapping: { seed: { source: 'input', key: 'seed' } },
     widget_order: ['seed', 'control_after_generate']
+  },
+  PixaromaSeed: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: { seed: { type: 'INT' } }, outputs: { seed: { type: 'INT' } },
+    param_mapping: { seed: { source: 'input', key: 'seed' } },
   },
   'Seed (rgthree)': {
     category: 'UTILS',
