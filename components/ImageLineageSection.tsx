@@ -2,6 +2,7 @@ import React from 'react';
 import { type BaseMetadata, type IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import { thumbnailManager } from '../services/thumbnailManager';
 import {
   getGenerationTypeLabel,
 } from '../utils/imageLineage';
@@ -38,8 +39,14 @@ const LineagePreviewCard: React.FC<{
   const thumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const normalizedMetadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
 
+  React.useEffect(() => {
+    // Detached viewers receive the image record without its renderer-owned URL.
+    void thumbnailManager.loadIndexedThumbnail(image).catch(() => undefined);
+  }, [image]);
+
   return (
     <button
+      type="button"
       onClick={() => onOpenImage(image)}
       className="group flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700/60 dark:bg-gray-900/50 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/10"
       title={`Open ${label.toLowerCase()}: ${image.name}`}

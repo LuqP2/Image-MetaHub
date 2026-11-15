@@ -48,7 +48,7 @@ export interface ImageViewerSnapshot {
   /**
    * The detached renderer has its own small image store. Send only the current
    * image's resolved lineage plus the directly related records it needs to show
-   * the same read-only lineage UI as the main window.
+   * the same lineage UI as the main window.
    */
   lineage?: {
     resolvedByImageId: Record<string, ResolvedLineageEntry>;
@@ -110,6 +110,7 @@ export interface ImageViewerSaveResult {
 
 export type ImageViewerCommand =
   | { type: 'open-texture-map'; imageId: string }
+  | { type: 'open-lineage-image'; imageId: string }
   | { type: 'navigate'; direction: 'next' | 'previous' | 'random'; wrap?: boolean }
   | { type: 'start-trial' }
   | { type: 'close' }

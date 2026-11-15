@@ -242,6 +242,7 @@ const DetachedImageModalApp: React.FC = () => {
       image={image}
       textureMaps={(snapshot.textureMaps ?? []).map(({ image: map, role }) => ({ image: asIndexedImage(map), role }))}
       onOpenTextureMap={(map) => void sendCommand({ type: 'open-texture-map', imageId: map.id })}
+      onOpenLineageImage={(target) => void sendCommand({ type: 'open-lineage-image', imageId: target.id })}
       prefetchPrevious={prefetchPrevious}
       prefetchNext={prefetchNext}
       onClose={() => void window.electronAPI?.imageViewerWindowAction({ sessionId: snapshot.sessionId, action: 'close' })}

@@ -175,6 +175,7 @@ const getUsableNormalizedMetadata = (image: IndexedImage): BaseMetadata | undefi
 interface ImageModalProps {
   textureMaps?: IndexedTextureMap[];
   onOpenTextureMap?: (image: IndexedImage) => void;
+  onOpenLineageImage?: (image: IndexedImage) => void;
   hostMode?: 'inline' | 'native-window';
   modalId?: string;
   image: IndexedImage;
@@ -925,6 +926,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onOpenImageEditor,
   textureMaps,
   onOpenTextureMap,
+  onOpenLineageImage,
   onImageDeleted,
   onImageRenamed,
   onRequestDelete,
@@ -4470,10 +4472,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <ImageLineageSection
                   image={liveImage}
                   metadata={nMeta}
-                  onOpenImage={(targetImage) => {
-                    setPreviewImage(targetImage);
-                    setSelectedImage(targetImage);
-                  }}
+                  onOpenImage={onOpenLineageImage ?? (() => undefined)}
                 />
                 <MetadataItem
                   label="Prompt"
@@ -5475,6 +5474,7 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
   const propsEqual =
     prevProps.textureMaps === nextProps.textureMaps &&
     prevProps.onOpenTextureMap === nextProps.onOpenTextureMap &&
+    prevProps.onOpenLineageImage === nextProps.onOpenLineageImage &&
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.name === nextProps.image.name &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&

@@ -3261,6 +3261,22 @@ export default function App() {
     handleOpenImageInResultSet(image, maps.map((map) => map.image), 'related-images');
   }, [handleOpenImageInResultSet]);
 
+  const openLineageImage = useCallback((originId: string, target: IndexedImage) => {
+    const state = useImageStore.getState();
+    const sourceId = state.getResolvedLineage(originId)?.sourceImageId;
+    const derivedImages = state.getDerivedImages(originId, 4);
+    if (target.id !== sourceId && !derivedImages.some((image) => image.id === target.id)) {
+      return false;
+    }
+
+    const origin = getImageByIdFromStore(originId);
+    const source = sourceId ? getImageByIdFromStore(sourceId) : undefined;
+    const navigationImages = [source, origin, ...derivedImages]
+      .filter((image): image is IndexedImage => Boolean(image));
+    handleOpenImageInResultSet(target, navigationImages, 'related-images');
+    return true;
+  }, [getImageByIdFromStore, handleOpenImageInResultSet]);
+
   const handleGalleryImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (!relatedImages) {
       handleGridImageClick(image, event, textureFilteredSelectionScope);
@@ -3825,6 +3841,13 @@ export default function App() {
         };
         const viewerCommand = command as ImageViewerCommand;
         switch (viewerCommand.type) {
+          case 'open-lineage-image': {
+            const target = requireImage(viewerCommand.imageId);
+            if (!openLineageImage(session.imageId, target)) {
+              throw new Error('Image is no longer associated with this lineage.');
+            }
+            break;
+          }
           case 'open-texture-map': {
             const maps = textureMapIndex.byModelId.get(session.imageId) ?? [];
             const target = maps.find(({ image }) => image.id === viewerCommand.imageId);
@@ -4084,7 +4107,7 @@ export default function App() {
         respond({ success: true });
       })().catch((error) => respond({ success: false, error: error instanceof Error ? error.message : 'Viewer command failed.' }));
     });
-  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openRelatedImages, openImageModals, openTextureMap, reparseViewerImages, resolveModalNavigationImages, textureMapIndex]);
+  }, [directoryPathById, generateWithA1111, generateWithComfyUI, handleImageDeleted, openBatchExportModal, handleImageModalNavigate, handleImageRenamed, handleOpenComfyUIWorkflowFromImageModal, handleOpenImageEditorFromImageModal, handleSlideshowStartAcknowledged, openFindSimilar, openLineageImage, openRelatedImages, openImageModals, openTextureMap, reparseViewerImages, resolveModalNavigationImages, textureMapIndex]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals
@@ -4996,6 +5019,7 @@ export default function App() {
             onOpenComfyUIWorkflow={(image) => handleOpenComfyUIWorkflowFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
             onOpenImageEditor={(image) => handleOpenImageEditorFromImageModal(modal.modalId, image, resolveModalNavigationImages(modal))}
             onOpenTextureMap={(image) => openTextureMap(modal.image.id, image)}
+            onOpenLineageImage={(image) => openLineageImage(modal.image.id, image)}
           />
         ))}
 
