@@ -244,7 +244,7 @@ const SelectionHarness = ({ images, selectionScope }: { images: IndexedImage[]; 
   );
 };
 
-describe('ImageGrid Windows drag', () => {
+describe('ImageGrid native drag', () => {
   afterEach(() => {
     clearActiveDragImageIds();
     clearInternalImageDragData();
@@ -252,15 +252,21 @@ describe('ImageGrid Windows drag', () => {
     vi.unstubAllGlobals();
   });
 
-  it('starts one native file drag and preserves the selection for matching in-app drops', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+  it.each([
+    ['Win32', 'D:/library', 'd:/Library'],
+    ['Linux x86_64', '/home/test/library', '/home/test/library'],
+  ])('starts a native file drag immediately on %s and preserves matching drops', (platform, directoryPath, matchedPath) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
     const startFileDrag = vi.fn();
     const getPathForFile = vi.fn();
     vi.stubGlobal('electronAPI', { startFileDrag, getPathForFile });
     const image = createImage({ id: 'dir-1::nested/image.png' });
     const otherImage = createImage({ id: 'dir-1::second.png', name: 'second.png' });
     setupImageGridState([image, otherImage]);
-    useImageStore.setState({ selectedImages: new Set([image.id, otherImage.id]) });
+    useImageStore.setState({
+      directories: [{ id: 'dir-1', path: directoryPath }],
+      selectedImages: new Set([image.id, otherImage.id]),
+    });
     const { container } = render(<Harness images={[image, otherImage]} />);
     const card = container.querySelector('[data-image-id="dir-1::nested/image.png"]')!;
     const dataTransfer = { setData: vi.fn() };
@@ -268,19 +274,20 @@ describe('ImageGrid Windows drag', () => {
     Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer });
 
     fireEvent(card, dragStart);
-    fireEvent(card, new MouseEvent('drag', { bubbles: true, clientX: 0, clientY: 0 }));
 
     expect(dragStart.defaultPrevented).toBe(true);
     expect(dataTransfer.setData).not.toHaveBeenCalled();
     expect(startFileDrag).toHaveBeenCalledExactlyOnceWith({
-      directoryPath: 'D:/library', relativePath: 'nested/image.png', source: 'gallery',
+      directoryPath, relativePath: 'nested/image.png', source: 'gallery',
     });
+    fireEvent(card, new MouseEvent('drag', { bubbles: true, clientX: 0, clientY: 0 }));
+    expect(startFileDrag).toHaveBeenCalledTimes(1);
 
     const drop = { types: ['Files'], files: [new File([], 'image.png')], getData: () => '' } as unknown as DataTransfer;
-    getPathForFile.mockReturnValue('D:/other/nested/image.png');
+    getPathForFile.mockReturnValue(`${directoryPath}/other/image.png`);
     expect(getInternalImageDragIds(drop)).toEqual([]);
     expect(getInternalImageDragId(drop)).toBeNull();
-    getPathForFile.mockReturnValue('d:/Library/nested/image.png');
+    getPathForFile.mockReturnValue(`${matchedPath}/nested/image.png`);
     expect(getInternalImageDragIds(drop)).toEqual([image.id, otherImage.id]);
     expect(getInternalImageDragId(drop)).toBe(image.id);
     fireEvent.pointerDown(window);
