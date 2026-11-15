@@ -1,13 +1,20 @@
 import React from 'react';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ImageViewerSnapshot } from '../services/imageViewerContracts';
+import type { IndexedImage } from '../types';
 import DetachedImageModalApp from '../components/DetachedImageModalApp';
 
 const mocks = vi.hoisted(() => ({ displayed: null as string | null, setState: vi.fn() }));
-vi.mock('../components/ImageModal', () => ({ default: ({ image }: { image: { id: string } }) => {
+vi.mock('../components/ImageModal', () => ({ default: ({ image, onOpenLineageImage }: {
+  image: { id: string };
+  onOpenLineageImage: (image: IndexedImage) => void;
+}) => {
   mocks.displayed = image.id;
-  return <div>{image.id}</div>;
+  return <div>
+    {image.id}
+    <button onClick={() => onOpenLineageImage({ id: 'source' } as IndexedImage)}>Source Image</button>
+  </div>;
 } }));
 vi.mock('../components/ProOnlyModal', () => ({ default: () => null }));
 vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => ({}) }));
@@ -35,6 +42,26 @@ afterEach(() => {
 });
 
 describe('detached renderer applied-snapshot handshake', () => {
+  it('routes a lineage click to the library renderer using the current viewer session', async () => {
+    window.history.replaceState({}, '', '/?sessionId=lineage');
+    let receive!: (snapshot: ImageViewerSnapshot | null) => void;
+    const command = vi.fn(async () => ({ success: true }));
+    window.electronAPI = {
+      getTheme: async () => ({ shouldUseDarkColors: true }),
+      onThemeUpdated: () => () => undefined,
+      imageViewerReady: async () => ({ success: true }),
+      onImageViewerSnapshot: (callback) => { receive = callback; return () => undefined; },
+      imageViewerCommand: command,
+    } as Window['electronAPI'];
+    render(<DetachedImageModalApp />);
+    await act(async () => receive(snapshot('lineage', 'derived', 1)));
+    fireEvent.click(screen.getByRole('button', { name: 'Source Image' }));
+    expect(command).toHaveBeenCalledWith({
+      sessionId: 'lineage',
+      command: { type: 'open-lineage-image', imageId: 'source' },
+    });
+  });
+
   it('acknowledges initial rendering and rebinding only after the corresponding image is mounted', async () => {
     window.history.replaceState({}, '', '/?sessionId=initial');
     let receive!: (snapshot: ImageViewerSnapshot | null) => void;
