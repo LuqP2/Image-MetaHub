@@ -314,7 +314,7 @@ import { mergeKeymapWithDefaults } from '../services/hotkeyBindings';
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Initial state
       sortOrder: 'desc',
       itemsPerPage: 20,
