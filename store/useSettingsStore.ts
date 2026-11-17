@@ -63,7 +63,11 @@ const electronStorage: StateStorage = {
     if (window.electronAPI) {
       const { state } = JSON.parse(value);
       const currentSettings = await window.electronAPI.getSettings();
-      const result = await window.electronAPI.saveSettings(mergeSettingsWithExisting(currentSettings, state));
+      const merged = mergeSettingsWithExisting(currentSettings, state);
+      // Language is written separately so a background renderer cannot overwrite it
+      // with the value from an older snapshot of the general settings.
+      delete merged.language;
+      const result = await window.electronAPI.saveSettings(merged);
       if (!result?.success) {
         throw new Error(result?.error || 'Failed to persist application settings.');
       }
@@ -396,7 +400,18 @@ export const useSettingsStore = create<SettingsState>()(
       setLibraryGridLayout: (layout) => set({ libraryGridLayout: layout }),
       setGroupBy: (value) => set({ groupBy: value }),
       setTheme: (theme) => set({ theme }),
-      setLanguage: (language) => set({ language: normalizeLanguage(language) }),
+      setLanguage: (language) => {
+        const next = normalizeLanguage(language);
+        set({ language: next });
+        if (!isElectron) return;
+
+        void window.electronAPI.saveSettings({ language: next }).then((result) => {
+          if (!result?.success) throw new Error(result?.error || 'Failed to persist language.');
+        }).catch((error) => {
+          console.error('Failed to save language:', error);
+          if (get().language === next) void useSettingsStore.persist.rehydrate();
+        });
+      },
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
       setIndexingConcurrency: (value) =>
         set({
