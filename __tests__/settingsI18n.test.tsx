@@ -44,11 +44,25 @@ describe('settings language', () => {
     const format = createMessageFormatter({
       en: { missing: 'English', incompatible: 'Hello {name}', invalid: 'Try again', valid: 'Hello {name}' },
       es: { incompatible: 'Hola', invalid: '{', valid: 'Hola {name}' },
-    });
+    }, { es: {
+      incompatible: reviewHash('Hello {name}'),
+      invalid: reviewHash('Try again'),
+      valid: reviewHash('Hello {name}'),
+    } });
     expect(format('es', 'missing')).toBe('English');
     expect(format('es', 'incompatible', { name: 'test.png' })).toBe('Hello test.png');
     expect(format('es', 'invalid')).toBe('Try again');
     expect(format('es', 'valid', { name: 'test.png' })).toBe('Hola test.png');
+  });
+
+  it.each(['es', 'pt-BR'])('uses current English until %s is reviewed again', (locale) => {
+    const catalogs = { en: { price: 'Price: €20 for {plan}' }, [locale]: { price: 'Precio: €10 para {plan}' } };
+    const format = createMessageFormatter(catalogs, { [locale]: { price: reviewHash('Price: €10 for {plan}') } });
+    expect(format(locale, 'price', { plan: 'Pro' })).toBe('Price: €20 for Pro');
+    expect(createMessageFormatter(catalogs, {})(locale, 'price', { plan: 'Pro' })).toBe('Price: €20 for Pro');
+    const approved = { ...catalogs, [locale]: { price: '€20 — {plan}' } };
+    const formatApproved = createMessageFormatter(approved, { [locale]: { price: reviewHash(catalogs.en.price) } });
+    expect(formatApproved(locale, 'price', { plan: 'Pro' })).toBe('€20 — Pro');
   });
 });
 

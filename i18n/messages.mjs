@@ -2,7 +2,9 @@ import { IntlMessageFormat } from 'intl-messageformat';
 import en from './en.json' with { type: 'json' };
 import es from './es.json' with { type: 'json' };
 import ptBR from './pt-BR.json' with { type: 'json' };
+import reviewed from './reviewed.json' with { type: 'json' };
 import { argumentSignature } from './compatibility.mjs';
+import { reviewHash } from './reviewHash.mjs';
 
 export const languages = Object.freeze(['en', 'es', 'pt-BR']);
 export const languageNames = Object.freeze({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)' });
@@ -12,7 +14,7 @@ export function normalizeLanguage(language) {
   return language === 'es' || language === 'pt-BR' ? language : 'en';
 }
 
-export function createMessageFormatter(catalogs) {
+export function createMessageFormatter(catalogs, approvals) {
   const formatters = new Map();
 
   function getFormatter(locale, key, source) {
@@ -22,7 +24,8 @@ export function createMessageFormatter(catalogs) {
     let formatter;
     if (typeof message === 'string' && message.trim()) {
       try {
-        if (locale === 'en' || argumentSignature(source) === argumentSignature(message)) {
+        if (locale === 'en' || (approvals[locale]?.[key] === reviewHash(source)
+          && argumentSignature(source) === argumentSignature(message))) {
           formatter = new IntlMessageFormat(message, locale, undefined, { ignoreTag: true });
         }
       } catch (error) {
@@ -45,4 +48,4 @@ export function createMessageFormatter(catalogs) {
   };
 }
 
-export const formatMessage = createMessageFormatter({ en, es, 'pt-BR': ptBR });
+export const formatMessage = createMessageFormatter({ en, es, 'pt-BR': ptBR }, reviewed);
