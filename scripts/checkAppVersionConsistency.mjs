@@ -12,7 +12,6 @@ export function verifyAppVersionConsistency(root = repositoryRoot) {
   const packageJson = readJson(root, 'package.json');
   const packageLock = readJson(root, 'package-lock.json');
   const version = String(packageJson.version || '').trim();
-  const [major, minor] = version.split('.');
 
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(`Invalid application version in package.json: ${version || '(empty)'}`);
@@ -29,7 +28,6 @@ export function verifyAppVersionConsistency(root = repositoryRoot) {
   const expectedMarkers = [
     ['docs/ARCHITECTURE.md', `**Version:** ${version}`],
     ['cli.ts', `.version('${version}')`],
-    ['components/FolderSelector.tsx', `Welcome to Image MetaHub v${major}.${minor}`],
     ['components/Header.tsx', `>v${version}</span>`],
     ['electron.mjs', `Image MetaHub v${version}`],
     ['index.html', `<title>Image MetaHub v${version}</title>`],

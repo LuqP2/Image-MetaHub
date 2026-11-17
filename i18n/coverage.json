@@ -2,5 +2,9 @@
   "settings": {
     "paths": ["components/SettingsModal.tsx", "components/settings/", "components/HotkeySettings.tsx"],
     "literalExceptions": ["/s", "1:1", "Aa", "A1111", "Automatic1111", "ComfyUI", "EXR / OpenColorIO", "GB", "MB", "MetaHub Save Node", "XXXX-XXXX-XXXX-XXXX-XXXX", "nsfw, private, hidden"]
+  },
+  "libraryFolders": {
+    "paths": ["components/DirectoryList.tsx", "components/FolderSelector.tsx"],
+    "literalExceptions": []
   }
 }

@@ -1,3 +1,5 @@
+import { formatMessage } from '../i18n/messages.mjs';
+import type { Translate } from '../i18n/useTranslation';
 import { useCallback, useEffect, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
@@ -267,6 +269,8 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
   return normalizedTarget;
 };
 
+const folderText: Translate = (key, values) => formatMessage(useSettingsStore.getState().language, key, values);
+
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
@@ -411,7 +415,7 @@ export function useImageLoader() {
         });
 
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
-            setError(`Indexing error in ${directoryId}: ${error}`);
+            setError(folderText('libraryFolders.indexingError', { directoryId, error }));
             setLoading(false); // Stop loading on error
             setProgress(null);
         });
@@ -501,7 +505,7 @@ export function useImageLoader() {
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
             if (!suppressSuccessMessage) {
-                setSuccess(`Loaded 0 images from ${directory.name}.`);
+                setSuccess(folderText('libraryFolders.loadedImages', { count: 0, name: directory.name }));
             }
             setDirectoryProgress(directory.id, null);
             if (!suppressIndexingState) {
@@ -523,7 +527,7 @@ export function useImageLoader() {
 
         await refreshLineageDirectorySignature(directory);
         if (!suppressSuccessMessage) {
-            setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+            setSuccess(folderText('libraryFolders.loadedImages', { count: finalDirectoryImages.length, name: directory.name }));
         }
         setDirectoryProgress(directory.id, null);
         if (!suppressIndexingState) {
@@ -1586,7 +1590,7 @@ export function useImageLoader() {
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
                 if (!suppressErrorMessage) {
-                    setError(`Failed to load directory ${directory.name}. Check console for details.`);
+                    setError(folderText('libraryFolders.loadFailed', { name: directory.name }));
                 }
             }
             setDirectoryProgress(directory.id, null);
@@ -1618,16 +1622,7 @@ export function useImageLoader() {
 
     // Show confirmation dialog for root disk scanning
     const confirmRootDiskScan = async (path: string): Promise<boolean> => {
-        const message = `ÔÜá´©Å WARNING: Root Disk Detected\n\n` +
-            `You are attempting to scan "${path}" which appears to be a root disk or system directory.\n\n` +
-            `This could:\n` +
-            `ÔÇó Take hours or days to complete\n` +
-            `ÔÇó Freeze or crash the application\n` +
-            `ÔÇó Index thousands of unrelated files\n` +
-            `ÔÇó Use significant system resources\n\n` +
-            `Are you absolutely sure you want to continue?`;
-        
-        return window.confirm(message);
+        return window.confirm(folderText('libraryFolders.rootDiskWarning', { path }));
     };
 
     const handleSelectFolder = useCallback(async () => {
@@ -1667,7 +1662,7 @@ export function useImageLoader() {
             );
 
             if (existingDirectory && !existingDirectory.transient) {
-                setError(`Directory "${name}" is already loaded.`);
+                setError(folderText('libraryFolders.alreadyLoaded', { name }));
                 return;
             }
 
@@ -1723,7 +1718,7 @@ export function useImageLoader() {
         } catch (err) {
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
-                setError("Failed to select directory. Check console for details.");
+                setError(folderText('libraryFolders.selectFailed'));
             }
         }
     }, [loadDirectory, addDirectory, setError]);
@@ -1731,7 +1726,7 @@ export function useImageLoader() {
     const handleUpdateFolder = useCallback(async (directoryId: string, subPath?: string) => {
         const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
         if (!directory) {
-            setError("Directory not found for update.");
+            setError(folderText('libraryFolders.updateMissing'));
             return;
         }
         await loadDirectory(directory, true, subPath);
@@ -1810,8 +1805,7 @@ export function useImageLoader() {
                             recomputeDerivedState();
                         }
 
-                        const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
-                        setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
+                        setSuccess(folderText('libraryFolders.restoredFromCache', { count: directoriesToLoad.length }));
                     };
 
                     await hydrateInBackground();
@@ -1845,7 +1839,7 @@ export function useImageLoader() {
                             }
                         }).catch(recoveryError => {
                             console.error('Recovery enrichment failed', recoveryError);
-                            setError('Failed to resume indexing after renderer recovery.');
+                            setError(folderText('libraryFolders.resumeFailed'));
                         });
                         return;
                     }
@@ -1860,7 +1854,7 @@ export function useImageLoader() {
                     return;
                 } catch (e) {
                     error("Error loading from storage", e);
-                    setError("Failed to load previously saved directories.");
+                    setError(folderText('libraryFolders.restoreFailed'));
                 } finally {
                     setLineageRebuildSuspended(false);
                     setProgress(null);

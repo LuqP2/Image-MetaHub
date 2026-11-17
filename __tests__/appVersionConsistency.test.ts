@@ -7,7 +7,7 @@ describe('application version consistency', () => {
   it('keeps package metadata and release-facing labels aligned', () => {
     expect(verifyAppVersionConsistency()).toEqual({
       version,
-      checkedMarkers: 6,
+      checkedMarkers: 5,
     });
   });
 });

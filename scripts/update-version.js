@@ -85,14 +85,8 @@ updateFile(
 );
 
 // ============================================================
-// 4. components/FolderSelector.tsx - Welcome screen (all occurrences)
+// 4. Welcome screen reads the version directly from package.json.
 // ============================================================
-updateFile(
-  'components/FolderSelector.tsx',
-  /v\d+\.\d+\.\d+(-[a-z0-9.-]+)?/g,
-  `v${NEW_VERSION}`,
-  'FolderSelector.tsx welcome screen (all occurrences)'
-);
 
 // ============================================================
 // 5. index.html - Page title
