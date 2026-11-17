@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
@@ -84,6 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onExcludeFolder,
   onIncludeFolder,
 }) => {
+  const { t } = useTranslation();
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
@@ -307,10 +309,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                   ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
                   : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
               }`}
-              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              title={isIndexing ? t('libraryFolders.addBlockedIndexing') : t('libraryFolders.addFolderHint')}
             >
               <Plus size={14} />
-              <span>Add Folder</span>
+              <span>{t('libraryFolders.addFolder')}</span>
             </button>
           </div>
         )}

@@ -1,3 +1,4 @@
+import { useTranslation, type Translate } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Directory, IndexedImage } from '../types';
 import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff, Eye, FolderPlus, Edit2, Clipboard } from 'lucide-react';
@@ -156,7 +157,7 @@ const createTransferDestination = (directories: Directory[], destinationPath: st
   };
 };
 
-const joinElectronPath = async (...paths: string[]): Promise<string | null> => {
+const joinElectronPath = async (t: Translate, ...paths: string[]): Promise<string | null> => {
   const result = await (window as any).electronAPI.joinPaths(...paths);
   if (typeof result === 'string') {
     return result;
@@ -164,16 +165,16 @@ const joinElectronPath = async (...paths: string[]): Promise<string | null> => {
   if (result?.success && typeof result.path === 'string') {
     return result.path;
   }
-  useImageStore.getState().setError(result?.error || 'Failed to resolve folder path.');
+  useImageStore.getState().setError(result?.error || t('libraryFolders.resolvePathFailed'));
   return null;
 };
 
-const getElectronDirname = async (filePath: string): Promise<string | null> => {
+const getElectronDirname = async (t: Translate, filePath: string): Promise<string | null> => {
   const result = await window.electronAPI?.dirname(filePath);
   if (result?.success && typeof result.path === 'string') {
     return result.path;
   }
-  useImageStore.getState().setError(result?.error || 'Failed to resolve parent folder.');
+  useImageStore.getState().setError(result?.error || t('libraryFolders.resolveParentFailed'));
   return null;
 };
 
@@ -289,7 +290,7 @@ const renameIndexedRootInStore = (oldPath: string, newPath: string, newName: str
   return nextDirectories;
 };
 
-const rebindRootWatchers = async (watchers: Array<{ oldDirectoryId: string; newDirectoryId: string; newPath: string }>) => {
+const rebindRootWatchers = async (t: Translate, watchers: Array<{ oldDirectoryId: string; newDirectoryId: string; newPath: string }>) => {
   if (typeof window === 'undefined' || !window.electronAPI) {
     return;
   }
@@ -305,7 +306,7 @@ const rebindRootWatchers = async (watchers: Array<{ oldDirectoryId: string; newD
       dirPath: watcher.newPath,
     });
     if (startResult && !startResult.success) {
-      useImageStore.getState().setError(startResult.error || 'Folder renamed, but auto-watch could not be restarted.');
+      useImageStore.getState().setError(startResult.error || t('libraryFolders.restartWatcherFailed'));
     }
   }
 };
@@ -328,6 +329,7 @@ export default function DirectoryList({
   onExcludeFolder,
   onIncludeFolder
 }: DirectoryListProps) {
+  const { t } = useTranslation();
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [subfolderCache, setSubfolderCache] = useState<Map<string, SubfolderNode[]>>(new Map());
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
@@ -478,14 +480,14 @@ export default function DirectoryList({
         const result = await (window as any).electronAPI.showItemInFolder(path);
         if (!result.success) {
           console.error('Failed to open folder:', result.error);
-          alert(result.error || 'Failed to open folder. Please check the path.');
+          alert(result.error || t('libraryFolders.openFailed'));
         }
       } else {
-        alert('This feature requires the desktop app. Please use the Image MetaHub application.');
+        alert(t('libraryFolders.desktopRequired'));
       }
     } catch (error) {
       console.error('Error opening folder:', error);
-      alert('Failed to open folder. Please check the path.');
+      alert(t('libraryFolders.openFailed'));
     }
   };
 
@@ -657,8 +659,8 @@ export default function DirectoryList({
                   handleToggleNode(childKey, child.path, rootDirectory);
                 }}
                 className="text-gray-500 hover:text-gray-300 transition-colors mr-1 flex-shrink-0"
-                title={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
-                aria-label={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
+                title={isExpandedNode ? t('libraryFolders.hideSubfolders') : t('libraryFolders.showSubfolders')}
+                aria-label={isExpandedNode ? t('libraryFolders.hideSubfolders') : t('libraryFolders.showSubfolders')}
               >
                 <ChevronDown
                   className={`w-3 h-3 transition-transform ${isExpandedNode ? 'rotate-0' : '-rotate-90'}`}
@@ -684,8 +686,8 @@ export default function DirectoryList({
                         className={`p-1 rounded hover:bg-gray-600 transition-colors ${
                             isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-100'
                         }`}
-                        title="Include folder"
-                        aria-label="Include folder"
+                        title={t('libraryFolders.includeFolder')}
+                        aria-label={t('libraryFolders.includeFolder')}
                     >
                         <Eye className="w-3 h-3" />
                     </button>
@@ -712,8 +714,8 @@ export default function DirectoryList({
                         className={`p-1 rounded hover:bg-gray-600 transition-colors ${
                             isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'
                         }`}
-                        title="Refresh folder"
-                        aria-label="Refresh folder"
+                        title={t('libraryFolders.refreshFolder')}
+                        aria-label={t('libraryFolders.refreshFolder')}
                     >
                         <RotateCcw className="w-3 h-3" />
                     </button>
@@ -727,8 +729,8 @@ export default function DirectoryList({
                             className={`p-1 rounded hover:bg-gray-600 transition-colors ${
                                 isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'
                             }`}
-                            title="Exclude folder"
-                            aria-label="Exclude folder"
+                            title={t('libraryFolders.excludeFolder')}
+                            aria-label={t('libraryFolders.excludeFolder')}
                         >
                             <EyeOff className="w-3 h-3" />
                         </button>
@@ -740,7 +742,7 @@ export default function DirectoryList({
           {isExpandedNode && hasSubfolders && (
             <ul className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-2">
               {isLoadingNode ? (
-                <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
+                <li className="text-xs text-gray-500 italic py-1">{t('libraryFolders.loadingSubfolders')}</li>
               ) : grandchildren.length > 0 ? (
                 renderSubfolderList(rootDirectory, childKey)
               ) : null}
@@ -764,6 +766,7 @@ export default function DirectoryList({
     excludedFolders,
     onIncludeFolder,
     onExcludeFolder,
+    t,
     isIndexing,
     onUpdateDirectory,
     loadSubfolders,
@@ -982,7 +985,7 @@ export default function DirectoryList({
         aria-expanded={isExpanded}
       >
         <div className="flex items-center space-x-2">
-          <span className="text-gray-300 font-medium">Folders</span>
+          <span className="text-gray-300 font-medium">{t('libraryFolders.folders')}</span>
           <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
             {directories.length}
           </span>
@@ -997,8 +1000,8 @@ export default function DirectoryList({
                   ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
                   : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
               }`}
-              title={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
-              aria-label={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
+              title={includeSubfolders ? t('libraryFolders.recursive') : t('libraryFolders.flat')}
+              aria-label={includeSubfolders ? t('libraryFolders.recursive') : t('libraryFolders.flat')}
             >
               {includeSubfolders ? <FolderTree className="w-3.5 h-3.5" /> : <Folder className="w-3.5 h-3.5" />}
             </button>
@@ -1010,8 +1013,8 @@ export default function DirectoryList({
                 onClearFolderSelection();
               }}
               className="p-1 rounded-full text-gray-500 hover:text-red-400 hover:bg-gray-700/50 transition-colors"
-              title="Clear folder selection"
-              aria-label="Clear folder selection"
+              title={t('libraryFolders.clearSelection')}
+              aria-label={t('libraryFolders.clearSelection')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -1072,8 +1075,8 @@ export default function DirectoryList({
                         <button
                           onClick={() => handleToggleNode(rootKey, dir.path, dir)}
                           className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
-                          title={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
-                          aria-label={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
+                          title={isRootExpanded ? t('libraryFolders.hideSubfolders') : t('libraryFolders.showSubfolders')}
+                          aria-label={isRootExpanded ? t('libraryFolders.hideSubfolders') : t('libraryFolders.showSubfolders')}
                         >
                           <ChevronDown
                             className={`w-4 h-4 transition-transform ${isRootExpanded ? 'rotate-0' : '-rotate-90'}`}
@@ -1090,7 +1093,7 @@ export default function DirectoryList({
                         className={`ml-2 text-sm truncate text-left transition-colors flex-1 ${
                           isRootSelected ? 'text-blue-100 light:text-gray-100' : 'text-gray-300 hover:text-gray-100'
                         }`}
-                        title={`Select folder: ${dir.path}`}
+                        title={t('libraryFolders.selectPath', { path: dir.path })}
                       >
                         {dir.name}
                       </button>
@@ -1099,9 +1102,9 @@ export default function DirectoryList({
                       {progressEntry && (
                         <span
                           className="text-[10px] font-medium text-gray-300 tabular-nums"
-                          title={isScanning ? 'Scanning folder...' : `${progressEntry.current} / ${progressEntry.total} items loaded`}
+                          title={isScanning ? t('libraryFolders.scanningFolder') : t('libraryFolders.loadProgress', { current: progressEntry.current, total: progressEntry.total })}
                         >
-                          {isScanning ? 'Scanning...' : `${Math.round(progressPercent)}%`}
+                          {isScanning ? t('libraryFolders.scanning') : `${Math.round(progressPercent)}%`}
                         </span>
                       )}
                       <button
@@ -1125,17 +1128,17 @@ export default function DirectoryList({
                         }`}
                         title={
                           isRefreshing
-                            ? 'Refreshing folder'
+                            ? t('libraryFolders.refreshingFolder')
                             : isIndexing
-                              ? 'Cannot refresh during indexing'
-                              : 'Refresh folder'
+                              ? t('libraryFolders.refreshBlockedIndexing')
+                              : t('libraryFolders.refreshFolder')
                         }
                         aria-label={
                           isRefreshing
-                            ? 'Refreshing folder'
+                            ? t('libraryFolders.refreshingFolder')
                             : isIndexing
-                              ? 'Cannot refresh during indexing'
-                              : 'Refresh folder'
+                              ? t('libraryFolders.refreshBlockedIndexing')
+                              : t('libraryFolders.refreshFolder')
                         }
                       >
                         <RotateCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -1150,15 +1153,15 @@ export default function DirectoryList({
                         }`}
                         title={
                           isRefreshing
-                            ? 'Cannot remove while refreshing'
+                            ? t('libraryFolders.removeBlockedRefreshing')
                             : isIndexing
-                              ? 'Cannot remove during indexing'
-                              : 'Remove folder'
+                              ? t('libraryFolders.removeBlockedIndexing')
+                              : t('libraryFolders.removeFolder')
                         }
                         aria-label={
                           isRefreshing || isIndexing
-                            ? 'Cannot remove folder while indexing or refreshing'
-                            : 'Remove folder'
+                            ? t('libraryFolders.removeBlocked')
+                            : t('libraryFolders.removeFolder')
                         }
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1172,7 +1175,7 @@ export default function DirectoryList({
                         <>
                           <ul className="ml-3 space-y-1">
                             {isRootLoading ? (
-                              <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
+                              <li className="text-xs text-gray-500 italic py-1">{t('libraryFolders.loadingSubfolders')}</li>
                             ) : rootChildren.length > 0 ? (
                               renderSubfolderList(dir, rootKey)
                             ) : null}
@@ -1180,7 +1183,7 @@ export default function DirectoryList({
                         </>
                       ) : (
                         <div className="text-xs text-gray-500 italic py-1">
-                          No subfolders (folder loaded without "Scan Subfolders")
+                          {t('libraryFolders.noSubfolders')}
                         </div>
                       )}
                     </div>
@@ -1207,7 +1210,7 @@ export default function DirectoryList({
             }}
           >
             <FolderOpen className="w-4 h-4" />
-            Open in Explorer
+            {t('libraryFolders.openInExplorer')}
           </button>
           
           <button
@@ -1226,7 +1229,7 @@ export default function DirectoryList({
             disabled={isIndexing}
           >
             <RotateCcw className={`w-4 h-4 ${isIndexing ? 'text-gray-600' : ''}`} />
-            Refresh Folder
+            {t('libraryFolders.refreshFolderMenu')}
           </button>
 
           <div className="h-px bg-gray-700 my-1" />
@@ -1267,7 +1270,7 @@ export default function DirectoryList({
               }}
             >
               <Clipboard className="w-4 h-4 text-blue-400" />
-              Paste {clipboard.imageIds.length} image(s)
+              {t('libraryFolders.pasteImages', { count: clipboard.imageIds.length })}
             </button>
           )}
 
@@ -1288,11 +1291,11 @@ export default function DirectoryList({
                 onConfirm: async (newName) => {
                   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
                   if (isElectron && newName.trim()) {
-                    const newPath = await joinElectronPath(targetPath, newName.trim());
+                    const newPath = await joinElectronPath(t, targetPath, newName.trim());
                     if (!newPath) return;
                     const result = await (window as any).electronAPI.ensureDirectory(newPath);
                     if (!result?.success) {
-                      useImageStore.getState().setError(result?.error || 'Failed to create folder.');
+                      useImageStore.getState().setError(result?.error || t('libraryFolders.createFailed'));
                       return;
                     }
                     const rootDir = findRootDirectoryForPath(directories, targetPath);
@@ -1313,7 +1316,7 @@ export default function DirectoryList({
             }}
           >
             <FolderPlus className="w-4 h-4 text-green-400" />
-            New Folder
+            {t('libraryFolders.newFolder')}
           </button>
 
           <button
@@ -1336,13 +1339,13 @@ export default function DirectoryList({
                   if (newName.trim() && newName.trim() !== folderName) {
                     const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
                     if (isElectron) {
-                      const parentPath = await getElectronDirname(targetPath);
+                      const parentPath = await getElectronDirname(t, targetPath);
                       if (!parentPath) return;
-                      const newPath = await joinElectronPath(parentPath, newName.trim());
+                      const newPath = await joinElectronPath(t, parentPath, newName.trim());
                       if (!newPath) return;
                       const result = await (window as any).electronAPI.renameFile(targetPath, newPath);
                       if (!result?.success) {
-                        useImageStore.getState().setError(result?.error || 'Failed to rename folder.');
+                        useImageStore.getState().setError(result?.error || t('libraryFolders.renameFailed'));
                         return;
                       }
                       const rootDir = findRootDirectoryForPath(directories, targetPath);
@@ -1368,7 +1371,7 @@ export default function DirectoryList({
                           await window.electronAPI?.updateAllowedPaths(nextDirectories.map((directory) => directory.path));
                           const watcherRebinds = affectedDirectories.filter((directory) => directory.autoWatch);
                           if (watcherRebinds.length > 0) {
-                            await rebindRootWatchers(watcherRebinds);
+                            await rebindRootWatchers(t, watcherRebinds);
                           }
                           onUpdateDirectory(newPath);
                           return;
@@ -1392,7 +1395,7 @@ export default function DirectoryList({
             }}
           >
             <Edit2 className="w-4 h-4 text-yellow-400" />
-            Rename Folder
+            {t('libraryFolders.renameFolder')}
           </button>
 
           <div className="h-px bg-gray-700 my-1" />
@@ -1407,7 +1410,7 @@ export default function DirectoryList({
                 }}
               >
                 <Eye className="w-4 h-4" />
-                Include Folder
+                {t('libraryFolders.includeFolderMenu')}
               </button>
             )
           ) : (
@@ -1421,7 +1424,7 @@ export default function DirectoryList({
                 }}
               >
                 <EyeOff className="w-4 h-4" />
-                Exclude Folder
+                {t('libraryFolders.excludeFolderMenu')}
               </button>
             )
           )}
@@ -1441,7 +1444,7 @@ export default function DirectoryList({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold text-white">
-              {folderPrompt.mode === 'new' ? 'New Folder' : 'Rename Folder'}
+              {folderPrompt.mode === 'new' ? t('libraryFolders.newFolder') : t('libraryFolders.renameFolder')}
             </h3>
             <input
               ref={folderPromptInputRef}
@@ -1456,7 +1459,7 @@ export default function DirectoryList({
                   setFolderPrompt(null);
                 }
               }}
-              placeholder={folderPrompt.mode === 'new' ? 'Folder name…' : 'New name…'}
+              placeholder={folderPrompt.mode === 'new' ? t('libraryFolders.folderName') : t('libraryFolders.newName')}
               className="bg-gray-700 border border-gray-500 rounded px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
             />
             <div className="flex justify-end gap-2">
@@ -1464,7 +1467,7 @@ export default function DirectoryList({
                 className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded hover:bg-gray-700 transition-colors"
                 onClick={() => setFolderPrompt(null)}
               >
-                Cancel
+                {t('libraryFolders.cancel')}
               </button>
               <button
                 className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 rounded transition-colors"
@@ -1473,7 +1476,7 @@ export default function DirectoryList({
                   setFolderPrompt(null);
                 }}
               >
-                {folderPrompt.mode === 'new' ? 'Create' : 'Rename'}
+                {folderPrompt.mode === 'new' ? t('libraryFolders.create') : t('libraryFolders.rename')}
               </button>
             </div>
           </div>

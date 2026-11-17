@@ -30,7 +30,7 @@ const files = execFileSync('git', ['ls-files', '-z', '--', '*.tsx', '*.ts', '*.m
 const visibleProperties = /^(?:title|label|description|aria-label|ariaLabel|placeholder|alt|tooltip|aria-description|message)$/;
 for (const file of files) {
   const module = Object.values(coverage).find(({ paths }) => paths.some((path) => path.endsWith('/') ? file.startsWith(path) : file === path));
-  if (!module && !['electron.mjs', 'electron/exrIpc.mjs', 'components/ProPlanSelector.tsx'].includes(file)) continue;
+  if (!module && !['electron.mjs', 'electron/exrIpc.mjs', 'components/ProPlanSelector.tsx', 'components/Sidebar.tsx', 'hooks/useImageLoader.ts'].includes(file)) continue;
   const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
   const exceptions = new Set(module?.literalExceptions);
   function report(node, error) {
@@ -66,7 +66,7 @@ for (const file of files) {
     if (ts.isCallExpression(node) && node.arguments.length) {
       const first = node.arguments[0];
       const key = ts.isStringLiteralLike(first) ? first.text : undefined;
-      if (key && /^[a-zA-Z-]+\.[a-zA-Z]+\./.test(key) && ['t', 'translate', 'translateApp'].includes(node.expression.getText(source)) && !Object.hasOwn(en, key)) {
+      if (key && /^[a-zA-Z-]+\.[a-zA-Z]/.test(key) && ['t', 'translate', 'translateApp', 'folderText'].includes(node.expression.getText(source)) && !Object.hasOwn(en, key)) {
         report(first, `Unknown message: ${key}`);
       }
     }
