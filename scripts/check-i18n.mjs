@@ -20,7 +20,8 @@ const coverage = readJson('i18n/coverage.json');
 const reviewed = readJson('i18n/reviewed.json');
 const catalogs = Object.fromEntries(targetLanguages.map((locale) => [locale, readJson(`i18n/${locale}.json`)]));
 const baseCoverage = fromBase('i18n/coverage.json');
-const errors = validateCatalogs(en, catalogs, reviewed, coverage, baseCoverage);
+const baseLanguages = Object.keys(fromBase('i18n/reviewed.json'));
+const errors = validateCatalogs(en, catalogs, reviewed, coverage, baseCoverage, baseLanguages);
 for (const module of Object.keys(baseCoverage)) {
   if (!Object.hasOwn(coverage, module)) errors.push(`Coverage was removed for ${module}`);
 }

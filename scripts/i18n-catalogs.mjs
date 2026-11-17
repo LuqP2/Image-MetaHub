@@ -4,7 +4,7 @@ import { reviewHash } from '../i18n/reviewHash.mjs';
 
 export { reviewHash };
 
-export const targetLanguages = ['es', 'pt-BR'];
+export const targetLanguages = ['es', 'pt-BR', 'ja'];
 export const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
 export function diffCatalog(base, current) {
@@ -26,7 +26,7 @@ export function pendingTranslations(source, catalogs, reviewed, coverage) {
     });
 }
 
-export function validateCatalogs(source, catalogs, reviewed, coverage, baseCoverage) {
+export function validateCatalogs(source, catalogs, reviewed, coverage, baseCoverage, baseLanguages = targetLanguages) {
   const errors = [];
   const signatures = new Map();
   for (const [key, message] of Object.entries(source)) {
@@ -60,7 +60,7 @@ export function validateCatalogs(source, catalogs, reviewed, coverage, baseCover
   }
 
   for (const entry of pendingTranslations(source, catalogs, reviewed, coverage)) {
-    if (!Object.hasOwn(baseCoverage, entry.key.split('.')[0])) {
+    if (!Object.hasOwn(baseCoverage, entry.key.split('.')[0]) || !baseLanguages.includes(entry.locale)) {
       errors.push(`${entry.locale} ${entry.key}: Initial migration requires an approved translation`);
     }
   }

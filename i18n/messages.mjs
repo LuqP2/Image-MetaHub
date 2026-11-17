@@ -2,16 +2,17 @@ import { IntlMessageFormat } from 'intl-messageformat';
 import en from './en.json' with { type: 'json' };
 import es from './es.json' with { type: 'json' };
 import ptBR from './pt-BR.json' with { type: 'json' };
+import ja from './ja.json' with { type: 'json' };
 import reviewed from './reviewed.json' with { type: 'json' };
 import { argumentSignature } from './compatibility.mjs';
 import { reviewHash } from './reviewHash.mjs';
 
-export const languages = Object.freeze(['en', 'es', 'pt-BR']);
-export const languageNames = Object.freeze({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)' });
+export const languages = Object.freeze(['en', 'es', 'pt-BR', 'ja']);
+export const languageNames = Object.freeze({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', ja: '日本語' });
 
 /** @param {unknown} language */
 export function normalizeLanguage(language) {
-  return language === 'es' || language === 'pt-BR' ? language : 'en';
+  return language === 'es' || language === 'pt-BR' || language === 'ja' ? language : 'en';
 }
 
 export function createMessageFormatter(catalogs, approvals) {
@@ -48,4 +49,4 @@ export function createMessageFormatter(catalogs, approvals) {
   };
 }
 
-export const formatMessage = createMessageFormatter({ en, es, 'pt-BR': ptBR }, reviewed);
+export const formatMessage = createMessageFormatter({ en, es, 'pt-BR': ptBR, ja }, reviewed);
