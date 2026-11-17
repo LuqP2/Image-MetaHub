@@ -1,6 +1,6 @@
 # Image MetaHub translations
 
-Use a stable module-prefixed key in `en.json` and add reviewed translations to `es.json`, `pt-BR.json`, and `ja.json`. Use whole ICU messages for labels with variables or plural forms. Pass filenames, prompts, node names, and other user or application data as arguments.
+Use a stable module-prefixed key in `en.json` and add reviewed translations to the language catalogs listed in `languages.mjs`. Use whole ICU messages for labels with variables or plural forms. Pass filenames, prompts, node names, and other user or application data as arguments.
 
 For an initial module migration, add its source paths to `coverage.json` and include all language catalogs in the PR. When adding a language, translate all previously migrated modules in the same PR. For each reviewed translation, update its locale and key in `reviewed.json` with the SHA-256 of the exact English message. Run `node scripts/check-i18n.mjs origin/main` to check a branch before pushing.
 
