@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { argumentSignature } from '../i18n/compatibility.mjs';
 import { reviewHash } from '../i18n/reviewHash.mjs';
+import { targetLanguages } from '../i18n/languages.mjs';
 
-export { reviewHash };
-
-export const targetLanguages = ['es', 'pt-BR', 'ja'];
+export { reviewHash, targetLanguages };
 export const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
 export function diffCatalog(base, current) {

@@ -3,17 +3,17 @@ import en from './en.json' with { type: 'json' };
 import es from './es.json' with { type: 'json' };
 import ptBR from './pt-BR.json' with { type: 'json' };
 import ja from './ja.json' with { type: 'json' };
+import de from './de.json' with { type: 'json' };
+import fr from './fr.json' with { type: 'json' };
+import ko from './ko.json' with { type: 'json' };
+import zhCN from './zh-CN.json' with { type: 'json' };
+import zhTW from './zh-TW.json' with { type: 'json' };
 import reviewed from './reviewed.json' with { type: 'json' };
 import { argumentSignature } from './compatibility.mjs';
 import { reviewHash } from './reviewHash.mjs';
+import { normalizeLanguage } from './languages.mjs';
 
-export const languages = Object.freeze(['en', 'es', 'pt-BR', 'ja']);
-export const languageNames = Object.freeze({ en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', ja: '日本語' });
-
-/** @param {unknown} language */
-export function normalizeLanguage(language) {
-  return language === 'es' || language === 'pt-BR' || language === 'ja' ? language : 'en';
-}
+export { languages, languageNames, normalizeLanguage } from './languages.mjs';
 
 export function createMessageFormatter(catalogs, approvals) {
   const formatters = new Map();
@@ -49,4 +49,5 @@ export function createMessageFormatter(catalogs, approvals) {
   };
 }
 
-export const formatMessage = createMessageFormatter({ en, es, 'pt-BR': ptBR, ja }, reviewed);
+const catalogs = { en, es, 'pt-BR': ptBR, ja, de, fr, ko, 'zh-CN': zhCN, 'zh-TW': zhTW };
+export const formatMessage = createMessageFormatter(catalogs, reviewed);

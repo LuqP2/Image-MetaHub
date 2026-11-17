@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import SettingsModal from '../components/SettingsModal';
 import { createMessageFormatter, formatMessage } from '../i18n/messages.mjs';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { diffCatalog, pendingTranslations, reviewHash, validateCatalogs } from '../scripts/i18n-catalogs.mjs';
+import { diffCatalog, pendingTranslations, reviewHash, targetLanguages, validateCatalogs } from '../scripts/i18n-catalogs.mjs';
 
 describe('settings language', () => {
   beforeEach(() => useSettingsStore.getState().resetState());
@@ -39,7 +39,23 @@ describe('settings language', () => {
     expect(formatMessage('ja', 'settings.library.detectedCores', { count: 8 })).toBe('8 個の論理コアを検出しました。');
   });
 
-  it.each([undefined, 'xx'])('uses English for an absent or unsupported stored locale (%s)', async (language) => {
+  it.each([
+    ['de', 'Deutsch', 'Einstellungen', 'Datei', 'Ordner'],
+    ['fr', 'Français', 'Paramètres', 'Fichier', 'Dossiers'],
+    ['ko', '한국어', '설정', '파일', '폴더'],
+    ['zh-CN', '简体中文', '设置', '文件', '文件夹'],
+    ['zh-TW', '繁體中文', '設定', '檔案', '資料夾'],
+  ] as const)('selects %s and uses its Settings, native menu, and folder labels', (locale, name, settings, file, folders) => {
+    render(<SettingsModal isOpen onClose={() => {}} initialTab="general" />);
+    expect(screen.getByRole('option', { name }).getAttribute('value')).toBe(locale);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: locale } });
+    expect(screen.getByRole('dialog', { name: settings })).toBeTruthy();
+    expect(useSettingsStore.getState().language).toBe(locale);
+    expect(formatMessage(locale, 'settings.native.file')).toBe(file);
+    expect(formatMessage(locale, 'libraryFolders.folders')).toBe(folders);
+  });
+
+  it.each([undefined, 'xx', '__proto__'])('uses English for an absent or unsupported stored locale (%s)', async (language) => {
     localStorage.setItem('image-metahub-settings', JSON.stringify({ state: { language }, version: 0 }));
     await useSettingsStore.persist.rehydrate();
     expect(useSettingsStore.getState().language).toBe('en');
@@ -82,8 +98,17 @@ describe('catalog review', () => {
   const coverage = { settings: { paths: ['components/settings/'] } };
   const oldSource = { [key]: 'Hello {name}' };
   const source = { [key]: 'Welcome {name}' };
-  const catalogs = { es: { [key]: 'Hola {name}' }, 'pt-BR': {}, ja: { [key]: 'ようこそ、{name}さん' } };
-  const reviewed = { es: { [key]: reviewHash(oldSource[key]) }, 'pt-BR': {}, ja: { [key]: reviewHash(source[key]) } };
+  const catalogs = {
+    ...Object.fromEntries(targetLanguages.map(locale => [locale, { [key]: source[key] }])),
+    es: { [key]: 'Hola {name}' },
+    'pt-BR': {},
+    ja: { [key]: 'ようこそ、{name}さん' },
+  };
+  const reviewed = {
+    ...Object.fromEntries(targetLanguages.map(locale => [locale, { [key]: reviewHash(source[key]) }])),
+    es: { [key]: reviewHash(oldSource[key]) },
+    'pt-BR': {},
+  };
 
   it('requires all reviews during initial migration and queues later changes', () => {
     expect(diffCatalog(oldSource, source)).toEqual({ added: [], changed: [key], removed: [] });
@@ -103,7 +128,7 @@ describe('catalog review', () => {
   });
 
   it('requires current approvals for a newly added locale even in an existing module', () => {
-    const baseLanguages = ['es', 'pt-BR'];
+    const baseLanguages = targetLanguages.filter(locale => locale !== 'ja');
     expect(validateCatalogs(source, catalogs, reviewed, coverage, coverage, baseLanguages)).toEqual([]);
     const missingJapanese = { ...catalogs, ja: {} };
     expect(validateCatalogs(source, missingJapanese, { ...reviewed, ja: {} }, coverage, coverage, baseLanguages))
