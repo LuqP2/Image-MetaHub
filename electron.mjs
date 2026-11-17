@@ -1,3 +1,4 @@
+import { formatMessage, normalizeLanguage } from './i18n/messages.mjs';
 import electron from 'electron';
 import { runComparisonPackagedSmoke } from './electron/comparisonPackagedSmoke.mjs';
 import { broadcastSettingsToWindows } from './electron/settingsBroadcast.mjs';
@@ -787,36 +788,36 @@ function adjustZoom(delta) {
   setZoomFactor(currentZoom + delta);
 }
 
-const zoomMenuItems = [
+const zoomMenuItems = (t) => [
   {
-    label: 'Reset Zoom',
+    label: t('settings.native.resetZoom'),
     accelerator: 'CmdOrCtrl+0',
     click: resetZoom
   },
   {
-    label: 'Zoom In',
+    label: t('settings.native.zoomIn'),
     accelerator: 'CmdOrCtrl+=',
     click: () => adjustZoom(ZOOM_STEP)
   },
   {
-    label: 'Zoom In (+)',
+    label: t('settings.native.zoomInPlus'),
     accelerator: 'CmdOrCtrl+Plus',
     visible: false,
     click: () => adjustZoom(ZOOM_STEP)
   },
   {
-    label: 'Zoom In (Numpad)',
+    label: t('settings.native.zoomInNumpad'),
     accelerator: 'CmdOrCtrl+numadd',
     visible: false,
     click: () => adjustZoom(ZOOM_STEP)
   },
   {
-    label: 'Zoom Out',
+    label: t('settings.native.zoomOut'),
     accelerator: 'CmdOrCtrl+-',
     click: () => adjustZoom(-ZOOM_STEP)
   },
   {
-    label: 'Zoom Out (Numpad)',
+    label: t('settings.native.zoomOutNumpad'),
     accelerator: 'CmdOrCtrl+numsub',
     visible: false,
     click: () => adjustZoom(-ZOOM_STEP)
@@ -2182,16 +2183,26 @@ async function launchGeneratorCommand({ command, workingDirectory }) {
 }
 
 // --- Application Menu ---
+let appLanguage = 'en';
+
+function applyAppLanguage(settings) {
+  const language = normalizeLanguage(settings.language);
+  if (language === appLanguage) return;
+  appLanguage = language;
+  createApplicationMenu();
+}
+
 function createApplicationMenu() {
+  const t = (key, values) => formatMessage(appLanguage, key, values);
   const updateMenuItem = desktopRuntime.isPortable
     ? {
-        label: 'Download Latest Release...',
+        label: t("settings.native.downloadLatestRelease"),
         click: async () => {
           await shell.openExternal(LATEST_RELEASE_URL);
         },
       }
     : {
-        label: 'Check for Updates...',
+        label: t("settings.native.checkForUpdates"),
         click: async () => {
           if (autoUpdater) {
             try {
@@ -2204,9 +2215,9 @@ function createApplicationMenu() {
               if (mainWindow) {
                 dialog.showMessageBox(mainWindow, {
                   type: 'info',
-                  title: 'Update Check',
-                  message: 'Failed to check for updates.',
-                  detail: error.message || 'Please try again later.',
+                  title: t("settings.native.updateCheck"),
+                  message: t("settings.native.failedToCheckForUpdates"),
+                  detail: error.message || t("settings.native.pleaseTryAgainLater"),
                   buttons: ['OK']
                 });
               }
@@ -2214,8 +2225,8 @@ function createApplicationMenu() {
           } else if (mainWindow) {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'Update Check',
-              message: 'Auto-updater is not available in development mode.',
+              title: t("settings.native.updateCheck"),
+              message: t("settings.native.autoUpdaterIsNotAvailableInDevelopment"),
               buttons: ['OK']
             });
           }
@@ -2224,10 +2235,10 @@ function createApplicationMenu() {
 
   const template = [
     {
-      label: 'File',
+      label: t("settings.native.file"),
       submenu: [
         {
-          label: 'Add Folder...',
+          label: t("settings.native.addFolder"),
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             if (mainWindow) {
@@ -2237,7 +2248,7 @@ function createApplicationMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Settings',
+          label: t("settings.native.settings"),
           accelerator: 'CmdOrCtrl+,',
           click: () => {
             if (mainWindow) {
@@ -2247,7 +2258,7 @@ function createApplicationMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Exit',
+          label: t("settings.native.exit"),
           accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Alt+F4',
           click: () => {
             app.quit();
@@ -2256,22 +2267,22 @@ function createApplicationMenu() {
       ]
     },
     {
-      label: 'Edit',
+      label: t("settings.native.edit"),
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        { role: 'undo', ...(appLanguage === 'en' ? {} : { label: t("settings.native.undo") }) },
+        { role: 'redo', ...(appLanguage === 'en' ? {} : { label: t("settings.native.redo") }) },
         { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
+        { role: 'cut', ...(appLanguage === 'en' ? {} : { label: t("settings.native.cut") }) },
+        { role: 'copy', ...(appLanguage === 'en' ? {} : { label: t("settings.native.copy") }) },
+        { role: 'paste', ...(appLanguage === 'en' ? {} : { label: t("settings.native.paste") }) },
+        { role: 'selectAll', ...(appLanguage === 'en' ? {} : { label: t("settings.native.selectAll") }) }
       ]
     },
     {
-      label: 'View',
+      label: t("settings.native.view"),
       submenu: [
         {
-          label: 'Toggle Grid/List View',
+          label: t("settings.native.toggleGridListView"),
           accelerator: 'CmdOrCtrl+L',
           click: () => {
             if (mainWindow) {
@@ -2280,36 +2291,36 @@ function createApplicationMenu() {
           }
         },
         { type: 'separator' },
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { role: 'reload', ...(appLanguage === 'en' ? {} : { label: t("settings.native.reload") }) },
+        { role: 'forceReload', ...(appLanguage === 'en' ? {} : { label: t("settings.native.forceReload") }) },
+        { role: 'toggleDevTools', ...(appLanguage === 'en' ? {} : { label: t("settings.native.toggleDeveloperTools") }) },
         { type: 'separator' },
-        ...zoomMenuItems,
+        ...zoomMenuItems(t),
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'togglefullscreen', ...(appLanguage === 'en' ? {} : { label: t("settings.native.toggleFullScreen") }) }
       ]
     },
     {
-      label: 'Window',
+      label: t("settings.native.window"),
       submenu: [
-        { role: 'minimize' },
+        { role: 'minimize', ...(appLanguage === 'en' ? {} : { label: t("settings.native.minimize") }) },
         { type: 'separator' },
-        ...zoomMenuItems,
+        ...zoomMenuItems(t),
         ...(process.platform === 'darwin' ? [
           { type: 'separator' },
-          { role: 'front' },
+          { role: 'front', ...(appLanguage === 'en' ? {} : { label: t("settings.native.bringAllToFront") }) },
           { type: 'separator' },
-          { role: 'window' }
+          { role: 'window', ...(appLanguage === 'en' ? {} : { label: t("settings.native.window") }) }
         ] : [
-          { role: 'close' }
+          { role: 'close', ...(appLanguage === 'en' ? {} : { label: t("settings.native.close") }) }
         ])
       ]
     },
     {
-      label: 'Help',
+      label: t("settings.native.help"),
       submenu: [
         {
-          label: `What's New (v${app.getVersion()})`,
+          label: t("settings.native.whatsNew", { version: app.getVersion() }),
           accelerator: 'F1',
           click: () => {
             if (mainWindow) {
@@ -2321,33 +2332,33 @@ function createApplicationMenu() {
         updateMenuItem,
         { type: 'separator' },
         {
-          label: 'Documentation',
+          label: t("settings.native.documentation"),
           click: async () => {
             await shell.openExternal('https://github.com/LuqP2/Image-MetaHub#readme');
           }
         },
         {
-          label: 'Report Bug',
+          label: t("settings.native.reportBug"),
           click: async () => {
             await shell.openExternal('https://github.com/LuqP2/Image-MetaHub/issues/new');
           }
         },
         {
-          label: 'View on GitHub',
+          label: t("settings.native.viewOnGithub"),
           click: async () => {
             await shell.openExternal('https://github.com/LuqP2/Image-MetaHub');
           }
         },
         { type: 'separator' },
         {
-          label: `About Image MetaHub`,
+          label: t("settings.native.aboutImageMetahub"),
           click: () => {
             if (mainWindow) {
               dialog.showMessageBox(mainWindow, {
                 type: 'info',
-                title: 'About Image MetaHub',
+                title: t("settings.native.aboutImageMetahub"),
                 message: `Image MetaHub v${app.getVersion()}`,
-                detail: 'A powerful tool for browsing and managing AI-generated images with metadata support for InvokeAI, ComfyUI, A1111, and more.\n\n© 2025 LuqP2',
+                detail: t('settings.native.aboutDetail'),
                 buttons: ['OK']
               });
             }
@@ -2624,7 +2635,7 @@ function pickDetachedViewerCascadeSlot() {
 
 /** Notify every renderer except the one that just wrote settings. */
 function broadcastSettingsUpdated(senderWebContents) {
-  broadcastSettingsToWindows([mainWindow, modelInspectorWindow, ...detachedImageViewerWindows.values(), ...comparisonSettingsWindows], senderWebContents);
+  broadcastSettingsToWindows([mainWindow, modelInspectorWindow, ...detachedImageViewerWindows.values(), ...idleMacImageViewerWindows, ...comparisonSettingsWindows], senderWebContents);
 }
 
 function sendDetachedViewerEvent(sessionId, type, details = {}) {
@@ -3517,7 +3528,8 @@ async function createWindow(startupDirectory = null) {
 // App event handlers
 let exrRuntime;
 app.whenReady().then(async () => {
-  exrRuntime = registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed, cacheRoot: getCacheRootPath });
+  appLanguage = normalizeLanguage((await readSettings()).language);
+  exrRuntime = registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed, cacheRoot: getCacheRootPath, translate: (key) => formatMessage(appLanguage, key) });
   registerProcessDiagnostics();
   registerMediaProtocol();
   registerThumbnailProtocol();
@@ -5049,9 +5061,15 @@ function setupFileOperationHandlers() {
     return settings;
   });
 
-  ipcMain.handle('save-settings', async (event, newSettings) => {
+  ipcMain.handle('save-settings', async (event, newSettings, options) => {
     try {
-      await queueSettingsUpdate((currentSettings) => mergeSettingsUpdate(currentSettings, newSettings));
+      const { language, ...otherSettings } = newSettings ?? {};
+      // General saves also come from license and feature stores, which may have
+      // read settings before the renderer selected a different language.
+      const settings = await queueSettingsUpdate((currentSettings) => options?.languageOnly === true
+        ? { ...currentSettings, language: normalizeLanguage(language) }
+        : mergeSettingsUpdate(currentSettings, otherSettings));
+      applyAppLanguage(settings);
       // Every window persists its *whole* settings state, so a window holding a
       // stale copy would revert another window's newer values on the next write.
       // Tell the other windows to rehydrate so none of them can go stale.

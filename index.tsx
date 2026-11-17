@@ -32,6 +32,14 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+const applyDocumentLanguage = () => {
+  document.documentElement.lang = useSettingsStore.getState().language;
+};
+applyDocumentLanguage();
+useSettingsStore.subscribe((state, previousState) => {
+  if (state.language !== previousState.language) applyDocumentLanguage();
+});
+
 const root = ReactDOM.createRoot(rootElement);
 const windowKind = new URLSearchParams(window.location.search).get('window');
 const isDetachedImageViewer = windowKind === 'image-modal';

@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Crown } from 'lucide-react';
@@ -23,6 +24,7 @@ export const SettingsSidebarNav: React.FC<SettingsSidebarNavProps> = ({
   activeTab,
   onSelectTab,
 }) => {
+  const { t } = useTranslation();
   return (
     <aside className="border-b border-gray-700/80 md:flex md:h-full md:flex-col md:border-b-0">
       <div className="overflow-x-auto md:flex-1 md:overflow-visible">
@@ -61,7 +63,7 @@ export const SettingsSidebarNav: React.FC<SettingsSidebarNavProps> = ({
           }`}
         >
           <Crown size={16} />
-          <span>Support / License</span>
+          <span>{t("settings.navigation.supportLicense")}</span>
         </button>
       </div>
     </aside>

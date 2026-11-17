@@ -675,7 +675,7 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
-  saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  saveSettings: (settings: any, options?: { languageOnly: true }) => Promise<{ success: boolean; error?: string }>;
   activateTrial: () => Promise<TrialActivationResult>;
   activateTrialExtension: () => Promise<TrialExtensionActivationResult>;
   dismissReleaseTrialExtensionNotice: () => Promise<{ success: boolean; error?: string }>;

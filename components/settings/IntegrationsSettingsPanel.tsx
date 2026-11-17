@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React, { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -7,6 +8,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { SettingSwitch } from './SettingSwitch';
 
 export const IntegrationsSettingsPanel: React.FC = () => {
+  const { t } = useTranslation();
   const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
   const setGeneratorLaunchCommand = useSettingsStore((state) => state.setGeneratorLaunchCommand);
   const generatorLaunchWorkingDirectory = useSettingsStore((state) => state.generatorLaunchWorkingDirectory);
@@ -34,7 +36,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
 
   const handleTestA1111Connection = async () => {
     if (!a1111ServerUrl) {
-      alert('Please enter a server URL.');
+      alert(t("settings.integrations.pleaseEnterAServerUrl"));
       return;
     }
 
@@ -50,11 +52,11 @@ export const IntegrationsSettingsPanel: React.FC = () => {
         setA1111ConnectionStatus('connected');
       } else {
         setA1111ConnectionStatus('error');
-        alert(`Connection failed: ${result.error}`);
+        alert(t("settings.integrations.connectionFailure", { error: String(result.error) }));
       }
     } catch (error: any) {
       setA1111ConnectionStatus('error');
-      alert(`Error testing connection: ${error.message}`);
+      alert(t("settings.integrations.connectionTestError", { error: error.message }));
     } finally {
       setIsTestingA1111Connection(false);
     }
@@ -62,7 +64,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
 
   const handleTestComfyUIConnection = async () => {
     if (!comfyUIServerUrl) {
-      alert('Please enter a server URL.');
+      alert(t("settings.integrations.pleaseEnterAServerUrl"));
       return;
     }
 
@@ -78,56 +80,56 @@ export const IntegrationsSettingsPanel: React.FC = () => {
         setComfyUIConnectionStatus('connected');
       } else {
         setComfyUIConnectionStatus('error');
-        alert(`Connection failed: ${result.error}`);
+        alert(t("settings.integrations.connectionFailure", { error: String(result.error) }));
       }
     } catch (error: any) {
       setComfyUIConnectionStatus('error');
-      alert(`Error testing connection: ${error.message}`);
+      alert(t("settings.integrations.connectionTestError", { error: error.message }));
     } finally {
       setIsTestingComfyUIConnection(false);
     }
   };
 
   return (
-    <SettingsPanel title="Integrations" description="Connect Image MetaHub to your local generation tools.">
+    <SettingsPanel title={t("settings.integrations.integrations")} description={t("settings.integrations.connectImageMetahubToYourLocalGeneration")}>
       <div className="grid gap-4">
         <IntegrationCard
-          name="Generator Launcher"
-          description="Paste any local script or command. The Header button will run it exactly as saved here."
+          name={t("settings.integrations.generatorLauncher")}
+          description={t("settings.integrations.pasteAnyLocalScriptOrCommandThe")}
           status={generatorLaunchCommand.trim() ? 'connected' : 'unknown'}
         >
           <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="generator-launch-command">
-              Launch command
+              {t("settings.integrations.launchCommand")}
             </label>
             <textarea
               id="generator-launch-command"
               value={generatorLaunchCommand}
               onChange={(event) => setGeneratorLaunchCommand(event.target.value)}
-              placeholder="Paste your launch script or command here"
+              placeholder={t("settings.integrations.pasteYourLaunchScriptOrCommandHere")}
               rows={6}
               spellCheck={false}
               className="min-h-[140px] w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 font-mono text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
             />
             <p className="text-sm text-gray-400">
-              You can paste a full `.bat` / `.cmd` script or any shell command sequence. `Launch Generator` in the Header will execute it.
+              {t("settings.integrations.launchCommandHelp")}
             </p>
           </div>
 
           <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="generator-launch-working-directory">
-              Working directory
+              {t("settings.integrations.workingDirectory")}
             </label>
             <input
               id="generator-launch-working-directory"
               type="text"
               value={generatorLaunchWorkingDirectory}
               onChange={(event) => setGeneratorLaunchWorkingDirectory(event.target.value)}
-              placeholder="Optional: folder where the launcher command should run"
+              placeholder={t("settings.integrations.optionalFolderWhereTheLauncherCommandShould")}
               className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
             />
             <p className="text-sm text-gray-400">
-              Set this when your command uses relative paths such as `python main.py`, `./webui.sh`, or `venv/Scripts/python.exe`.
+              {t("settings.integrations.workingDirectoryHelp")}
             </p>
           </div>
         </IntegrationCard>
@@ -135,17 +137,17 @@ export const IntegrationsSettingsPanel: React.FC = () => {
         <div className="grid gap-4 xl:grid-cols-2">
         <IntegrationCard
           name="Automatic1111"
-          description="Viewer actions, clipboard export and optional quick generation."
+          description={t("settings.integrations.viewerActionsClipboardExportAndOptionalQuick")}
           status={a1111LastConnectionStatus}
         >
           <SettingRow
-            label="Show in viewer"
+            label={t("settings.integrations.showInViewer")}
             control={<SettingSwitch checked={a1111Enabled} onChange={setA1111Enabled} />}
           />
 
           <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="a1111-server-url">
-              Server URL
+              {t("settings.integrations.serverUrl")}
             </label>
             <input
               id="a1111-server-url"
@@ -158,8 +160,8 @@ export const IntegrationsSettingsPanel: React.FC = () => {
           </div>
 
           <SettingRow
-            label="Auto-start generation"
-            description="Start generating immediately when sending parameters to A1111."
+            label={t("settings.integrations.autoStartGeneration")}
+            description={t("settings.integrations.startGeneratingImmediatelyWhenSendingParametersTo")}
             control={<SettingSwitch checked={a1111AutoStart} onChange={() => toggleA1111AutoStart()} />}
           />
 
@@ -170,31 +172,31 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               disabled={isTestingA1111Connection}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-blue-500 enabled:hover:text-gray-950 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-300"
             >
-              {isTestingA1111Connection ? 'Testing...' : 'Test connection'}
+              {isTestingA1111Connection ? t("settings.integrations.testing") : t("settings.integrations.testConnection")}
             </button>
-            <p className="text-sm text-gray-400">A1111 must be running with the API enabled.</p>
+            <p className="text-sm text-gray-400">{t("settings.integrations.a1111MustBeRunningWithTheApi")}</p>
           </div>
         </IntegrationCard>
 
         <IntegrationCard
           name="ComfyUI"
-          description="Viewer actions and quick generation with real-time progress."
+          description={t("settings.integrations.viewerActionsAndQuickGenerationWithReal")}
           status={comfyUILastConnectionStatus}
         >
           <SettingRow
-            label="Show in viewer"
+            label={t("settings.integrations.showInViewer")}
             control={<SettingSwitch checked={comfyUIEnabled} onChange={setComfyUIEnabled} />}
           />
 
           <SettingRow
-            label="Detect ComfyUI generations"
-            description="Show generations started in ComfyUI, including the embedded workspace, in the Image MetaHub queue."
+            label={t("settings.integrations.detectComfyuiGenerations")}
+            description={t("settings.integrations.showGenerationsStartedInComfyuiIncludingThe")}
             control={<SettingSwitch checked={comfyUIQueueMonitoringEnabled} onChange={setComfyUIQueueMonitoringEnabled} />}
           />
 
           <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="comfyui-server-url">
-              Server URL
+              {t("settings.integrations.serverUrl")}
             </label>
             <input
               id="comfyui-server-url"
@@ -213,9 +215,9 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               disabled={isTestingComfyUIConnection}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-blue-500 enabled:hover:text-gray-950 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-300"
             >
-              {isTestingComfyUIConnection ? 'Testing...' : 'Test connection'}
+              {isTestingComfyUIConnection ? t("settings.integrations.testing") : t("settings.integrations.testConnection")}
             </button>
-            <p className="text-sm text-gray-400">MetaHub Save Node is recommended for full metadata support.</p>
+            <p className="text-sm text-gray-400">{t("settings.integrations.metahubSaveNodeIsRecommendedForFull")}</p>
           </div>
 
           <a

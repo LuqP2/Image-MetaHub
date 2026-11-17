@@ -1,10 +1,10 @@
+import { useTranslation, type MessageKey } from '../../i18n/useTranslation';
 import React, { useEffect, useState } from 'react';
 import { Crown } from 'lucide-react';
 import { useLicenseStore } from '../../store/useLicenseStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
-import { formatLicenseValidity, licensePlanLabel } from '../../utils/licenseDisplay';
 import { ProPlanCheckoutOptions } from '../ProPlanSelector';
 
 const licenseStatusClassName: Record<string, string> = {
@@ -15,15 +15,32 @@ const licenseStatusClassName: Record<string, string> = {
   lifetime: 'border-green-300 bg-green-100 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-200',
 };
 
-const licenseStatusLabel: Record<string, string> = {
-  free: 'Free',
-  trial: 'Trial',
-  expired: 'Trial expired',
-  pro: 'Pro',
-  lifetime: 'Lifetime',
+const licenseStatusKeys = {
+  free: 'settings.license.free',
+  trial: 'settings.license.trial',
+  expired: 'settings.license.trialExpired',
+  pro: 'settings.license.pro',
+  lifetime: 'settings.license.lifetime',
+} as const satisfies Record<string, MessageKey>;
+
+const licensePlanKeys = {
+  monthly: 'settings.license.monthly',
+  annual: 'settings.license.annual',
+  lifetime: 'settings.license.lifetime',
+} as const satisfies Record<string, MessageKey>;
+
+const licenseMessageKeys: Readonly<Record<string, MessageKey>> = {
+  'Please enter both email and license key.': 'settings.license.pleaseEnterBothEmailAndLicenseKey',
+  'License activation requires the desktop app.': 'settings.license.desktopRequired',
+  'License service is temporarily unavailable.': 'settings.license.serviceUnavailable',
+  'License status is temporarily unavailable.': 'settings.license.statusUnavailable',
+  'Invalid license for this email.': 'settings.license.invalidLicense',
+  'License has expired.': 'settings.license.licenseExpired',
+  'License is not active.': 'settings.license.licenseNotActive',
 };
 
 export const LicenseSettingsPanel: React.FC = () => {
+  const { t } = useTranslation();
   const licenseStatus = useLicenseStore((state) => state.licenseStatus);
   const licenseEmail = useLicenseStore((state) => state.licenseEmail);
   const licensePlan = useLicenseStore((state) => state.licensePlan);
@@ -33,16 +50,26 @@ export const LicenseSettingsPanel: React.FC = () => {
   const activateLicense = useLicenseStore((state) => state.activateLicense);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const paidPlanLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
-    ? licensePlanLabel(licensePlan)
-    : licenseStatusLabel[licenseStatus];
+    ? t(licensePlan ? licensePlanKeys[licensePlan] : 'settings.license.pro')
+    : t(licenseStatusKeys[licenseStatus]);
+  const expiresAt = licenseExpiresAt ? Date.parse(licenseExpiresAt) : NaN;
   const validityLabel = licenseStatus === 'pro' || licenseStatus === 'lifetime'
-    ? formatLicenseValidity(licensePlan, licenseExpiresAt)
+    ? licensePlan === 'lifetime'
+      ? t('settings.license.noExpiration')
+      : (licensePlan === 'monthly' || licensePlan === 'annual') && Number.isFinite(expiresAt)
+        ? t('settings.license.validThrough', { date: expiresAt })
+        : null
     : null;
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
   const [isActivatingLicense, setIsActivatingLicense] = useState(false);
-  const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
+  const [licenseMessage, setLicenseMessage] = useState<{ key: MessageKey } | { detail: string } | null>(null);
+  const licenseMessageLabel = licenseMessage && ('key' in licenseMessage
+    ? t(licenseMessage.key)
+    : Object.hasOwn(licenseMessageKeys, licenseMessage.detail)
+      ? t(licenseMessageKeys[licenseMessage.detail])
+      : licenseMessage.detail);
 
   useEffect(() => {
     setLicenseEmailInput(licenseEmail ?? '');
@@ -53,7 +80,7 @@ export const LicenseSettingsPanel: React.FC = () => {
   }, [licenseKey]);
 
   useEffect(() => {
-    if (licenseStoreMessage) setLicenseMessage(licenseStoreMessage);
+    if (licenseStoreMessage) setLicenseMessage({ detail: licenseStoreMessage });
   }, [licenseStoreMessage]);
 
   const handleActivateLicense = async () => {
@@ -62,7 +89,7 @@ export const LicenseSettingsPanel: React.FC = () => {
     const key = licenseKeyInput.trim();
 
     if (!email || !key) {
-      setLicenseMessage('Please enter both email and license key.');
+      setLicenseMessage({ key: 'settings.license.pleaseEnterBothEmailAndLicenseKey' });
       return;
     }
 
@@ -72,8 +99,8 @@ export const LicenseSettingsPanel: React.FC = () => {
       const activationMessage = useLicenseStore.getState().licenseMessage;
       setLicenseMessage(
         success
-          ? 'License activated. Thank you for supporting the project.'
-          : activationMessage ?? 'Invalid license for this email. Please double-check both fields.'
+          ? { key: 'settings.license.licenseActivatedThankYouForSupportingThe' }
+          : activationMessage ? { detail: activationMessage } : { key: 'settings.license.invalidLicenseForThisEmailPleaseDouble' }
       );
     } finally {
       setIsActivatingLicense(false);
@@ -81,39 +108,39 @@ export const LicenseSettingsPanel: React.FC = () => {
   };
 
   return (
-    <SettingsPanel title="Support / License" description="Activate Pro or manage your current license.">
-      <SettingsSectionCard title="License status">
+    <SettingsPanel title={t("settings.license.supportLicense")} description={t("settings.license.activateProOrManageYourCurrentLicense")}>
+      <SettingsSectionCard title={t("settings.license.licenseStatus")}>
         <div className="flex flex-wrap items-center gap-3">
           <span className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${licenseStatusClassName[licenseStatus]}`}>
             {paidPlanLabel}
           </span>
-          {licenseEmail ? <span className="text-sm text-gray-400">Activated for {licenseEmail}</span> : null}
+          {licenseEmail ? <span className="text-sm text-gray-400">{t("settings.license.activatedFor", { email: licenseEmail })}</span> : null}
           {validityLabel ? <span className="text-sm text-gray-400">{validityLabel}</span> : null}
         </div>
       </SettingsSectionCard>
 
       <SettingsSectionCard
-        title="Activate Pro"
-        description="Paste the email used at checkout and your license key."
+        title={t("settings.license.activatePro")}
+        description={t("settings.license.pasteTheEmailUsedAtCheckoutAnd")}
       >
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-100" htmlFor="license-email">
-              License email
+              {t("settings.license.licenseEmail")}
             </label>
             <input
               id="license-email"
               type="email"
               value={licenseEmailInput}
               onChange={(event) => setLicenseEmailInput(event.target.value)}
-              placeholder="you@example.com"
+              placeholder={t("settings.license.youExampleCom")}
               className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
             />
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-100" htmlFor="license-key">
-              License key
+              {t("settings.license.licenseKey")}
             </label>
             <input
               id="license-key"
@@ -134,19 +161,19 @@ export const LicenseSettingsPanel: React.FC = () => {
             className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:bg-gray-700"
           >
             <Crown size={14} />
-            {isActivatingLicense ? 'Activating...' : 'Activate license'}
+            {isActivatingLicense ? t("settings.license.activating") : t("settings.license.activateLicense")}
           </button>
           {creatorAttributionToken ? (
-            <span className="text-xs text-gray-500">Creator attribution detected.</span>
+            <span className="text-xs text-gray-500">{t("settings.license.creatorAttributionDetected")}</span>
           ) : null}
         </div>
 
         <div className="border-t border-gray-800 pt-4">
-          <p className="mb-2 text-sm font-medium text-gray-200">Purchase Pro</p>
+          <p className="mb-2 text-sm font-medium text-gray-200">{t("settings.license.purchasePro")}</p>
           <ProPlanCheckoutOptions token={creatorAttributionToken} ctx="settings" compact />
         </div>
 
-        {licenseMessage ? <p className="text-sm text-gray-300">{licenseMessage}</p> : null}
+        {licenseMessageLabel ? <p className="text-sm text-gray-300">{licenseMessageLabel}</p> : null}
       </SettingsSectionCard>
     </SettingsPanel>
   );

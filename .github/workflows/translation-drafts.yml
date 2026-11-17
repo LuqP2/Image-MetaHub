@@ -1,0 +1,40 @@
+name: Translation drafts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - i18n/en.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: translation-drafts
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Draft translations for editorial review
+        run: node scripts/draft-i18n.mjs translation-drafts.json
+        env:
+          TRANSLATION_API_URL: ${{ vars.TRANSLATION_API_URL }}
+          TRANSLATION_MODEL: ${{ vars.TRANSLATION_MODEL }}
+          TRANSLATION_API_KEY: ${{ secrets.TRANSLATION_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: translation-drafts
+          path: translation-drafts.json

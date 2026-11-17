@@ -17,6 +17,8 @@
     "preload.js",
     "comfyui-view-preload.js",
     "electron/**/*.mjs",
+    "i18n/*.json",
+    "i18n/*.mjs",
     "services/**/*",
     "utils/**/*.js",
     "utils/**/*.mjs",

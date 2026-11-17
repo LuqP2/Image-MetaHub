@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey, type Translate } from '../i18n/useTranslation';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hotkeyConfig } from '../services/hotkeyConfig';
@@ -11,7 +12,12 @@ const formatRecordedKey = (key: string): string => {
   return key.toLowerCase();
 };
 
+function hotkeyLabel(t: Translate, id: string) {
+  return t(`settings.shortcuts.action.${id}` as MessageKey);
+}
+
 export const HotkeySettings = () => {
+  const { t } = useTranslation();
   const { keymap, updateKeybinding, resetKeymap } = useSettingsStore();
   const [recording, setRecording] = useState<{ scope: string; action: string } | null>(null);
 
@@ -54,8 +60,8 @@ export const HotkeySettings = () => {
         const conflict = findHotkeyConflict(keymap, recording.action, newKeybinding);
 
         if (conflict) {
-            const conflictingActionName = conflict.name;
-            const recordingActionName = hotkeyConfig.find(h => h.id === recording.action)?.name || recording.action;
+            const conflictingActionName = hotkeyLabel(t, conflict.id);
+            const recordingActionName = hotkeyLabel(t, recording.action);
 
             // Find a new available hotkey
             const findAvailableHotkey = (baseKey: string) => {
@@ -79,11 +85,11 @@ export const HotkeySettings = () => {
 
             const autoRemapKey = findAvailableHotkey(newKeybinding);
 
-            let confirmationMessage = `Hotkey "${newKeybinding}" is already assigned to "${conflictingActionName}".\n\nAssign it to "${recordingActionName}"?`;
+            let confirmationMessage = t("settings.shortcuts.conflict", { key: newKeybinding, from: conflictingActionName, to: recordingActionName });
             if (autoRemapKey) {
-                confirmationMessage += `\n\nWe can automatically remap "${conflictingActionName}" to "${autoRemapKey}".`;
+                confirmationMessage += t("settings.shortcuts.conflictRemap", { action: conflictingActionName, key: autoRemapKey });
             } else {
-                confirmationMessage += `\n\nWarning: Could not find an available alternative for "${conflictingActionName}". It will be unassigned.`;
+                confirmationMessage += t("settings.shortcuts.conflictUnassign", { action: conflictingActionName });
             }
 
             const confirmed = window.confirm(confirmationMessage);
@@ -101,7 +107,7 @@ export const HotkeySettings = () => {
           }
           setRecording(null);
         }
-    }, [recording, updateKeybinding, keymap]);
+    }, [recording, updateKeybinding, keymap, t]);
 
   useEffect(() => {
     if (recording) {
@@ -117,7 +123,7 @@ export const HotkeySettings = () => {
 
   const handleResetAll = () => {
     const confirmed = window.confirm(
-      'Are you sure you want to reset all hotkeys to their default values?\n\nThis action cannot be undone.'
+      t("settings.shortcuts.areYouSureYouWantToReset")
     );
     if (!confirmed) {
       return;
@@ -169,11 +175,11 @@ export const HotkeySettings = () => {
       <div className="flex-grow overflow-y-auto pr-2 space-y-6 max-h-[60vh]">
         {Object.entries(groupedHotkeys).map(([scope, hotkeys]) => (
           <div key={scope}>
-            <h3 className="text-lg font-semibold mb-3 text-gray-200 border-b border-gray-700 pb-2">{scope}</h3>
+            <h3 className="text-lg font-semibold mb-3 text-gray-200 border-b border-gray-700 pb-2">{scope === 'Global' ? t('settings.shortcuts.global') : t('settings.shortcuts.preview')}</h3>
             <div className="space-y-2">
               {hotkeys.map((hotkey) => (
                 <div key={hotkey.id} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
-                  <p className="text-gray-300">{hotkey.name}</p>
+                  <p className="text-gray-300">{hotkeyLabel(t, hotkey.id)}</p>
                   <div className="flex items-center space-x-4">
                     <button
                       onClick={() => setRecording({ scope: hotkey.scope, action: hotkey.id })}
@@ -184,14 +190,14 @@ export const HotkeySettings = () => {
                       }`}
                     >
                       {recording?.action === hotkey.id
-                        ? 'Recording...'
-                        : (keymap[hotkey.scope] as Record<string, string>)?.[hotkey.id] || 'Unset'}
+                        ? t("settings.shortcuts.recording")
+                        : (keymap[hotkey.scope] as Record<string, string>)?.[hotkey.id] || t("settings.shortcuts.unset")}
                     </button>
                     <button
                       onClick={() => updateKeybinding(hotkey.scope, hotkey.id, hotkey.defaultKey)}
                       className="text-xs text-gray-400 hover:text-gray-50 hover:underline"
                     >
-                      Reset
+                      {t("settings.shortcuts.reset")}
                     </button>
                   </div>
                 </div>
@@ -206,19 +212,19 @@ export const HotkeySettings = () => {
             onClick={() => document.getElementById('import-keymap')?.click()}
             className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
         >
-            Import
+            {t("settings.shortcuts.import")}
         </button>
         <button
             onClick={handleExport}
             className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
         >
-            Export
+            {t("settings.shortcuts.export")}
         </button>
         <button
             onClick={handleResetAll}
             className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
         >
-            Reset All
+            {t("settings.shortcuts.resetAll")}
         </button>
       </div>
     </div>

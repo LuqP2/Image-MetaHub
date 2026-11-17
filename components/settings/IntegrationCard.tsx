@@ -1,3 +1,4 @@
+import { useTranslation, type Translate } from '../../i18n/useTranslation';
 import React from 'react';
 
 type IntegrationStatus = 'unknown' | 'connected' | 'error';
@@ -9,23 +10,24 @@ interface IntegrationCardProps {
   children: React.ReactNode;
 }
 
-const statusMap: Record<IntegrationStatus, { label: string; className: string }> = {
+const statusMap = (t: Translate): Record<IntegrationStatus, { label: string; className: string }> => ({
   unknown: {
-    label: 'Not tested',
+    label: t("settings.integrations.notTested"),
     className: 'border-gray-700 bg-gray-800 text-gray-300',
   },
   connected: {
-    label: 'Connected',
+    label: t("settings.integrations.connected"),
     className: 'border-green-500/30 bg-green-500/10 text-green-300 light:text-green-800',
   },
   error: {
-    label: 'Connection failed',
+    label: t("settings.integrations.connectionFailed"),
     className: 'border-red-500/30 bg-red-500/10 text-red-300 light:text-red-800',
   },
-};
+});
 
 export const IntegrationCard: React.FC<IntegrationCardProps> = ({ name, description, status, children }) => {
-  const statusConfig = statusMap[status];
+  const { t } = useTranslation();
+  const statusConfig = statusMap(t)[status];
 
   return (
     <div className="rounded-2xl border border-gray-700/80 bg-gray-900/70 p-4 md:p-5">

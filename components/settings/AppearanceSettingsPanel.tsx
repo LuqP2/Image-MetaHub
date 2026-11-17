@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -18,6 +19,7 @@ const ThemeSwatch: React.FC<{ colors: readonly string[] }> = ({ colors }) => (
 );
 
 const ThemeSelector: React.FC = () => {
+  const { t } = useTranslation();
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const [open, setOpen] = useState(false);
@@ -77,7 +79,7 @@ const ThemeSelector: React.FC = () => {
       <button
         ref={triggerRef}
         type="button"
-        aria-label="Theme"
+        aria-label={t("settings.appearance.theme")}
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => open ? setOpen(false) : openList()}
@@ -90,12 +92,12 @@ const ThemeSelector: React.FC = () => {
         className="flex w-full items-center gap-3 rounded-xl border border-gray-700 bg-gray-950/60 px-3 py-2 text-left text-gray-100 transition-colors hover:border-gray-600 hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       >
         <ThemeSwatch colors={selected.colors} />
-        <span className="flex-1 font-medium">{selected.name}</span>
+        <span className="flex-1 font-medium">{selected.id === 'system' ? t("settings.appearance.system") : selected.name}</span>
         <ChevronDown size={18} className={`text-gray-300 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {theme === 'system' && (
         <p className="mt-2 text-xs text-gray-400">
-          Uses Ayu Dark or Ayu Light to match your system appearance.
+          {t("settings.appearance.usesAyuDarkOrAyuLightTo")}
         </p>
       )}
       {open && (
@@ -103,7 +105,7 @@ const ThemeSelector: React.FC = () => {
           ref={listRef}
           id={listId}
           role="listbox"
-          aria-label="Available themes"
+          aria-label={t("settings.appearance.availableThemes")}
           aria-activedescendant={`${listId}-${activeIndex}`}
           tabIndex={0}
           onKeyDown={onListKeyDown}
@@ -120,7 +122,7 @@ const ThemeSelector: React.FC = () => {
               className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-gray-100 ${index === activeIndex ? 'bg-gray-800' : 'hover:bg-gray-800'}`}
             >
               <ThemeSwatch colors={option.colors} />
-              <span className="flex-1 font-medium">{option.name}</span>
+              <span className="flex-1 font-medium">{option.id === 'system' ? t("settings.appearance.system") : option.name}</span>
               {theme === option.id && <Check size={18} className="text-gray-100" aria-hidden="true" />}
             </div>
           ))}
@@ -131,29 +133,30 @@ const ThemeSelector: React.FC = () => {
 };
 
 export const AppearanceSettingsPanel: React.FC = () => {
+  const { t } = useTranslation();
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
   const setEnableAnimations = useSettingsStore((state) => state.setEnableAnimations);
   const classicMode = useSettingsStore((state) => state.classicMode);
   const setClassicMode = useSettingsStore((state) => state.setClassicMode);
 
   return (
-    <SettingsPanel title="Appearance" description="Choose the app theme and motion preferences.">
-      <SettingsSectionCard title="Theme">
+    <SettingsPanel title={t("settings.appearance.appearance")} description={t("settings.appearance.chooseTheAppThemeAndMotionPreferences")}>
+      <SettingsSectionCard title={t("settings.appearance.theme")}>
         <ThemeSelector />
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Motion">
+      <SettingsSectionCard title={t("settings.appearance.motion")}>
         <SettingRow
-          label="Enable animations"
-          description="Use small interface animations, including modal minimize and restore."
+          label={t("settings.appearance.enableAnimations")}
+          description={t("settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize")}
           control={<SettingSwitch checked={enableAnimations} onChange={setEnableAnimations} />}
         />
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Navigation">
+      <SettingsSectionCard title={t("settings.appearance.navigation")}>
         <SettingRow
-          label="Classic mode"
-          description="Show the old Model View, Smart Library, Collections and Node View tabs. They open the unified Explore surface — no separate screens."
+          label={t("settings.appearance.classicMode")}
+          description={t("settings.appearance.showTheOldModelViewSmartLibrary")}
           control={<SettingSwitch checked={classicMode} onChange={setClassicMode} />}
         />
       </SettingsSectionCard>
