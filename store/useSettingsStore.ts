@@ -63,11 +63,7 @@ const electronStorage: StateStorage = {
     if (window.electronAPI) {
       const { state } = JSON.parse(value);
       const currentSettings = await window.electronAPI.getSettings();
-      const merged = mergeSettingsWithExisting(currentSettings, state);
-      // Language is written separately so a background renderer cannot overwrite it
-      // with the value from an older snapshot of the general settings.
-      delete merged.language;
-      const result = await window.electronAPI.saveSettings(merged);
+      const result = await window.electronAPI.saveSettings(mergeSettingsWithExisting(currentSettings, state));
       if (!result?.success) {
         throw new Error(result?.error || 'Failed to persist application settings.');
       }
@@ -405,7 +401,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ language: next });
         if (!isElectron) return;
 
-        void window.electronAPI.saveSettings({ language: next }).then((result) => {
+        void window.electronAPI.saveSettings({ language: next }, { languageOnly: true }).then((result) => {
           if (!result?.success) throw new Error(result?.error || 'Failed to persist language.');
         }).catch((error) => {
           console.error('Failed to save language:', error);

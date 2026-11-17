@@ -5061,9 +5061,14 @@ function setupFileOperationHandlers() {
     return settings;
   });
 
-  ipcMain.handle('save-settings', async (event, newSettings) => {
+  ipcMain.handle('save-settings', async (event, newSettings, options) => {
     try {
-      const settings = await queueSettingsUpdate((currentSettings) => mergeSettingsUpdate(currentSettings, newSettings));
+      const { language, ...otherSettings } = newSettings ?? {};
+      // General saves also come from license and feature stores, which may have
+      // read settings before the renderer selected a different language.
+      const settings = await queueSettingsUpdate((currentSettings) => options?.languageOnly === true
+        ? { ...currentSettings, language: normalizeLanguage(language) }
+        : mergeSettingsUpdate(currentSettings, otherSettings));
       applyAppLanguage(settings);
       // Every window persists its *whole* settings state, so a window holding a
       // stale copy would revert another window's newer values on the next write.
