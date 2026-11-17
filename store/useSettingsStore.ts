@@ -17,6 +17,9 @@ import {
   type SemanticSearchPrecision,
 } from '../services/embeddings/semanticSearchPrecision';
 
+import { normalizeLanguage } from '../i18n/messages.mjs';
+import type { Language } from '../i18n/useTranslation';
+
 export const stripLicenseFromSettings = <T extends Record<string, unknown>>(settings: T | null | undefined): Omit<T, 'license'> => {
   if (!settings) {
     return {} as Omit<T, 'license'>;
@@ -153,6 +156,7 @@ interface SettingsState {
   libraryGridLayout: 'uniform' | 'masonry';
   groupBy: ImageGroupByMode;
   theme: ThemeId;
+  language: Language;
   keymap: Keymap;
   lastViewedVersion: string | null;
   indexingConcurrency: number;
@@ -241,6 +245,7 @@ interface SettingsState {
   setLibraryGridLayout: (layout: 'uniform' | 'masonry') => void;
   setGroupBy: (value: ImageGroupByMode) => void;
   setTheme: (theme: ThemeId) => void;
+  setLanguage: (language: Language) => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
@@ -316,6 +321,7 @@ export const useSettingsStore = create<SettingsState>()(
       viewMode: 'grid',
       libraryGridLayout: 'uniform',
       groupBy: 'none',
+      language: 'en',
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
@@ -390,6 +396,7 @@ export const useSettingsStore = create<SettingsState>()(
       setLibraryGridLayout: (layout) => set({ libraryGridLayout: layout }),
       setGroupBy: (value) => set({ groupBy: value }),
       setTheme: (theme) => set({ theme }),
+      setLanguage: (language) => set({ language: normalizeLanguage(language) }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
       setIndexingConcurrency: (value) =>
         set({
@@ -495,6 +502,7 @@ export const useSettingsStore = create<SettingsState>()(
         viewMode: 'grid',
         libraryGridLayout: 'uniform',
         groupBy: 'none',
+        language: 'en',
         theme: 'system',
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
@@ -559,6 +567,7 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...currentState,
           ...persisted,
+          language: normalizeLanguage(persisted.language),
           canvasSmartGuides: typeof persisted.canvasSmartGuides === 'boolean' ? persisted.canvasSmartGuides : true,
           canvasSnapToGrid: typeof persisted.canvasSnapToGrid === 'boolean' ? persisted.canvasSnapToGrid : false,
           canvasShowGrid: typeof persisted.canvasShowGrid === 'boolean' ? persisted.canvasShowGrid : false,

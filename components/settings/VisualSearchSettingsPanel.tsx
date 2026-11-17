@@ -1,3 +1,4 @@
+import { useTranslation, type Translate } from '../../i18n/useTranslation';
 import React, { useEffect } from 'react';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useSemanticStore, deleteSemanticModel } from '../../store/useSemanticStore';
@@ -10,14 +11,14 @@ import { SettingsSectionCard } from './SettingsSectionCard';
 import { SettingSwitch } from './SettingSwitch';
 import type { SemanticSearchPrecision } from '../../services/embeddings/semanticSearchPrecision';
 
-const PRECISION_OPTIONS: Array<{
+const getPrecisionOptions = (t: Translate): Array<{
   value: SemanticSearchPrecision;
   label: string;
   description: string;
-}> = [
-  { value: 'broad', label: 'More results', description: 'Includes weaker matches.' },
-  { value: 'balanced', label: 'Balanced', description: 'Recommended default.' },
-  { value: 'strict', label: 'More precise', description: 'Only results close to the best matches.' },
+}> => [
+  { value: 'broad', label: t("settings.visualSearch.moreResults"), description: t("settings.visualSearch.includesWeakerMatches") },
+  { value: 'balanced', label: t("settings.visualSearch.balanced"), description: t("settings.visualSearch.recommendedDefault") },
+  { value: 'strict', label: t("settings.visualSearch.morePrecise"), description: t("settings.visualSearch.onlyResultsCloseToTheBestMatches") },
 ];
 
 const formatBytes = (bytes: number): string => {
@@ -27,15 +28,16 @@ const formatBytes = (bytes: number): string => {
   return `${Math.round(mb)} MB`;
 };
 
-const formatEta = (ms?: number): string => {
+const formatEta = (t: Translate, ms?: number): string => {
   if (!ms || !Number.isFinite(ms)) return '';
   const minutes = Math.round(ms / 60000);
-  if (minutes < 1) return 'under a minute left';
-  if (minutes < 60) return `~${minutes} min left`;
-  return `~${(minutes / 60).toFixed(1)} h left`;
+  if (minutes < 1) return t("settings.visualSearch.underAMinuteLeft");
+  if (minutes < 60) return t("settings.visualSearch.minutesLeft", { minutes });
+  return t("settings.visualSearch.hoursLeft", { hours: (minutes / 60).toFixed(1) });
 };
 
 export const VisualSearchSettingsPanel: React.FC = () => {
+  const { t } = useTranslation();
   const enabled = useSettingsStore((s) => s.semanticSearchEnabled);
   const setEnabled = useSettingsStore((s) => s.setSemanticSearchEnabled);
   const deviceSetting = useSettingsStore((s) => s.semanticSearchDevice);
@@ -115,20 +117,20 @@ export const VisualSearchSettingsPanel: React.FC = () => {
 
   return (
     <SettingsPanel
-      title="Local Visual Search"
-      description="Build a local visual index for Find Similar, including images with no prompt or generation metadata."
+      title={t("settings.visualSearch.localVisualSearch")}
+      description={t("settings.visualSearch.buildALocalVisualIndexForFind")}
     >
-      <SettingsSectionCard title="Local visual search">
+      <SettingsSectionCard title={t("settings.visualSearch.localVisualSearchSection")}>
         <SettingRow
-          label="Enable Local Visual Search"
-          description="Opt in to a rebuildable on-device index. The model downloads only when you explicitly request it; after that, processing works offline and nothing is uploaded."
+          label={t("settings.visualSearch.enableLocalVisualSearch")}
+          description={t("settings.visualSearch.optInToARebuildableOnDevice")}
           control={<SettingSwitch checked={enabled} onChange={handleEnabledChange} />}
         />
 
         {enabled && (
           <SettingRow
-            label="Use GPU acceleration (WebGPU)"
-            description="Much faster indexing on a supported GPU, using a separate fp16 model. May compete for VRAM with image generation — leave off while generating. Falls back to CPU automatically if the GPU is unavailable."
+            label={t("settings.visualSearch.useGpuAccelerationWebgpu")}
+            description={t("settings.visualSearch.muchFasterIndexingOnASupportedGpu")}
             control={<SettingSwitch checked={deviceSetting === 'webgpu'} onChange={(v) => setDeviceSetting(v ? 'webgpu' : 'wasm')} />}
           />
         )}
@@ -138,11 +140,9 @@ export const VisualSearchSettingsPanel: React.FC = () => {
             {/* Model choice */}
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-100">Image embedding model</p>
+                <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.imageEmbeddingModel")}</p>
                 <p className="text-xs text-gray-400">
-                  Both run entirely on your machine and produce the same index size and search speed —
-                  they differ only in how much detail they look at, and so in how long indexing takes.
-                  Each keeps its own index, so switching back never re-indexes.
+                  {t("settings.visualSearch.bothRunEntirelyOnYourMachineAnd")}
                 </p>
               </div>
 
@@ -162,9 +162,9 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       }`}
                     >
                       <p className={`text-xs font-medium ${selected ? 'text-indigo-200 light:text-gray-100' : 'text-gray-200'}`}>
-                        {option.label}
+                        {option.key === 'clip-b32' ? t('settings.visualSearch.balancedModel') : t('settings.visualSearch.higherQualityModel')}
                       </p>
-                      <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.description}</p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.key === 'clip-b32' ? t('settings.visualSearch.balancedModelHelp') : t('settings.visualSearch.higherQualityModelHelp')}</p>
                     </button>
                   );
                 })}
@@ -172,21 +172,21 @@ export const VisualSearchSettingsPanel: React.FC = () => {
 
               {(isBackfilling || modelDownloading) && (
                 <p className="text-[11px] text-gray-500">
-                  Switching is disabled while {isBackfilling ? 'the index is building' : 'the model is downloading'}.
+                  {isBackfilling ? t("settings.visualSearch.switchingWhileIndexing") : t("settings.visualSearch.switchingWhileDownloading")}
                 </p>
               )}
             </div>
 
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-100">Experimental text query matching</p>
+                <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.experimentalTextQueryMatching")}</p>
                 <p className="text-xs text-gray-400">
-                  Text-to-image results are approximate and do not replace prompt or metadata search. This controls how many weaker visual matches are shown.
+                  {t("settings.visualSearch.textToImageResultsAreApproximateAnd")}
                 </p>
               </div>
 
               <div className="grid gap-2 sm:grid-cols-3">
-                {PRECISION_OPTIONS.map((option) => {
+                {getPrecisionOptions(t).map((option) => {
                   const selected = option.value === precisionSetting;
                   return (
                     <button
@@ -214,9 +214,9 @@ export const VisualSearchSettingsPanel: React.FC = () => {
             <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-100">Search model</p>
+                  <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.searchModel")}</p>
                   <p className="text-xs text-gray-400">
-                    {activeModel.id} · one-time download, about {formatBytes(getModelDownloadSize(device, activeModel.key))} from huggingface.co
+                    {t("settings.visualSearch.modelDownloadSize", { model: activeModel.id, size: formatBytes(getModelDownloadSize(device, activeModel.key)) })}
                   </p>
                 </div>
                 {modelDownloading ? (
@@ -224,18 +224,18 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                     onClick={cancelModelDownload}
                     className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
                   >
-                    Cancel
+                    {t("settings.visualSearch.cancel")}
                   </button>
                 ) : !modelInstalled || gpuNeedsDownload ? (
                   <button
                     onClick={startModelDownload}
                     className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                   >
-                    {gpuNeedsDownload ? 'Download GPU model' : 'Download model'}
+                    {gpuNeedsDownload ? t("settings.visualSearch.downloadGpuModel") : t("settings.visualSearch.downloadModel")}
                   </button>
                 ) : (
                   <span className="text-xs font-medium text-emerald-400 light:text-emerald-800">
-                    Installed{usingGpu ? (activeDevice === 'webgpu' ? ' · GPU' : ' · CPU (GPU unavailable)') : ''}
+                    {t("settings.visualSearch.installed")}{usingGpu ? (activeDevice === 'webgpu' ? ' ' + t("settings.visualSearch.gpuSuffix") : ' ' + t("settings.visualSearch.cpuGpuUnavailable")) : ''}
                   </span>
                 )}
               </div>
@@ -258,12 +258,12 @@ export const VisualSearchSettingsPanel: React.FC = () => {
               <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-100">Search index</p>
+                    <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.searchIndex")}</p>
                     <p className="text-xs text-gray-400">
                       {coverage
-                        ? `${coverage.embedded.toLocaleString()} of ${coverage.total.toLocaleString()} images indexed`
-                        : 'Not built yet'}
-                      {cap !== null ? ` · Free indexes your ${cap.toLocaleString()} newest` : ''}
+                        ? t("settings.visualSearch.indexCoverage", { indexed: coverage.embedded, total: coverage.total })
+                        : t("settings.visualSearch.notBuiltYet")}
+                      {cap !== null ? t("settings.visualSearch.freeCap", { limit: cap }) : ''}
                     </p>
                   </div>
                   {isBackfilling ? (
@@ -273,21 +273,21 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                           onClick={resumeBackfill}
                           className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
                         >
-                          Resume
+                          {t("settings.visualSearch.resume")}
                         </button>
                       ) : (
                         <button
                           onClick={pauseBackfill}
                           className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
                         >
-                          Pause
+                          {t("settings.visualSearch.pause")}
                         </button>
                       )}
                       <button
                         onClick={cancelBackfill}
                         className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
                       >
-                        Stop
+                        {t("settings.visualSearch.stop")}
                       </button>
                     </div>
                   ) : (
@@ -295,7 +295,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       onClick={() => startBackfill(cap)}
                       className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                     >
-                      {coverage && coverage.embedded > 0 ? 'Update index' : 'Build index'}
+                      {coverage && coverage.embedded > 0 ? t("settings.visualSearch.updateIndex") : t("settings.visualSearch.buildIndex")}
                     </button>
                   )}
                 </div>
@@ -308,21 +308,23 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                     <p className="text-xs text-gray-500">
                       {indexProgress.current.toLocaleString()} / {indexProgress.total.toLocaleString()}
                       {indexProgress.imagesPerSecond ? ` · ${indexProgress.imagesPerSecond.toFixed(1)}/s` : ''}
-                      {indexProgress.etaMs ? ` · ${formatEta(indexProgress.etaMs)}` : ''}
+                      {indexProgress.etaMs ? ` · ${formatEta(t, indexProgress.etaMs)}` : ''}
                     </p>
                   </div>
                 )}
 
                 {!canUseUnlimitedSemanticSearch && coverage && coverage.total > SEMANTIC_FREE_TIER_LIMIT && (
                   <p className="text-xs text-indigo-300/80 light:text-indigo-800">
-                    Free indexes your {SEMANTIC_FREE_TIER_LIMIT.toLocaleString()} newest images. Upgrade to Pro to search all {coverage.total.toLocaleString()}.
+                    {t("settings.visualSearch.upgradeForFullCoverage", { limit: SEMANTIC_FREE_TIER_LIMIT, total: coverage.total })}
                   </p>
                 )}
               </div>
             )}
 
             {lastError && (
-              <p className="text-xs text-red-400">{lastError}</p>
+              <p className="text-xs text-red-400">
+                {lastError === 'Model download failed' ? t('settings.visualSearch.modelDownloadFailed') : lastError}
+              </p>
             )}
 
             {/* Danger zone */}
@@ -332,13 +334,13 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                   onClick={deleteIndex}
                   className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
                 >
-                  Delete search index
+                  {t("settings.visualSearch.deleteSearchIndex")}
                 </button>
                 <button
                   onClick={deleteSemanticModel}
                   className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
                 >
-                  Remove downloaded model
+                  {t("settings.visualSearch.removeDownloadedModel")}
                 </button>
               </div>
             )}

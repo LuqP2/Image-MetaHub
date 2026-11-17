@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React from 'react';
 import {
   MAX_SLIDESHOW_INTERVAL_SECONDS,
@@ -16,6 +17,7 @@ import { SettingsSectionCard } from './SettingsSectionCard';
 import { SettingSwitch } from './SettingSwitch';
 
 export const ViewerSettingsPanel: React.FC = () => {
+  const { t } = useTranslation();
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
   const hideAssociatedTextureMaps = useSettingsStore((state) => state.hideAssociatedTextureMaps);
@@ -45,10 +47,10 @@ export const ViewerSettingsPanel: React.FC = () => {
   const isDesktop = typeof window !== 'undefined' && Boolean(window.electronAPI);
 
   return (
-    <SettingsPanel title="Viewer">
-      <SettingsSectionCard title="Behavior">
+    <SettingsPanel title={t("settings.viewer.viewer")}>
+      <SettingsSectionCard title={t("settings.viewer.behavior")}>
         <SettingRow
-          label="Open images in desktop windows"
+          label={t("settings.viewer.openImagesInDesktopWindows")}
           className={!isDesktop ? 'opacity-50' : ''}
           control={
             <SettingSwitch
@@ -59,42 +61,42 @@ export const ViewerSettingsPanel: React.FC = () => {
           }
         />
         <SettingRow
-          label="Reuse a single viewer window"
-          description="Opening another image switches the existing viewer to that image. Turn off to open images in multiple windows."
+          label={t("settings.viewer.reuseASingleViewerWindow")}
+          description={t("settings.viewer.openingAnotherImageSwitchesTheExistingViewer")}
           className={!isDesktop || imageViewerMode !== 'detached' ? 'opacity-50' : ''}
           control={
             <SettingSwitch
               checked={reuseImageViewerWindow}
               onChange={setReuseImageViewerWindow}
               disabled={!isDesktop || imageViewerMode !== 'detached'}
-              ariaLabel="Reuse a single viewer window"
+              ariaLabel={t("settings.viewer.reuseASingleViewerWindow")}
             />
           }
         />
         <SettingRow
-          label="Default image zoom"
+          label={t("settings.viewer.defaultImageZoom")}
           control={
             <select
               value={imageViewerDefaultZoom}
               onChange={(event) => setImageViewerDefaultZoom(event.target.value as 'fit' | 'actual')}
               className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
             >
-              <option value="fit">Fit</option>
+              <option value="fit">{t("settings.viewer.fit")}</option>
               <option value="actual">1:1</option>
             </select>
           }
         />
         <SettingRow
-          label="Show filenames on grid"
+          label={t("settings.viewer.showFilenamesOnGrid")}
           control={<SettingSwitch checked={showFilenames} onChange={setShowFilenames} />}
         />
         <SettingRow
-          label="Hide associated texture maps"
-          description="Keep linked images under Texture Maps on each 3D model. Search and the Image media filter can still find them."
-          control={<SettingSwitch checked={hideAssociatedTextureMaps} onChange={setHideAssociatedTextureMaps} ariaLabel="Hide associated texture maps" />}
+          label={t("settings.viewer.hideAssociatedTextureMaps")}
+          description={t("settings.viewer.keepLinkedImagesUnderTextureMapsOn")}
+          control={<SettingSwitch checked={hideAssociatedTextureMaps} onChange={setHideAssociatedTextureMaps} ariaLabel={t("settings.viewer.hideAssociatedTextureMaps")} />}
         />
         <SettingRow
-          label="Show full path"
+          label={t("settings.viewer.showFullPath")}
           className={!showFilenames ? 'opacity-50' : ''}
           control={
             <input
@@ -107,25 +109,25 @@ export const ViewerSettingsPanel: React.FC = () => {
           }
         />
         <SettingRow
-          label="Double-click to open"
+          label={t("settings.viewer.doubleClickToOpen")}
           control={<SettingSwitch checked={doubleClickToOpen} onChange={setDoubleClickToOpen} />}
         />
         <SettingRow
-          label="Skip delete confirmation"
+          label={t("settings.viewer.skipDeleteConfirmation")}
           control={<SettingSwitch checked={skipDeleteConfirmation} onChange={setSkipDeleteConfirmation} />}
         />
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Playback">
+      <SettingsSectionCard title={t("settings.viewer.playback")}>
         <SettingRow
-          label="Auto-play video and audio"
+          label={t("settings.viewer.autoPlayVideoAndAudio")}
           control={<SettingSwitch checked={autoPlayMedia} onChange={setAutoPlayMedia} />}
         />
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Slideshow">
+      <SettingsSectionCard title={t("settings.viewer.slideshow")}>
         <SettingRow
-          label="Default interval (seconds)"
+          label={t("settings.viewer.defaultIntervalSeconds")}
           control={
             <input
               type="number"
@@ -138,16 +140,16 @@ export const ViewerSettingsPanel: React.FC = () => {
           }
         />
         <SettingRow
-          label="Show filename overlay"
-          description="Show filenames while a slideshow is running."
+          label={t("settings.viewer.showFilenameOverlay")}
+          description={t("settings.viewer.showFilenamesWhileASlideshowIsRunning")}
           control={<SettingSwitch checked={slideshowShowFilename} onChange={setSlideshowShowFilename} />}
         />
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Tagging">
+      <SettingsSectionCard title={t("settings.viewer.tagging")}>
         <SettingRow
-          label="Suggestion list size"
-          description={`How many tag suggestions to show while typing. Range ${MIN_TAG_UI_LIMIT}-${MAX_TAG_UI_LIMIT}.`}
+          label={t("settings.viewer.suggestionListSize")}
+          description={t("settings.viewer.tagSuggestionsRange", { min: MIN_TAG_UI_LIMIT, max: MAX_TAG_UI_LIMIT })}
           control={
             <input
               type="number"
@@ -160,8 +162,8 @@ export const ViewerSettingsPanel: React.FC = () => {
           }
         />
         <SettingRow
-          label="Recent tag chips"
-          description={`How many recent tags to show as quick-add chips. Range ${MIN_TAG_UI_LIMIT}-${MAX_TAG_UI_LIMIT}.`}
+          label={t("settings.viewer.recentTagChips")}
+          description={t("settings.viewer.recentTagsRange", { min: MIN_TAG_UI_LIMIT, max: MAX_TAG_UI_LIMIT })}
           control={
             <input
               type="number"

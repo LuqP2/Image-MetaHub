@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import { GeneralSettingsPanel } from './settings/GeneralSettingsPanel';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -35,6 +36,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   initialTab = 'library',
   focusSection = null,
 }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => resolveSettingsTab(initialTab));
 
   useEffect(() => {
@@ -51,16 +53,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const navigationItems = useMemo(
     () => [
-      { id: 'general' as const, label: 'General', icon: Settings },
-      { id: 'library' as const, label: 'Library', icon: BookOpen },
-      { id: 'viewer' as const, label: 'Viewer', icon: Eye },
-      { id: 'integrations' as const, label: 'Integrations', icon: Link2 },
-      { id: 'visual-search' as const, label: 'Visual Search', icon: Sparkles },
-      { id: 'appearance' as const, label: 'Appearance', icon: Palette },
-      { id: 'privacy' as const, label: 'Privacy', icon: Shield },
-      { id: 'shortcuts' as const, label: 'Shortcuts', icon: Keyboard },
+      { id: 'general' as const, label: t("settings.navigation.general"), icon: Settings },
+      { id: 'library' as const, label: t("settings.navigation.library"), icon: BookOpen },
+      { id: 'viewer' as const, label: t("settings.navigation.viewer"), icon: Eye },
+      { id: 'integrations' as const, label: t("settings.navigation.integrations"), icon: Link2 },
+      { id: 'visual-search' as const, label: t("settings.navigation.visualSearch"), icon: Sparkles },
+      { id: 'appearance' as const, label: t("settings.navigation.appearance"), icon: Palette },
+      { id: 'privacy' as const, label: t("settings.navigation.privacy"), icon: Shield },
+      { id: 'shortcuts' as const, label: t("settings.navigation.shortcuts"), icon: Keyboard },
     ],
-    []
+    [t]
   );
 
   const activePanel = (() => {
@@ -96,7 +98,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       className="fixed inset-0 z-[100] overflow-y-auto bg-black/60 p-3 md:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label="Settings"
+      aria-label={t("settings.navigation.settings")}
       onClick={onClose}
     >
       <div
@@ -108,14 +110,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       >
         <div className="flex items-center justify-between border-b border-gray-700/80 px-4 py-4 md:px-6">
           <div>
-            <h1 className="text-xl font-semibold text-gray-100 md:text-2xl">Settings</h1>
-            <p className="text-sm text-gray-400">Organized by task so the common path stays short.</p>
+            <h1 className="text-xl font-semibold text-gray-100 md:text-2xl">{t("settings.navigation.settings")}</h1>
+            <p className="text-sm text-gray-400">{t("settings.navigation.organizedByTaskSoTheCommonPath")}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-full p-2 text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
-            aria-label="Close settings"
+            aria-label={t("settings.navigation.closeSettings")}
           >
             <X size={20} />
           </button>
@@ -132,7 +134,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="h-full overflow-y-auto px-4 py-4 md:px-6 md:py-6">
               {activePanel}
               <p className="mt-8 text-xs text-gray-500">
-                Changes are saved automatically. Some changes may take effect the next time the app starts.
+                {t("settings.navigation.changesAreSavedAutomaticallySomeChangesMay")}
               </p>
             </div>
           </div>

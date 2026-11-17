@@ -1,3 +1,4 @@
+import { useTranslation, type Translate } from '../../i18n/useTranslation';
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { DesktopRuntimeInfo } from '../../types';
@@ -11,7 +12,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
 import { SettingSwitch } from './SettingSwitch';
 
-const startupVerificationModeDetails: Record<
+const getStartupVerificationModeDetails = (t: Translate): Record<
   'off' | 'idle' | 'strict',
   {
     label: string;
@@ -19,28 +20,29 @@ const startupVerificationModeDetails: Record<
     description: string;
     impact: string;
   }
-> = {
+> => ({
   off: {
-    label: 'Off',
-    title: 'Off',
-    description: 'Open from cache only. Folder verification waits for later refreshes or file monitoring.',
-    impact: 'Fastest startup.',
+    label: t("settings.library.off"),
+    title: t("settings.library.off"),
+    description: t("settings.library.openFromCacheOnlyFolderVerificationWaits"),
+    impact: t("settings.library.fastestStartup"),
   },
   idle: {
-    label: 'Background',
-    title: 'Background',
-    description: 'Open immediately, then verify saved folders a few seconds later in the background.',
-    impact: 'Best balance for most libraries.',
+    label: t("settings.library.background"),
+    title: t("settings.library.background"),
+    description: t("settings.library.openImmediatelyThenVerifySavedFoldersA"),
+    impact: t("settings.library.bestBalanceForMostLibraries"),
   },
   strict: {
-    label: 'Strict',
-    title: 'Strict',
-    description: 'Verify saved folders before startup finishes.',
-    impact: 'Most accurate on open, but slowest for large libraries.',
+    label: t("settings.library.strict"),
+    title: t("settings.library.strict"),
+    description: t("settings.library.verifySavedFoldersBeforeStartupFinishes"),
+    impact: t("settings.library.mostAccurateOnOpenButSlowestFor"),
   },
-};
+});
 
 export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { t } = useTranslation();
   const cachePath = useSettingsStore((state) => state.cachePath);
   const autoUpdate = useSettingsStore((state) => state.autoUpdate);
   const setCachePath = useSettingsStore((state) => state.setCachePath);
@@ -72,19 +74,19 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
     try {
       const backup = await createAnnotationBackup();
       const result = await api.showSaveDialog({
-        title: 'Export tags and favorites',
+        title: t("settings.library.exportTagsAndFavorites"),
         defaultPath: `Image-MetaHub-annotations-${backup.exportedAt.slice(0, 10)}.json`,
-        filters: [{ name: 'JSON backup', extensions: ['json'] }],
+        filters: [{ name: t("settings.library.jsonBackup"), extensions: ['json'] }],
       });
       if (result.canceled) return;
-      if (!result.success || !result.path) throw new Error(result.error || 'Could not select a backup file.');
+      if (!result.success || !result.path) throw new Error(result.error || t("settings.library.couldNotSelectABackupFile"));
 
       const written = await api.writeFile(result.path, JSON.stringify(backup, null, 2));
-      if (!written.success) throw new Error(written.error || 'Could not write the backup file.');
-      setBackupFeedback({ message: 'Backup saved.', error: false });
+      if (!written.success) throw new Error(written.error || t("settings.library.couldNotWriteTheBackupFile"));
+      setBackupFeedback({ message: t("settings.library.backupSaved"), error: false });
     } catch (error) {
       setBackupFeedback({
-        message: `Backup failed. ${error instanceof Error ? error.message : String(error)}`,
+        message: t("settings.library.backupFailure", { error: error instanceof Error ? error.message : String(error) }),
         error: true,
       });
     } finally {
@@ -99,6 +101,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const maxConcurrency = hardwareConcurrency
     ? Math.max(1, Math.min(16, Math.floor(hardwareConcurrency)))
     : 16;
+  const startupVerificationModeDetails = getStartupVerificationModeDetails(t);
   const selectedStartupVerificationMode = startupVerificationModeDetails[startupVerificationMode];
   const isPortable = runtimeInfo?.isPortable === true;
 
@@ -147,11 +150,11 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
     try {
       const result = await window.electronAPI.openCacheLocation();
       if (!result.success) {
-        setCacheLocationError(result.error || 'Failed to open the cache location.');
+        setCacheLocationError(result.error || t("settings.library.failedToOpenTheCacheLocation"));
       }
     } catch (error) {
       setCacheLocationError(
-        error instanceof Error ? error.message : 'Failed to open the cache location.',
+        error instanceof Error ? error.message : t("settings.library.failedToOpenTheCacheLocation"),
       );
     }
   };
@@ -161,12 +164,12 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
 
     const confirmed = window.confirm(
       [
-        'Clear library cache?',
+        t("settings.library.clearLibraryCacheQuestion"),
         '',
-        'This will remove cached indexed metadata, thumbnails and smart library cache files.',
+        t("settings.library.thisWillRemoveCachedIndexedMetadataThumbnails"),
         '',
-        'Your image files, saved folders, preferences, tags, ratings and license/trial state will be kept.',
-        'The app will reload so the library can rebuild fresh cache data.',
+        t("settings.library.yourImageFilesSavedFoldersPreferencesTags"),
+        t("settings.library.theAppWillReloadSoTheLibrary"),
       ].join('\n')
     );
 
@@ -185,28 +188,28 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
     } catch (error) {
       setCacheClearState('idle');
       console.error('Failed to clear library cache:', error);
-      alert('Failed to clear library cache. Check console for details.');
+      alert(t("settings.library.failedToClearLibraryCacheCheckConsole"));
     }
   };
 
   const handleResetAppData = async () => {
     const confirmed = window.confirm(
       [
-        'Reset app data?',
+        t("settings.library.resetAppDataQuestion"),
         '',
-        'This will:',
-        '- delete indexed image metadata',
-        '- remove loaded directories',
-        '- clear search filters and selections',
-        '- reset cache location and local settings',
-        '- clear tags, ratings, smart collections and automation rules',
+        t("settings.library.thisWill"),
+        t("settings.library.deleteIndexedImageMetadata"),
+        t("settings.library.removeLoadedDirectories"),
+        t("settings.library.clearSearchFiltersAndSelections"),
+        t("settings.library.resetCacheLocationAndLocalSettings"),
+        t("settings.library.clearTagsRatingsSmartCollectionsAndAutomation"),
         '',
-        'Your image files will not be deleted.',
-        'Your license and trial state will be kept.',
-        'Saved prompts will be kept.',
-        'The app will reload after the reset.',
+        t("settings.library.yourImageFilesWillNotBeDeleted"),
+        t("settings.library.yourLicenseAndTrialStateWillBe"),
+        t("settings.library.savedPromptsWillBeKept"),
+        t("settings.library.theAppWillReloadAfterTheReset"),
         '',
-        'This action cannot be undone.',
+        t("settings.library.thisActionCannotBeUndone"),
       ].join('\n')
     );
 
@@ -216,27 +219,27 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
 
     try {
       await resetAllCaches();
-      alert('App data reset. The app will now reload to complete the reset.');
+      alert(t("settings.library.appDataResetTheAppWillNow"));
       onClose();
     } catch (error) {
       console.error('Failed to reset app data:', error);
-      alert('Failed to reset app data. Check console for details.');
+      alert(t("settings.library.failedToResetAppDataCheckConsole"));
     }
   };
 
   return (
-    <SettingsPanel title="Library" description="Performance, indexing, startup checks and cache storage.">
-      <SettingsSectionCard title="Startup">
+    <SettingsPanel title={t("settings.library.library")} description={t("settings.library.performanceIndexingStartupChecksAndCacheStorage")}>
+      <SettingsSectionCard title={t("settings.library.startup")}>
         <SettingRow
-          label="File monitoring"
-          description="Watch indexed folders for new or modified images."
+          label={t("settings.library.fileMonitoring")}
+          description={t("settings.library.watchIndexedFoldersForNewOrModified")}
           control={<SettingSwitch checked={globalAutoWatch} onChange={() => toggleGlobalAutoWatch()} />}
         />
 
         <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-gray-100">Startup verification</p>
-            <p className="text-sm text-gray-400">Choose how much Image MetaHub checks saved folders when it opens.</p>
+            <p className="text-sm font-medium text-gray-100">{t("settings.library.startupVerification")}</p>
+            <p className="text-sm text-gray-400">{t("settings.library.chooseHowMuchImageMetahubChecksSaved")}</p>
           </div>
 
           <select
@@ -257,10 +260,10 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         </div>
       </SettingsSectionCard>
 
-      <SettingsSectionCard title="Indexing">
+      <SettingsSectionCard title={t("settings.library.indexing")}>
         <SettingRow
-          label="Metadata workers"
-          description="Increase on faster machines. Reduce if the UI becomes less responsive."
+          label={t("settings.library.metadataWorkers")}
+          description={t("settings.library.increaseOnFasterMachinesReduceIfThe")}
           control={
             <input
               type="number"
@@ -273,15 +276,15 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           }
         />
         {hardwareConcurrency ? (
-          <p className="text-sm text-gray-500">Detected {hardwareConcurrency} logical cores.</p>
+          <p className="text-sm text-gray-500">{t("settings.library.detectedCores", { count: hardwareConcurrency })}</p>
         ) : null}
       </SettingsSectionCard>
 
       {window.electronAPI?.showSaveDialog && window.electronAPI?.writeFile && (
-        <SettingsSectionCard title="Backup">
+        <SettingsSectionCard title={t("settings.library.backup")}>
           <SettingRow
-            label="Tags and favorites"
-            description="Save a JSON backup of your tag names, image tags and favorites. The backup includes image identifiers, which may contain local paths."
+            label={t("settings.library.tagsAndFavorites")}
+            description={t("settings.library.saveAJsonBackupOfYourTag")}
             control={
               <button
                 type="button"
@@ -289,7 +292,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
                 onClick={handleExportBackup}
                 className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 disabled:opacity-50"
               >
-                {isExportingBackup ? 'Exporting…' : 'Export backup'}
+                {isExportingBackup ? t("settings.library.exporting") : t("settings.library.exportBackup")}
               </button>
             }
           />
@@ -301,13 +304,13 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         </SettingsSectionCard>
       )}
 
-      <SettingsSectionCard title={isPortable ? 'Portable storage' : 'Cache location'}>
+      <SettingsSectionCard title={isPortable ? t("settings.library.portableStorage") : t("settings.library.cacheLocation")}>
         <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
-          <p className="truncate text-sm text-gray-200">{currentCachePath || 'Loading cache location...'}</p>
+          <p className="truncate text-sm text-gray-200">{currentCachePath || t("settings.library.loadingCacheLocation")}</p>
           {isPortable ? (
-            <p className="mt-2 text-xs text-gray-500">Settings, browser data and caches stay with the portable app.</p>
+            <p className="mt-2 text-xs text-gray-500">{t("settings.library.settingsBrowserDataAndCachesStayWith")}</p>
           ) : defaultCachePath ? (
-            <p className="mt-2 text-xs text-gray-500">Default: {defaultCachePath}</p>
+            <p className="mt-2 text-xs text-gray-500">{t("settings.library.default")} {defaultCachePath}</p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -317,7 +320,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
               onClick={handleSelectCacheDirectory}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 hover:text-gray-950"
             >
-              Change location
+              {t("settings.library.changeLocation")}
             </button>
           ) : null}
           <button
@@ -325,7 +328,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             onClick={handleOpenCacheLocation}
             className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-600"
           >
-            Open location
+            {t("settings.library.openLocation")}
           </button>
           {!isPortable ? (
             <button
@@ -334,7 +337,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
               disabled={!defaultCachePath || currentCachePath === defaultCachePath}
               className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Reset to default
+              {t("settings.library.resetToDefault")}
             </button>
           ) : null}
         </div>
@@ -343,12 +346,12 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         ) : null}
       </SettingsSectionCard>
 
-      <AdvancedSection title="Advanced / Troubleshooting" description="Less common options and recovery tools.">
+      <AdvancedSection title={t("settings.library.advancedTroubleshooting")} description={t("settings.library.lessCommonOptionsAndRecoveryTools")}>
         <SettingRow
-          label="Check for updates on startup"
+          label={t("settings.library.checkForUpdatesOnStartup")}
           description={isPortable
-            ? 'Portable builds are updated manually from GitHub Releases.'
-            : 'Disable this to keep the app fully offline during launch.'}
+            ? t("settings.library.portableBuildsAreUpdatedManuallyFromGithub")
+            : t("settings.library.disableThisToKeepTheAppFully")}
           control={(
             <SettingSwitch
               checked={isPortable ? false : autoUpdate}
@@ -358,8 +361,8 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           )}
         />
         <SettingRow
-          label="Performance diagnostics"
-          description="Collect renderer timing traces, React commit samples and long-task summaries in `window.__IMH_PERF__` and the console."
+          label={t("settings.library.performanceDiagnostics")}
+          description={t("settings.library.diagnosticsHelp")}
           control={
             <SettingSwitch
               checked={performanceDiagnosticsEnabled}
@@ -369,12 +372,12 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
         />
 
         <SettingsSectionCard
-          title="Clear library cache"
-          description="Rebuild indexed metadata, thumbnails and smart library cache without changing your preferences."
+          title={t("settings.library.clearLibraryCache")}
+          description={t("settings.library.rebuildIndexedMetadataThumbnailsAndSmartLibrary")}
           className="space-y-3"
         >
           <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-gray-300">
-            <p>Removes only cache data that can be rebuilt. Saved folders, preferences, tags, ratings and license/trial state are kept.</p>
+            <p>{t("settings.library.removesOnlyCacheDataThatCanBe")}</p>
           </div>
           <button
             type="button"
@@ -382,35 +385,35 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             disabled={cacheClearState !== 'idle'}
             className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 enabled:hover:bg-gray-600 disabled:cursor-wait disabled:opacity-70"
           >
-            {cacheClearState === 'clearing' ? 'Clearing library cache…' : cacheClearState === 'reloading' ? 'Reloading library…' : 'Clear library cache'}
+            {cacheClearState === 'clearing' ? t("settings.library.clearingLibraryCache") : cacheClearState === 'reloading' ? t("settings.library.reloadingLibrary") : t("settings.library.clearLibraryCache")}
           </button>
           <span role="status" className="sr-only">
-            {cacheClearState === 'clearing' ? 'Clearing library cache…' : cacheClearState === 'reloading' ? 'Reloading library…' : ''}
+            {cacheClearState === 'clearing' ? t("settings.library.clearingLibraryCache") : cacheClearState === 'reloading' ? t("settings.library.reloadingLibrary") : ''}
           </span>
         </SettingsSectionCard>
 
         <div className="space-y-3 pt-2">
           <div className="space-y-1">
-            <h3 className="text-base font-semibold text-red-100">Danger zone</h3>
-            <p className="text-sm text-gray-400">Destructive local recovery actions. Image files, license and trial state are preserved.</p>
+            <h3 className="text-base font-semibold text-red-100">{t("settings.library.dangerZone")}</h3>
+            <p className="text-sm text-gray-400">{t("settings.library.destructiveLocalRecoveryActionsImageFilesLicense")}</p>
           </div>
 
           <SettingsSectionCard
-            title="Reset app data"
-            description="Use this when local app state needs a fresh start."
+            title={t("settings.library.resetAppData")}
+            description={t("settings.library.useThisWhenLocalAppStateNeeds")}
             tone="danger"
             className="space-y-3"
           >
             <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>This removes saved folders, preferences, filters, annotations, smart collections and automation rules.</p>
+              <p>{t("settings.library.thisRemovesSavedFoldersPreferencesFiltersAnnotations")}</p>
             </div>
             <button
               type="button"
               onClick={handleResetAppData}
               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
             >
-              Reset app data
+              {t("settings.library.resetAppData")}
             </button>
           </SettingsSectionCard>
         </div>

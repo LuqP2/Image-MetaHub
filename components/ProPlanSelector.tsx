@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { Crown, X } from 'lucide-react';
 import {
@@ -22,6 +23,7 @@ export const ProPlanCheckoutOptions: React.FC<ProPlanCheckoutOptionsProps> = ({
   feature,
   compact = false,
 }) => {
+  const { t } = useTranslation();
   const lifetimeUrl = buildProCheckoutUrl('lifetime', token, ctx, feature);
   const annualUrl = buildProCheckoutUrl('annual', token, ctx, feature);
   const monthlyUrl = buildProCheckoutUrl('monthly', token, ctx, feature);
@@ -35,9 +37,9 @@ export const ProPlanCheckoutOptions: React.FC<ProPlanCheckoutOptionsProps> = ({
         className={`${checkoutLinkClassName} w-full gap-2 bg-purple-600 px-4 py-3 text-white hover:bg-purple-700`}
       >
         <Crown className="h-4 w-4" />
-        Get Lifetime License — $39
+        {t('settings.license.lifetimePurchase')}
       </a>
-      <p className="text-center text-xs text-gray-400">One-time payment · no renewal</p>
+      <p className="text-center text-xs text-gray-400">{t('settings.license.oneTimePayment')}</p>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <a
@@ -46,7 +48,7 @@ export const ProPlanCheckoutOptions: React.FC<ProPlanCheckoutOptionsProps> = ({
           rel="noopener noreferrer"
           className={`${checkoutLinkClassName} border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 hover:bg-gray-700`}
         >
-          Annual — $19.99/year
+          {t('settings.license.annualPurchase')}
         </a>
         <a
           href={monthlyUrl}
@@ -54,11 +56,11 @@ export const ProPlanCheckoutOptions: React.FC<ProPlanCheckoutOptionsProps> = ({
           rel="noopener noreferrer"
           className={`${checkoutLinkClassName} border border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 hover:bg-gray-700`}
         >
-          Monthly — $4.99/month
+          {t('settings.license.monthlyPurchase')}
         </a>
       </div>
       {!compact ? (
-        <p className="text-center text-xs text-gray-500">Annual is equivalent to $1.67/month. Every plan unlocks the same Pro features.</p>
+        <p className="text-center text-xs text-gray-500">{t('settings.license.planSummary')}</p>
       ) : null}
     </div>
   );

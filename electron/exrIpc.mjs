@@ -1,6 +1,6 @@
 import { createExrRuntime } from './exrRuntime.mjs';
 
-export function registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed, cacheRoot }) {
+export function registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed, cacheRoot, translate }) {
   const runtime = createExrRuntime({ userDataPath: app.getPath('userData'), cacheRoot, isPathAllowed, changed(status) {
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('exr-changed', status);
   } });
@@ -21,7 +21,7 @@ export function registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, 
   handle('preview', (event, request) => runtime.preview(request, event.sender.id));
   handle('cancel', (event, requestId) => runtime.cancel(event.sender.id, requestId));
   handle('choose-config', async event => {
-    const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), { title: 'Select OpenColorIO configuration', properties: ['openFile'], filters: [{ name: 'OpenColorIO', extensions: ['ocio'] }] });
+    const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), { title: translate('settings.general.chooseOcio'), properties: ['openFile'], filters: [{ name: 'OpenColorIO', extensions: ['ocio'] }] });
     if (result.canceled || !result.filePaths[0]) return null;
     runtime.authorizeConfig(result.filePaths[0]); return result.filePaths[0];
   });
