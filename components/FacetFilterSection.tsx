@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import { FixedSizeList } from 'react-window';
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, Minus, Plus, Search, X } from 'lucide-react';
@@ -30,11 +31,12 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
   onIncludeToggle,
   onExcludeToggle,
   onClear,
-  emptyLabel = 'No items available.',
+  emptyLabel,
   searchPlaceholder,
   defaultExpanded = true,
   hideExclude = false,
 }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [query, setQuery] = useState('');
 
@@ -89,7 +91,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
         <motion.button
           type="button"
           aria-pressed={isIncluded}
-          aria-label={`${isIncluded ? 'Remove' : 'Include'} ${item} (${counts?.get(item) ?? 0} items)`}
+          aria-label={t(isIncluded ? 'librarySearch.removeItemCountItems' : 'librarySearch.includeItemCountItems', { item, count: counts?.get(item) ?? 0 })}
           whileTap={{ scale: 0.98 }}
           onClick={handleRowClick}
           onKeyDown={(e) => {
@@ -129,8 +131,8 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 ? 'bg-emerald-500/20 text-emerald-400'
                 : 'text-gray-500 hover:bg-emerald-500/15 hover:text-emerald-400'
             }`}
-            title={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
-            aria-label={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
+            title={isIncluded ? t('librarySearch.removeItemFromIncludedFilters', { item }) : t('librarySearch.includeItem', { item })}
+            aria-label={isIncluded ? t('librarySearch.removeItemFromIncludedFilters', { item }) : t('librarySearch.includeItem', { item })}
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -151,8 +153,8 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 ? 'bg-rose-500/20 text-rose-400'
                 : 'text-gray-500 hover:bg-rose-500/15 hover:text-rose-400'
             }`}
-            title={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
-            aria-label={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
+            title={isExcluded ? t('librarySearch.removeItemFromExcludedFilters', { item }) : t('librarySearch.excludeItem', { item })}
+            aria-label={isExcluded ? t('librarySearch.removeItemFromExcludedFilters', { item }) : t('librarySearch.excludeItem', { item })}
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
@@ -178,12 +180,12 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
               </span>
               {selectedValues.length > 0 && (
                 <span className="rounded border border-emerald-700/60 bg-emerald-950/60 px-2 py-0.5 text-[11px] text-emerald-300">
-                  {selectedValues.length} include
+                  {t('librarySearch.includeCount', { count: selectedValues.length })}
                 </span>
               )}
               {excludedValues.length > 0 && (
                 <span className="rounded border border-rose-700/60 bg-rose-950/60 px-2 py-0.5 text-[11px] text-rose-300">
-                  {excludedValues.length} exclude
+                  {t('librarySearch.excludeCount', { count: excludedValues.length })}
                 </span>
               )}
             </div>
@@ -203,7 +205,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 onClear();
               }}
               className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-              title={`Clear ${title.toLowerCase()} filters`}
+              title={t('librarySearch.clearNamedFilters', { label: title.toLowerCase() })}
             >
               <X className="h-4 w-4" />
             </button>
@@ -219,7 +221,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={searchPlaceholder ?? `Filter ${title.toLowerCase()}...`}
+                placeholder={searchPlaceholder ?? t('librarySearch.filterLabel', { label: title.toLowerCase() })}
                 className="w-full bg-transparent text-sm text-gray-200 outline-none placeholder:text-gray-500"
               />
               {query.length > 0 && (
@@ -230,8 +232,8 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                     setQuery('');
                   }}
                   className="rounded-md p-0.5 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-200"
-                  title={`Clear ${title.toLowerCase()} search`}
-                  aria-label={`Clear ${title.toLowerCase()} search`}
+                  title={t('librarySearch.clearNamedSearch', { label: title.toLowerCase() })}
+                  aria-label={t('librarySearch.clearNamedSearch', { label: title.toLowerCase() })}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -242,7 +244,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
           <div className="max-h-64 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
             {filteredItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-800 px-3 py-4 text-center text-xs text-gray-500">
-                {emptyLabel}
+                {emptyLabel ?? t('librarySearch.noItemsAvailable')}
               </div>
             ) : (
               filteredItems.length > 60 ? <FixedSizeList height={256} width="100%" itemCount={filteredItems.length} itemSize={36} itemKey={index => filteredItems[index]}>
@@ -253,7 +255,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
 
           {filteredItems.length > 0 && filteredItems.length !== mergedItems.length && (
             <p className="pt-2 text-center text-[11px] text-gray-500">
-              Showing {filteredItems.length} of {mergedItems.length}
+              {t('librarySearch.showingCountOfTotal', { count: filteredItems.length, total: mergedItems.length })}
             </p>
           )}
         </div>

@@ -1,3 +1,4 @@
+import { useTranslation } from './i18n/useTranslation';
 import { findRelatedImages, type RelatedImagesMode } from './utils/relatedImages';
 import { useBoardUIStore } from './store/useBoardUIStore';
 import { useLibraryCanvas } from './hooks/useLibraryCanvas';
@@ -276,6 +277,7 @@ const resolveSidebarWidths = ({
 };
 
 export default function App() {
+  const { t } = useTranslation();
   useBoardPersistenceLifecycle();
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
@@ -4717,17 +4719,17 @@ export default function App() {
                       <div className="mb-4 rounded-full bg-gray-800 p-6 text-gray-500">
                         <Search size={48} strokeWidth={1.5} />
                       </div>
-                      <h3 className="mb-2 text-xl font-semibold text-gray-200">{relatedImages ? 'No related images remain in the library' : 'No images match your filters'}</h3>
+                      <h3 className="mb-2 text-xl font-semibold text-gray-200">{relatedImages ? t('librarySearch.noRelatedImagesRemainInTheLibrary') : t('librarySearch.noImagesMatchYourFilters')}</h3>
                       {!relatedImages && (
                         <>
                           <p className="mb-6 max-w-sm text-sm text-gray-400">
-                            Try adjusting your search terms or clearing some of the active filters to find what you're looking for.
+                            {t('librarySearch.adjustSearchHelp')}
                           </p>
                           <button
                             onClick={handleClearAllFilters}
                             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 focus:outline-none focus:ring-4 focus:ring-blue-800"
                           >
-                            Clear All Filters
+                            {t('librarySearch.clearAllFilters')}
                           </button>
                         </>
                       )}

@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import SearchBar from './SearchBar';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -26,6 +27,7 @@ export const OPEN_VISUAL_SEARCH_SETTINGS_EVENT = 'imh:open-visual-search-setting
  * the toggle before the model is installed opens Settings to download it.
  */
 const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSearchChange }) => {
+  const { t } = useTranslation();
   const semanticEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
   const semanticDevice = useSettingsStore((s) => s.semanticSearchDevice);
   const semanticModel = useSettingsStore((s) => s.semanticSearchModel);
@@ -120,17 +122,17 @@ const SemanticSearchBar: React.FC<SemanticSearchBarProps> = ({ searchQuery, onSe
 
   const notice = (() => {
     if (!visualMode) return null;
-    if (queryRunning) return { text: 'Running experimental visual text query…', tone: 'text-indigo-300' };
+    if (queryRunning) return { text: t('librarySearch.runningExperimentalVisualTextQuery'), tone: 'text-indigo-300' };
     if (queryNotice === 'no-index') {
-      return { text: 'No images indexed yet — open Settings → Visual Search to build the index.', tone: 'text-amber-300' };
+      return { text: t('librarySearch.visualSearchNotIndexed'), tone: 'text-amber-300' };
     }
-    if (queryNotice === 'error') return { text: 'Visual search failed — check the console for details.', tone: 'text-red-400' };
-    if (queryNotice === 'no-results') return { text: 'No visual matches.', tone: 'text-gray-400' };
+    if (queryNotice === 'error') return { text: t('librarySearch.visualSearchFailedCheckTheConsoleForDetails'), tone: 'text-red-400' };
+    if (queryNotice === 'no-results') return { text: t('librarySearch.noVisualMatches'), tone: 'text-gray-400' };
     if (queryNotice === 'ok') {
-      const best = queryTopScore != null ? ` · best ${queryTopScore.toFixed(2)}` : '';
-      return { text: `${queryResultCount.toLocaleString()} visual matches${best}`, tone: 'text-gray-400' };
+      const best = queryTopScore != null ? t('librarySearch.bestVisualScore', { score: queryTopScore.toFixed(2) }) : '';
+      return { text: t('librarySearch.visualMatches', { count: queryResultCount }) + best, tone: 'text-gray-400' };
     }
-    return { text: 'Experimental text-to-image query — approximate results; metadata search remains separate.', tone: 'text-gray-500' };
+    return { text: t('librarySearch.visualSearchNotice'), tone: 'text-gray-500' };
   })();
 
   return (
