@@ -28,6 +28,17 @@ describe('settings language', () => {
     expect(screen.getByRole('dialog', { name: 'Configurações' })).toBeTruthy();
   });
 
+  it('offers Japanese and uses the shared Japanese catalog for Settings and native menus', () => {
+    render(<SettingsModal isOpen onClose={() => {}} initialTab="general" />);
+    expect(screen.getByRole('option', { name: '日本語' }).getAttribute('value')).toBe('ja');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'ja' } });
+    expect(screen.getByRole('dialog', { name: '設定' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '言語' })).toBeTruthy();
+    expect(useSettingsStore.getState().language).toBe('ja');
+    expect(formatMessage('ja', 'settings.native.file')).toBe('ファイル');
+    expect(formatMessage('ja', 'settings.library.detectedCores', { count: 8 })).toBe('8 個の論理コアを検出しました。');
+  });
+
   it.each([undefined, 'xx'])('uses English for an absent or unsupported stored locale (%s)', async (language) => {
     localStorage.setItem('image-metahub-settings', JSON.stringify({ state: { language }, version: 0 }));
     await useSettingsStore.persist.rehydrate();
@@ -55,7 +66,7 @@ describe('settings language', () => {
     expect(format('es', 'valid', { name: 'test.png' })).toBe('Hola test.png');
   });
 
-  it.each(['es', 'pt-BR'])('uses current English until %s is reviewed again', (locale) => {
+  it.each(['es', 'pt-BR', 'ja'])('uses current English until %s is reviewed again', (locale) => {
     const catalogs = { en: { price: 'Price: €20 for {plan}' }, [locale]: { price: 'Precio: €10 para {plan}' } };
     const format = createMessageFormatter(catalogs, { [locale]: { price: reviewHash('Price: €10 for {plan}') } });
     expect(format(locale, 'price', { plan: 'Pro' })).toBe('Price: €20 for Pro');
@@ -71,8 +82,8 @@ describe('catalog review', () => {
   const coverage = { settings: { paths: ['components/settings/'] } };
   const oldSource = { [key]: 'Hello {name}' };
   const source = { [key]: 'Welcome {name}' };
-  const catalogs = { es: { [key]: 'Hola {name}' }, 'pt-BR': {} };
-  const reviewed = { es: { [key]: reviewHash(oldSource[key]) }, 'pt-BR': {} };
+  const catalogs = { es: { [key]: 'Hola {name}' }, 'pt-BR': {}, ja: { [key]: 'ようこそ、{name}さん' } };
+  const reviewed = { es: { [key]: reviewHash(oldSource[key]) }, 'pt-BR': {}, ja: { [key]: reviewHash(source[key]) } };
 
   it('requires all reviews during initial migration and queues later changes', () => {
     expect(diffCatalog(oldSource, source)).toEqual({ added: [], changed: [key], removed: [] });
@@ -85,9 +96,17 @@ describe('catalog review', () => {
   });
 
   it('rejects invalid syntax and incompatible arguments on current approvals', () => {
-    const approvals = { es: { [key]: reviewHash(source[key]) }, 'pt-BR': {} };
+    const approvals = { ...reviewed, es: { [key]: reviewHash(source[key]) } };
     expect(validateCatalogs(source, { ...catalogs, es: { [key]: 'Hola {' } }, approvals, coverage, coverage)).toHaveLength(1);
     expect(validateCatalogs(source, { ...catalogs, es: { [key]: 'Hola {username}' } }, approvals, coverage, coverage))
       .toEqual([`es ${key}: ICU arguments differ from the approved English message`]);
+  });
+
+  it('requires current approvals for a newly added locale even in an existing module', () => {
+    const baseLanguages = ['es', 'pt-BR'];
+    expect(validateCatalogs(source, catalogs, reviewed, coverage, coverage, baseLanguages)).toEqual([]);
+    const missingJapanese = { ...catalogs, ja: {} };
+    expect(validateCatalogs(source, missingJapanese, { ...reviewed, ja: {} }, coverage, coverage, baseLanguages))
+      .toEqual([`ja ${key}: Initial migration requires an approved translation`]);
   });
 });

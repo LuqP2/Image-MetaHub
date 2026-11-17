@@ -8,7 +8,7 @@ const reviewed = readJson('i18n/reviewed.json');
 const catalogs = Object.fromEntries(targetLanguages.map((locale) => [locale, readJson(`i18n/${locale}.json`)]));
 const pending = pendingTranslations(source, catalogs, reviewed, coverage);
 const output = process.argv[2] ?? 'translation-drafts.json';
-const names = { es: 'Spanish', 'pt-BR': 'Brazilian Portuguese' };
+const names = { es: 'Spanish', 'pt-BR': 'Brazilian Portuguese', ja: 'Japanese' };
 const resolved = [];
 const errors = [];
 

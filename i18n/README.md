@@ -1,8 +1,8 @@
 # Image MetaHub translations
 
-Use a stable module-prefixed key in `en.json` and add reviewed Spanish and Brazilian Portuguese translations to `es.json` and `pt-BR.json`. Use whole ICU messages for labels with variables or plural forms. Pass filenames, prompts, node names, and other user or application data as arguments.
+Use a stable module-prefixed key in `en.json` and add reviewed translations to `es.json`, `pt-BR.json`, and `ja.json`. Use whole ICU messages for labels with variables or plural forms. Pass filenames, prompts, node names, and other user or application data as arguments.
 
-For an initial module migration, add its source paths to `coverage.json` and include all three catalogs in the PR. For each reviewed translation, update its locale and key in `reviewed.json` with the SHA-256 of the exact English message. Run `node scripts/check-i18n.mjs origin/main` to check a branch before pushing.
+For an initial module migration, add its source paths to `coverage.json` and include all language catalogs in the PR. When adding a language, translate all previously migrated modules in the same PR. For each reviewed translation, update its locale and key in `reviewed.json` with the SHA-256 of the exact English message. Run `node scripts/check-i18n.mjs origin/main` to check a branch before pushing.
 
 The **Translation drafts** workflow runs after changes to the English catalog reach `main`. Maintainers configure Actions variables `TRANSLATION_API_URL` and `TRANSLATION_MODEL` and the secret `TRANSLATION_API_KEY`. The URL points to a chat-completions-compatible POST endpoint. The job can also be rerun from `main` after setting credentials or fixing a service failure.
 
