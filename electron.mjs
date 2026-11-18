@@ -3587,7 +3587,29 @@ app.whenReady().then(async () => {
   if (app.isPackaged && process.env.IMH_PACKAGED_COMPARE_SMOKE === '1') {
     try {
       const root = process.env.IMH_PACKAGED_COMPARE_SMOKE_ROOT;
-      const result = await runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root });
+      createApplicationMenu();
+      const result = await runComparisonPackagedSmoke({
+        app, BrowserWindow, ipcMain, root,
+        verifyLanguages: process.env.IMH_PACKAGED_COMPARE_I18N === '1',
+        verifyNativeLanguage: async (window, language) => {
+          applyAppLanguage({ language });
+          const menu = Menu.getApplicationMenu();
+          const fileLabel = formatMessage(language, 'settings.native.file');
+          if (!menu?.items.some(item => item.label === fileLabel)) throw new Error('Native menu language did not update.');
+          const aboutLabel = formatMessage(language, 'settings.native.aboutImageMetahub');
+          const about = menu.items.flatMap(item => item.submenu?.items ?? []).find(item => item.label === aboutLabel);
+          if (!about) throw new Error('Native About action missing.');
+          const originalMain = mainWindow;
+          const showMessageBox = dialog.showMessageBox;
+          let options;
+          mainWindow = window;
+          dialog.showMessageBox = async (_owner, value) => { options = value; return { response: 0, checkboxChecked: false }; };
+          try { await about.click(); } finally { mainWindow = originalMain; dialog.showMessageBox = showMessageBox; }
+          if (options?.title !== aboutLabel || options?.detail !== formatMessage(language, 'settings.native.aboutDetail')) {
+            throw new Error('Native dialog language did not update.');
+          }
+        },
+      });
       await fs.writeFile(path.join(root, 'result.json'), JSON.stringify(result), 'utf8'); app.exit(0);
     } catch (error) { console.error('[comparison-smoke]', error); app.exit(1); }
     return;
@@ -7704,7 +7726,7 @@ function setupFileOperationHandlers() {
     }
   };
 
-  registerComparisonIpc({ ipcMain, BrowserWindow, settingsWindows: comparisonSettingsWindows, getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.js'), indexPath: path.join(__dirname, 'dist', 'index.html'), isDev, configureNavigation: configureDetachedViewerNavigationHandlers });
+  registerComparisonIpc({ ipcMain, BrowserWindow, settingsWindows: comparisonSettingsWindows, getTitle: () => formatMessage(appLanguage, 'comparison.windowTitle'), getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.js'), indexPath: path.join(__dirname, 'dist', 'index.html'), isDev, configureNavigation: configureDetachedViewerNavigationHandlers });
   boardPersistence = registerBoardIpc({ ipcMain, app, dialog, BrowserWindow, clipboard: electron.clipboard, getMainWindow: () => mainWindow });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;
@@ -8580,15 +8602,15 @@ function setupFileOperationHandlers() {
   } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
-        return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
+        return { success: false, error: formatMessage(appLanguage, 'batchExport.noFiles'), exportedCount: 0, failedCount: 0 };
       }
       if (!destDir) {
-        return { success: false, error: 'No destination directory provided.', exportedCount: 0, failedCount: 0 };
+        return { success: false, error: formatMessage(appLanguage, 'batchExport.noFolder'), exportedCount: 0, failedCount: 0 };
       }
       if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
         return {
           success: false,
-          error: 'GLTF, OBJ, and FBX batch export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          error: formatMessage(appLanguage, 'batchExport.modelUnsupported'),
           exportedCount: 0,
           failedCount: files.length,
         };
@@ -8691,7 +8713,7 @@ function setupFileOperationHandlers() {
           success: false,
           exportedCount,
           failedCount,
-          error: 'Export canceled.',
+          error: formatMessage(appLanguage, 'batchExport.canceled'),
         };
       }
 
@@ -8700,7 +8722,7 @@ function setupFileOperationHandlers() {
         success,
         exportedCount,
         failedCount,
-        error: success ? undefined : 'No files were exported.',
+        error: success ? undefined : formatMessage(appLanguage, 'batchExport.noneExported'),
       };
     } catch (error) {
       if (exportId) {
@@ -8720,15 +8742,15 @@ function setupFileOperationHandlers() {
   } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
-        return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
+        return { success: false, error: formatMessage(appLanguage, 'batchExport.noFiles'), exportedCount: 0, failedCount: 0 };
       }
       if (!destZipPath) {
-        return { success: false, error: 'No ZIP destination provided.', exportedCount: 0, failedCount: 0 };
+        return { success: false, error: formatMessage(appLanguage, 'batchExport.noZip'), exportedCount: 0, failedCount: 0 };
       }
       if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
         return {
           success: false,
-          error: 'GLTF, OBJ, and FBX ZIP export is not available because these models can depend on sibling files. Export or copy the containing folder instead.',
+          error: formatMessage(appLanguage, 'batchExport.modelUnsupported'),
           exportedCount: 0,
           failedCount: files.length,
         };
@@ -8844,7 +8866,7 @@ function setupFileOperationHandlers() {
           success: false,
           exportedCount,
           failedCount,
-          error: 'Export canceled.',
+          error: formatMessage(appLanguage, 'batchExport.canceled'),
         };
       }
 
@@ -8865,7 +8887,7 @@ function setupFileOperationHandlers() {
         success,
         exportedCount,
         failedCount,
-        error: success ? undefined : 'No files were exported.',
+        error: success ? undefined : formatMessage(appLanguage, 'batchExport.noneExported'),
       };
     } catch (error) {
       if (exportId) {

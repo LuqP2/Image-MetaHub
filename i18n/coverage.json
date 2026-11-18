@@ -14,5 +14,25 @@
   "libraryGallery": {
     "paths": ["components/GridToolbar.tsx", "components/ImageGrid.tsx", "components/ImageSizeSlider.tsx", "components/ImageTable.tsx", "components/RatingStars.tsx", "components/contextMenu/RelatedImagesMenu.tsx"],
     "literalExceptions": ["CFG"]
+  },
+  "comparisonPane": {
+    "paths": ["components/ComparisonPane.tsx", "components/DetachedComparisonApp.tsx"],
+    "literalExceptions": []
+  },
+  "comparison": {
+    "paths": ["components/ComparisonSurface.tsx", "components/ComparisonOverlayView.tsx", "components/ComparisonMetadataPanel.tsx"],
+    "literalExceptions": ["A", "B", "Esc", "S", "Space", "ms", "x"]
+  },
+  "batchExport": {
+    "paths": ["components/BatchExportModal.tsx"],
+    "literalExceptions": ["ZIP"]
+  },
+  "imageViewer": {
+    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx", "components/ImagePreviewSidebar.tsx", "components/ImageLineageSection.tsx", "components/TextureMapsSection.tsx", "components/ExrViewer.tsx", "components/Model3DViewer.tsx", "components/AudioPlayer.tsx", "components/ImageModal.tsx", "components/ImageAdjustmentPanel.tsx", "components/FindSimilarModal.tsx", "components/ProvenanceSection.tsx", "components/CollectionFormModal.tsx"],
+    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x", "VAE", "FPS", "MetaHub Save Node", "ComfyUI", "A1111", "PyTorch:", "Python:", "IMH", "EXR", "EV", "FOV", "GLB", "OBJ", "STL", "FBX", "X", "Y", "Z", "SHA-256"]
+  },
+  "metadataEditor": {
+    "paths": ["components/MetadataEditorModal.tsx"],
+    "literalExceptions": ["LoRA", "Euler a", "normal", "ComfyUI / A1111 / InvokeAI..."]
   }
 }

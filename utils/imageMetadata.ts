@@ -1,3 +1,5 @@
+import { formatMessage } from '../i18n/messages.mjs';
+import type { Translate } from '../i18n/useTranslation';
 import { BaseMetadata, IndexedImage } from '../types';
 
 type MetadataWithLegacyAnalytics = BaseMetadata & {
@@ -36,11 +38,15 @@ export const getImageAnalytics = (image: Pick<IndexedImage, 'metadata'>): BaseMe
 export const getCfgScale = (metadata: BaseMetadata | null | undefined): number | undefined =>
   metadata?.cfg_scale ?? (metadata as MetadataWithLegacyAnalytics | undefined)?.cfgScale;
 
-export const getClipboardErrorMessage = (error: unknown): string => {
+export const getClipboardErrorMessage = (
+  error: unknown,
+  t: Translate = (key, values) => formatMessage('en', key, values),
+): string => {
   const message = error instanceof Error ? error.message : String(error);
+  if (message === 'This image has no original ComfyUI workflow.') return t('imageViewer.status.noWorkflow');
   return message.includes('clipboard')
-    ? CLIPBOARD_ACCESS_DENIED_MESSAGE
-    : `Error: ${message}`;
+    ? t('imageViewer.status.clipboardDenied')
+    : t('imageViewer.status.error', { message });
 };
 
 type BatchSizeMetadata = Partial<BaseMetadata> & {

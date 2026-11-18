@@ -1,3 +1,5 @@
+import { formatMessage } from '../i18n/messages.mjs';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useCallback, useRef, useState } from 'react';
 import type { IndexedImage, SavePromptInput, SavedPromptSaveResult, ShadowMetadata } from '../types';
 import { getPersistedShadowMetadata } from '../services/userDataPersistenceAdapter';
@@ -74,7 +76,7 @@ export function useSavePrompt() {
     image: IndexedImage,
     options: SavePromptOptions = {},
   ): Promise<SavedPromptSaveResult> => {
-    if (options.shadowReady === false) throw new Error('Prompt metadata is still loading.');
+    if (options.shadowReady === false) throw new Error(formatMessage(useSettingsStore.getState().language, 'imageViewer.preview.promptLoading'));
     let shadowMetadata = options.shadowMetadata;
     if (options.readAuthoritativeShadow) {
       shadowMetadata = await getPersistedShadowMetadata(image);
@@ -117,10 +119,12 @@ export function usePromptBookmark(positivePrompt: unknown, negativePrompt: unkno
       const saved = findMatchingPrompt(positivePrompt, negativePrompt)(state.prompts);
       if (saved) {
         await state.remove(saved.id);
-        return 'Prompt removed';
+        return formatMessage(useSettingsStore.getState().language, 'imageViewer.preview.promptRemoved');
       }
       const result = await savePrompt(image, options);
-      return result.status === 'already-saved' ? 'Already saved' : 'Prompt saved';
+      return formatMessage(useSettingsStore.getState().language, result.status === 'already-saved'
+        ? 'imageViewer.preview.promptAlreadySaved'
+        : 'imageViewer.preview.promptSaved');
     } finally {
       pending.current = false;
       setIsBookmarkPending(false);

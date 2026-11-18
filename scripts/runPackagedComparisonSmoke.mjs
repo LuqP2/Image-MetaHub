@@ -6,7 +6,7 @@ const executable = path.resolve(process.argv[2] || 'dist-electron/win-unpacked/I
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'imh-compare-smoke-'));
 const profile = path.join(root, 'profile'); await fs.mkdir(profile);
 const args = [`--user-data-dir=${profile}`];
-const child = spawn(executable, args, { windowsHide: true, env: { ...process.env, IMH_PACKAGED_COMPARE_SMOKE: '1', IMH_PACKAGED_COMPARE_SMOKE_ROOT: root, PORTABLE_EXECUTABLE_DIR: profile, PORTABLE_EXECUTABLE_FILE: executable }, stdio: ['ignore','pipe','pipe'] });
+const child = spawn(executable, args, { windowsHide: true, env: { ...process.env, IMH_PACKAGED_COMPARE_SMOKE: '1', IMH_PACKAGED_COMPARE_SMOKE_ROOT: root, IMH_PACKAGED_COMPARE_I18N: process.argv.includes('--i18n') ? '1' : '0', PORTABLE_EXECUTABLE_DIR: profile, PORTABLE_EXECUTABLE_FILE: executable }, stdio: ['ignore','pipe','pipe'] });
 child.stdout.pipe(process.stdout); child.stderr.pipe(process.stderr);
 const timeout = setTimeout(() => child.kill(), 90000);
 const code = await new Promise((resolve,reject) => { child.once('error',reject); child.once('exit',resolve); }); clearTimeout(timeout);

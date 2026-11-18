@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useState, useCallback } from 'react';
 import { IndexedImage, BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -5,16 +6,17 @@ import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import {
   hasPromptMetadata,
   mergeNormalizedMetadata,
-  NO_METADATA_MESSAGE,
   TEMPORARY_STATUS_TIMEOUT_MS,
 } from '../utils/imageMetadata';
 
 interface GenerateStatus {
   success: boolean;
-  message: string;
+  key: MessageKey;
+  values?: Record<string, string>;
 }
 
 export function useGenerateWithA1111() {
+  const { t } = useTranslation();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateStatus, setGenerateStatus] = useState<GenerateStatus | null>(null);
 
@@ -30,7 +32,7 @@ export function useGenerateWithA1111() {
         setIsGenerating(false);
         setGenerateStatus({
           success: false,
-          message: NO_METADATA_MESSAGE,
+          key: 'imageViewer.status.noMetadata',
         });
         setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
@@ -40,7 +42,8 @@ export function useGenerateWithA1111() {
         setIsGenerating(false);
         setGenerateStatus({
           success: false,
-          message: 'A1111 server URL not configured. Please check Settings.',
+          key: 'imageViewer.status.serverMissing',
+          values: { provider: 'A1111' },
         });
         setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
@@ -63,7 +66,8 @@ export function useGenerateWithA1111() {
         setIsGenerating(false);
         setGenerateStatus({
           success: true,
-          message: 'Generation queued. Waiting for current A1111 job to finish.',
+          key: 'imageViewer.status.queuedWaiting',
+          values: { provider: 'A1111' },
         });
         setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
@@ -72,7 +76,7 @@ export function useGenerateWithA1111() {
       setIsGenerating(false);
       setGenerateStatus({
         success: true,
-        message: 'Generation queued.',
+        key: 'imageViewer.details.queued',
       });
       setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
     },
@@ -82,6 +86,9 @@ export function useGenerateWithA1111() {
   return {
     generateWithA1111,
     isGenerating,
-    generateStatus,
+    generateStatus: generateStatus ? {
+      success: generateStatus.success,
+      message: t(generateStatus.key, generateStatus.values),
+    } : null,
   };
 }

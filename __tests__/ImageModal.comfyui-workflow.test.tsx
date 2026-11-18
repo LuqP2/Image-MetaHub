@@ -1,11 +1,12 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageModal from '../components/ImageModal';
 import ImagePreviewSidebar from '../components/ImagePreviewSidebar';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import * as imageUtils from '../utils/imageUtils';
 
 vi.mock('../hooks/useCopyToA1111', () => ({
@@ -122,6 +123,7 @@ const createImage = (): IndexedImage => ({
 describe('ImageModal ComfyUI workflow action', () => {
   beforeEach(() => {
     useImageStore.getState().resetState();
+    useSettingsStore.setState({ language: 'en' });
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -130,7 +132,59 @@ describe('ImageModal ComfyUI workflow action', () => {
 
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
+    useSettingsStore.setState({ language: 'en' });
     vi.restoreAllMocks();
+  });
+
+  it('localizes the preview sidebar and copies the original prompt', async () => {
+    const prompt = 'a quiet forest {draft} 海';
+    const tag = 'reference {tag}';
+    const model = 'FixtureModel_v9.safetensors';
+    const image = createImage();
+    image.name = 'fixture {image} 海.png';
+    image.metadata.normalizedMetadata = { ...image.metadata.normalizedMetadata, prompt, model };
+    image.tags = [tag];
+    const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    useImageStore.setState({ images: [image], filteredImages: [image], previewImage: image });
+
+    render(
+      <ImagePreviewSidebar width={400} isResizing={false} onResizeStart={vi.fn()} onOpenTextureMap={vi.fn()} />,
+    );
+    expect(screen.getByRole('heading', { name: 'Image Preview' })).toBeTruthy();
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    expect(screen.getByRole('button', { name: `Remover tag ${tag}` })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: image.name })).toBeTruthy();
+    expect(screen.getByText(model)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar: Prompt' }));
+    await waitFor(() => expect(clipboard).toHaveBeenCalledWith(prompt));
+    act(() => useSettingsStore.setState({ language: 'es' }));
+    expect(screen.getByRole('button', { name: 'Cerrar vista previa' })).toBeTruthy();
+    expect(screen.getByText(prompt)).toBeTruthy();
+  });
+
+  it('localizes viewer navigation and keeps the selected filename', async () => {
+    const image = createImage();
+    image.name = 'fixture {image} 海.png';
+    const onNavigateNext = vi.fn();
+    render(
+      <ImageModal
+        image={image}
+        onClose={vi.fn()}
+        directoryPath="C:/synthetic"
+        isActive
+        currentIndex={0}
+        totalImages={2}
+        onNavigateNext={onNavigateNext}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Next image' })).toBeTruthy();
+
+    act(() => useSettingsStore.setState({ language: 'ja' }));
+    expect(screen.getByTitle(image.name)).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: `画像ビューア：${image.name}` })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '画像を閉じる' }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '次の画像' }));
+    expect(onNavigateNext).toHaveBeenCalledTimes(1);
   });
 
   it('exposes one-click workflow loading for ComfyUI', async () => {
@@ -155,6 +209,19 @@ describe('ImageModal ComfyUI workflow action', () => {
     }));
   });
 
+  it('copies original metadata through a localized viewer context menu', async () => {
+    const image = createImage();
+    image.metadata.normalizedMetadata!.negativePrompt = 'negative {fixture} 海';
+    const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    render(<ImageModal image={image} onClose={vi.fn()} directoryPath="C:/synthetic" isActive />);
+    const viewport = await screen.findByRole('dialog', { name: `Image viewer: ${image.name}` });
+    fireEvent.contextMenu(viewport.querySelector('img')!);
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar prompt negativo' }));
+    await waitFor(() => expect(clipboard).toHaveBeenCalledWith('negative {fixture} 海'));
+    expect(screen.queryByRole('button', { name: 'Copiar prompt negativo' })).toBeNull();
+  });
+
   it.each(['modal', 'sidebar'] as const)('copies the embedded UI workflow from the %s', async (surface) => {
     const image = createImage();
     const workflow = {
@@ -177,6 +244,9 @@ describe('ImageModal ComfyUI workflow action', () => {
 
     await waitFor(() => expect(clipboard).toHaveBeenCalledWith(JSON.stringify(workflow)));
     await screen.findByText(/Workflow JSON copied!/);
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    await screen.findByText(/JSON do workflow copiado!/);
+    expect(clipboard).toHaveBeenCalledTimes(1);
   });
 
   it('reports a missing original workflow without writing to the clipboard', async () => {

@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { AlertTriangle, ExternalLink, Music } from 'lucide-react';
 import { type MediaDiagnosticsContext, useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
@@ -27,6 +28,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   externalPath,
   diagnostics,
 }) => {
+  const { t } = useTranslation();
   const [audioRendererFailed, setAudioRendererFailed] = React.useState(false);
   const [openError, setOpenError] = React.useState<string | null>(null);
   const handleAudioRendererError = React.useCallback(() => {
@@ -50,9 +52,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (!externalPath) return;
     const result = await window.electronAPI?.openPath?.(externalPath);
     if (!result?.success) {
-      setOpenError(result?.error || 'Failed to open media externally.');
+      setOpenError(result?.error || t('imageViewer.preview.externalFailed'));
     }
-  }, [externalPath]);
+  }, [externalPath, t]);
 
   if (audioRendererFailed) {
     return (
@@ -66,10 +68,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         </div>
         <div className="max-w-full text-center">
           <p className={`truncate font-medium text-gray-100 ${compact ? 'text-sm' : 'text-lg'}`} title={title}>
-            Audio playback failed in Electron
+            {t('imageViewer.preview.audioFailed')}
           </p>
           <p className="mt-1 max-w-md text-xs text-gray-400">
-            The macOS audio service failed while initializing playback.
+            {t('imageViewer.preview.audioServiceFailed')}
           </p>
         </div>
         <button
@@ -79,7 +81,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
           className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ExternalLink className="h-4 w-4" />
-          Open Externally
+          {t('imageViewer.preview.openExternal')}
         </button>
         {openError && <p className="max-w-md text-center text-xs text-red-300">{openError}</p>}
       </div>
@@ -99,7 +101,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         <p className={`truncate font-medium text-gray-100 ${compact ? 'text-sm' : 'text-lg'}`} title={title}>
           {title}
         </p>
-        <p className="mt-1 text-xs text-gray-400">Audio</p>
+        <p className="mt-1 text-xs text-gray-400">{t('imageViewer.media.audio')}</p>
       </div>
       <audio
         src={src}

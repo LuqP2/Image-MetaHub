@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import { isExrFileName } from '../utils/mediaTypes.js';
 import { subscribeExrChanged } from '../services/exr/client';
 import { useEffect, useState } from 'react';
@@ -6,6 +7,8 @@ import { mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from './useResolvedThumbnail';
 
 const useComparisonImageSource = (image: IndexedImage, directoryPath: string, skip = false) => {
+  const { t } = useTranslation();
+  const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -14,6 +17,7 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string, sk
   useEffect(() => isExrFileName(image.name) ? subscribeExrChanged(() => setExrRevision(n => n + 1)) : undefined, [image.name]);
 
   useEffect(() => {
+    setDirectoryUnavailable(false);
     if (skip) { setImageUrl(null); setLoadError(null); setIsLoading(false); return; }
     let isMounted = true;
     const previewUrl = thumbnail?.thumbnailUrl ?? null;
@@ -27,7 +31,7 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string, sk
 
       if (!directoryPath && window.electronAPI) {
         console.error('Cannot load image: directoryPath is undefined');
-        setLoadError('Directory path is not available');
+        setDirectoryUnavailable(true);
         setIsLoading(false);
         return;
       }
@@ -57,7 +61,7 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string, sk
     };
   }, [image.id, image.handle, image.thumbnailHandle, image.name, thumbnail?.thumbnailUrl, directoryPath, exrRevision, skip]);
 
-  return { imageUrl, loadError, isLoading };
+  return { imageUrl, loadError: directoryUnavailable ? t('comparison.directoryUnavailable') : loadError, isLoading };
 };
 
 export default useComparisonImageSource;

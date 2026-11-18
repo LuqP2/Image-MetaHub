@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useState, useCallback } from 'react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
@@ -6,16 +7,17 @@ import {
   getClipboardErrorMessage,
   getNormalizedMetadata,
   hasPromptMetadata,
-  NO_METADATA_MESSAGE,
   TEMPORARY_STATUS_TIMEOUT_MS,
 } from '../utils/imageMetadata';
 
 interface CopyStatus {
   success: boolean;
-  message: string;
+  key?: MessageKey;
+  error?: unknown;
 }
 
 export function useCopyToA1111() {
+  const { t } = useTranslation();
   const [isCopying, setIsCopying] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus | null>(null);
 
@@ -25,7 +27,7 @@ export function useCopyToA1111() {
     if (!hasPromptMetadata(metadata)) {
       setCopyStatus({
         success: false,
-        message: NO_METADATA_MESSAGE,
+        key: 'imageViewer.status.noMetadata',
       });
       setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
       return;
@@ -46,17 +48,16 @@ export function useCopyToA1111() {
 
       setCopyStatus({
         success: true,
-        message: 'Copied! Paste into A1111 prompt box and click the Blue Arrow.',
+        key: 'imageViewer.status.a1111Copied',
       });
 
       // Clear status after 5 seconds
       setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
     } catch (error: unknown) {
-      const errorMessage = getClipboardErrorMessage(error);
 
       setCopyStatus({
         success: false,
-        message: errorMessage,
+        error,
       });
 
       setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
@@ -68,6 +69,9 @@ export function useCopyToA1111() {
   return {
     copyToA1111,
     isCopying,
-    copyStatus,
+    copyStatus: copyStatus ? {
+      success: copyStatus.success,
+      message: copyStatus.key ? t(copyStatus.key) : getClipboardErrorMessage(copyStatus.error, t),
+    } : null,
   };
 }

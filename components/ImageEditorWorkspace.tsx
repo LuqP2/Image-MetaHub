@@ -1,3 +1,5 @@
+import { formatMessage } from '../i18n/messages.mjs';
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -60,6 +62,7 @@ import { getFileExtension } from '../utils/mediaTypes.js';
 import { indexImageFileAtPath, reparseIndexedImage } from '../services/fileIndexer';
 import cacheManager from '../services/cacheManager';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { prepareUserDataForImages } from '../services/userDataPersistenceAdapter';
 
 interface ImageEditorWorkspaceProps {
@@ -108,19 +111,19 @@ type PanState = {
 
 const editorSessionCache = new Map<string, EditorSessionState>();
 
-const TOOL_DEFS: Array<{ id: ImageEditorTool; label: string; icon: React.ReactNode }> = [
-  { id: 'select', label: 'Select', icon: <MousePointer2 className="h-4 w-4" /> },
-  { id: 'color-picker', label: 'Pick Color', icon: <Pipette className="h-4 w-4" /> },
-  { id: 'crop', label: 'Crop', icon: <Crop className="h-4 w-4" /> },
-  { id: 'rectangle', label: 'Rectangle', icon: <Square className="h-4 w-4" /> },
-  { id: 'ellipse', label: 'Ellipse', icon: <Circle className="h-4 w-4" /> },
-  { id: 'line', label: 'Line', icon: <Minus className="h-4 w-4" /> },
-  { id: 'arrow', label: 'Arrow', icon: <ArrowLeft className="h-4 w-4 rotate-180" /> },
-  { id: 'freehand', label: 'Freehand', icon: <Pencil className="h-4 w-4" /> },
-  { id: 'text', label: 'Text', icon: <Type className="h-4 w-4" /> },
-  { id: 'highlight', label: 'Highlight', icon: <Highlighter className="h-4 w-4" /> },
-  { id: 'blur', label: 'Blur', icon: <Eye className="h-4 w-4" /> },
-  { id: 'pixelate', label: 'Pixelate', icon: <Shield className="h-4 w-4" /> },
+const TOOL_DEFS: Array<{ id: ImageEditorTool; messageKey: MessageKey; icon: React.ReactNode }> = [
+  { id: 'select', messageKey: 'imageViewer.editor.select', icon: <MousePointer2 className="h-4 w-4" /> },
+  { id: 'color-picker', messageKey: 'imageViewer.editor.pickColor', icon: <Pipette className="h-4 w-4" /> },
+  { id: 'crop', messageKey: 'imageViewer.editor.crop', icon: <Crop className="h-4 w-4" /> },
+  { id: 'rectangle', messageKey: 'imageViewer.editor.rectangle', icon: <Square className="h-4 w-4" /> },
+  { id: 'ellipse', messageKey: 'imageViewer.editor.ellipse', icon: <Circle className="h-4 w-4" /> },
+  { id: 'line', messageKey: 'imageViewer.editor.line', icon: <Minus className="h-4 w-4" /> },
+  { id: 'arrow', messageKey: 'imageViewer.editor.arrow', icon: <ArrowLeft className="h-4 w-4 rotate-180" /> },
+  { id: 'freehand', messageKey: 'imageViewer.editor.freehand', icon: <Pencil className="h-4 w-4" /> },
+  { id: 'text', messageKey: 'imageViewer.editor.text', icon: <Type className="h-4 w-4" /> },
+  { id: 'highlight', messageKey: 'imageViewer.editor.highlight', icon: <Highlighter className="h-4 w-4" /> },
+  { id: 'blur', messageKey: 'imageViewer.editor.blur', icon: <Eye className="h-4 w-4" /> },
+  { id: 'pixelate', messageKey: 'imageViewer.editor.pixelate', icon: <Shield className="h-4 w-4" /> },
 ];
 
 const readPngDimensions = (bytes: Uint8Array): { width: number; height: number } | null => {
@@ -143,24 +146,38 @@ const readPngDimensions = (bytes: Uint8Array): { width: number; height: number }
   return width > 0 && height > 0 ? { width, height } : null;
 };
 
-const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
-  { id: 'edit', label: 'Edit' },
-  { id: 'style', label: 'Style' },
-  { id: 'ai', label: 'AI' },
+const ADJUSTMENT_LABELS = {
+  brightness: 'imageViewer.editor.brightness',
+  contrast: 'imageViewer.editor.contrast',
+  saturation: 'imageViewer.editor.saturation',
+} as const;
+
+const INSPECTOR_TABS: Array<{ id: InspectorTab; messageKey: MessageKey }> = [
+  { id: 'edit', messageKey: 'settings.native.edit' },
+  { id: 'style', messageKey: 'imageViewer.editor.style' },
+  { id: 'ai', messageKey: 'imageViewer.editor.ai' },
 ];
 
-const ASPECT_LABELS: Record<ImageEditCropAspect, string> = {
-  free: 'Free',
-  original: 'Original',
-  '1:1': '1:1',
-  '4:3': '4:3',
-  '3:2': '3:2',
-  '16:9': '16:9',
-  '9:16': '9:16',
+const CROP_FIELD_LABELS = {
+  x: 'X',
+  y: 'Y',
+  width: 'comparison.width',
+  height: 'comparison.height',
+} as const;
+
+const LEGACY_TOOL_LABELS: Partial<Record<ImageEditorTool, MessageKey>> = {
+  step: 'imageViewer.editor.step',
+  spotlight: 'imageViewer.editor.spotlight',
+  magnify: 'imageViewer.editor.magnify',
 };
 
+const AI_TOOL_LABELS = [
+  'imageViewer.editor.upscale', 'imageViewer.editor.restoreDetails', 'imageViewer.editor.restoreFaces',
+  'imageViewer.editor.inpaint', 'imageViewer.editor.outpaint',
+] as const;
+
 const FONT_FAMILY_OPTIONS = [
-  { label: 'System', value: 'system-ui, sans-serif' },
+  { messageKey: 'imageViewer.editor.systemFont' as const, value: 'system-ui, sans-serif' },
   { label: 'Arial', value: 'Arial, sans-serif' },
   { label: 'Verdana', value: 'Verdana, sans-serif' },
   { label: 'Georgia', value: 'Georgia, serif' },
@@ -171,22 +188,22 @@ const FONT_FAMILY_OPTIONS = [
 
 const isEnabledEditorTool = (tool: ImageEditorTool) => TOOL_DEFS.some((definition) => definition.id === tool);
 
-const TOOL_HINTS: Record<ImageEditorTool, string> = {
-  select: 'Click an object to select it.',
-  'color-picker': 'Click the image to pick a color for the active style.',
-  crop: 'Drag a crop area. The crop is editable in the inspector.',
-  rectangle: 'Drag to create a rectangle annotation.',
-  ellipse: 'Drag to create an ellipse annotation.',
-  line: 'Drag to draw a line.',
-  arrow: 'Drag toward the arrow tip.',
-  freehand: 'Drag to sketch a freehand stroke.',
-  text: 'Click or drag, then enter text.',
-  step: 'Click or drag to place a numbered step marker.',
-  highlight: 'Drag to highlight an area.',
-  blur: 'Drag over a region to blur it on export.',
-  pixelate: 'Drag over a region to pixelate it on export.',
-  spotlight: 'Spotlight annotations can be edited when opening older documents.',
-  magnify: 'Drag the magnified lens area.',
+const TOOL_HINTS: Record<ImageEditorTool, MessageKey> = {
+  select: 'imageViewer.editor.selectHint',
+  'color-picker': 'imageViewer.editor.pickHint',
+  crop: 'imageViewer.editor.cropHint',
+  rectangle: 'imageViewer.editor.rectangleHint',
+  ellipse: 'imageViewer.editor.ellipseHint',
+  line: 'imageViewer.editor.lineHint',
+  arrow: 'imageViewer.editor.arrowHint',
+  freehand: 'imageViewer.editor.freehandHint',
+  text: 'imageViewer.editor.textHint',
+  step: 'imageViewer.editor.stepHint',
+  highlight: 'imageViewer.editor.highlightHint',
+  blur: 'imageViewer.editor.blurHint',
+  pixelate: 'imageViewer.editor.pixelateHint',
+  spotlight: 'imageViewer.editor.spotlightHint',
+  magnify: 'imageViewer.editor.magnifyHint',
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -631,12 +648,16 @@ const PixelatePreview: React.FC<{
   return <canvas ref={canvasRef} className="h-full w-full" />;
 };
 
+const translateEditor = (key: MessageKey, values?: Record<string, string | number>) =>
+  formatMessage(useSettingsStore.getState().language, key, values);
+
 const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   image,
   directoryPath,
   onBack,
   onOpenComfyUIWorkflow,
 }) => {
+  const { t } = useTranslation();
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [sourceReady, setSourceReady] = useState(false);
   const [documentState, setDocumentState] = useState<ImageEditorDocument | null>(null);
@@ -792,7 +813,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
           const element = new Image();
           element.onload = () => resolve({ width: element.naturalWidth || element.width, height: element.naturalHeight || element.height });
-          element.onerror = () => reject(new Error('Failed to load image dimensions.'));
+          element.onerror = () => reject(new Error(translateEditor('imageViewer.editor.dimensionsFailed')));
           element.src = source;
         });
         if (!mounted) return;
@@ -814,7 +835,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         setSourceReady(true);
       } catch (error) {
         if (mounted) {
-          setError(error instanceof Error ? error.message : 'Failed to open image editor.');
+          setError(error instanceof Error ? error.message : translateEditor('imageViewer.editor.openFailed'));
         }
       }
     };
@@ -900,7 +921,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
   const renderExportBytes = useCallback(async () => {
     if (!sourceUrl || !normalizedDocument) {
-      throw new Error('The editor source image is still loading.');
+      throw new Error(translateEditor('imageViewer.editor.sourceLoading'));
     }
     const bytes = await renderImageEditorDocumentToPngBytes(sourceUrl, normalizedDocument);
     const sourceImage = await ensureHydratedImage();
@@ -927,14 +948,14 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
   const saveToPath = useCallback(async (targetPath: string, mode: 'save_as' | 'overwrite') => {
     if (!window.electronAPI?.writeFile) {
-      throw new Error('Saving edited images is only available in the desktop app.');
+      throw new Error(translateEditor('imageViewer.editor.writeDesktop'));
     }
     const outputBytes = await renderExportBytes();
     if (mode === 'overwrite') {
       try {
         await prepareUserDataForImages([image]);
       } catch (error) {
-        throw new Error(`The image was not overwritten because its local user data could not be staged safely: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(translateEditor('imageViewer.editor.stageFailed', { error: error instanceof Error ? error.message : String(error) }));
       }
     }
     const result = await window.electronAPI.writeFile(targetPath, outputBytes, {
@@ -944,7 +965,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         : {}),
     });
     if (!result.success) {
-      throw new Error(result.error || 'Failed to write edited image.');
+      throw new Error(result.error || translateEditor('imageViewer.editor.writeFailed'));
     }
 
     const sourceDirectory = mode === 'overwrite'
@@ -985,24 +1006,24 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
   const handleSaveAs = useCallback(async () => {
     if (!window.electronAPI?.showSaveDialog) {
-      setError('Save As is only available in the desktop app.');
+      setError(translateEditor('imageViewer.editor.saveAsDesktop'));
       return;
     }
     setIsSaving(true);
     try {
       const defaultPath = await buildDefaultSavePath();
       const saveResult = await window.electronAPI.showSaveDialog({
-        title: 'Save edited image',
+        title: translateEditor('imageViewer.editor.saveDialog'),
         defaultPath,
-        filters: [{ name: 'PNG Image', extensions: ['png'] }],
+        filters: [{ name: translateEditor('imageViewer.editor.pngFilter'), extensions: ['png'] }],
       });
       if (saveResult.canceled || !saveResult.path) {
         return;
       }
       await saveToPath(saveResult.path, 'save_as');
-      setSuccess('Saved editor image.');
+      setSuccess(translateEditor('imageViewer.editor.saved'));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to save editor image.');
+      setError(error instanceof Error ? error.message : translateEditor('imageViewer.editor.saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -1014,27 +1035,27 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       return;
     }
     if (!window.electronAPI?.joinPaths) {
-      setError('Save is only available in the desktop app.');
+      setError(translateEditor('imageViewer.editor.saveDesktop'));
       return;
     }
     const sourceDirectory = directories.find((directory) => directory.id === image.directoryId);
     if (!sourceDirectory) {
-      setError('Cannot save because the source directory is unavailable.');
+      setError(translateEditor('imageViewer.editor.sourceDirectoryUnavailable'));
       return;
     }
-    if (!window.confirm('Overwrite the original image with the editor output? This cannot be undone.')) {
+    if (!window.confirm(translateEditor('imageViewer.editor.overwriteConfirm'))) {
       return;
     }
     setIsSaving(true);
     try {
       const joined = await window.electronAPI.joinPaths(sourceDirectory.path, getRelativeImagePath(image));
       if (!joined.success || !joined.path) {
-        throw new Error(joined.error || 'Failed to resolve original image path.');
+        throw new Error(joined.error || translateEditor('imageViewer.editor.sourcePathFailed'));
       }
       await saveToPath(joined.path, 'overwrite');
-      setSuccess('Saved editor output over the original PNG.');
+      setSuccess(translateEditor('imageViewer.editor.overwritten'));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to overwrite editor image.');
+      setError(error instanceof Error ? error.message : translateEditor('imageViewer.editor.overwriteFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -1046,17 +1067,17 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       const blob = await renderImageEditorDocumentToPngBlob(sourceUrl, normalizedDocument);
       const ClipboardItemCtor = window.ClipboardItem;
       if (!navigator.clipboard || !ClipboardItemCtor) {
-        throw new Error('Image clipboard is not available in this browser.');
+        throw new Error(translateEditor('imageViewer.editor.clipboardUnavailable'));
       }
       await navigator.clipboard.write([new ClipboardItemCtor({ 'image/png': blob })]);
-      setSuccess('Copied editor image to clipboard.');
+      setSuccess(translateEditor('imageViewer.editor.copied'));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to copy editor image.');
+      setError(error instanceof Error ? error.message : translateEditor('imageViewer.editor.copyFailed'));
     }
   }, [normalizedDocument, setError, setSuccess, sourceUrl]);
 
   const handleBack = useCallback(() => {
-    if (hasChanges && !window.confirm('Leave the image editor and discard the current editor state?')) {
+    if (hasChanges && !window.confirm(translateEditor('imageViewer.editor.leaveConfirm'))) {
       return;
     }
     shouldSkipSessionCacheRef.current = true;
@@ -1145,12 +1166,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   const flattenSelection = useCallback(() => {
     if (!normalizedDocument) return;
     commitDocument((current) => ({ ...current, selectedObjectIds: [] }), 'Flatten');
-    setSuccess('Flatten will be applied in the saved PNG output.');
+    setSuccess(translateEditor('imageViewer.editor.flattenNotice'));
   }, [commitDocument, normalizedDocument, setSuccess]);
 
   const restoreOriginal = useCallback(() => {
     if (!normalizedDocument) return;
-    if (!window.confirm('Restore the original image and discard all editor changes?')) {
+    if (!window.confirm(translateEditor('imageViewer.editor.restoreConfirm'))) {
       return;
     }
     shouldSkipSessionCacheRef.current = true;
@@ -1389,7 +1410,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             rect: { x, y, width, height },
           },
         },
-      }), 'Crop');
+      }), t('imageViewer.editor.crop'));
       return;
     }
 
@@ -1818,7 +1839,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
         className="w-full accent-cyan-500"
-        aria-label={`${label} slider`}
+        aria-label={t('imageViewer.editor.slider', { label })}
       />
     </label>
   );
@@ -1847,7 +1868,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 : 'border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-gray-200'
             }`}
           >
-            Transparent
+            {t('imageViewer.editor.transparent')}
           </button>
         )}
         <input
@@ -1862,6 +1883,11 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     );
   };
 
+  const toolName = (tool: ImageEditorTool) => {
+    const key = TOOL_DEFS.find(({ id }) => id === tool)?.messageKey ?? LEGACY_TOOL_LABELS[tool];
+    return key ? t(key) : tool;
+  };
+
   const renderInspectorContent = () => {
     if (!normalizedDocument) return null;
 
@@ -1870,15 +1896,15 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         <div className="space-y-4">
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-gray-100">Local Edits</h3>
+              <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.localEdits')}</h3>
               <button type="button" onClick={restoreOriginal} disabled={!hasChanges} className="rounded-md border border-gray-700 px-2 py-1 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-40">
-                Reset
+                {t('settings.shortcuts.reset')}
               </button>
             </div>
             {(['brightness', 'contrast', 'saturation'] as const).map((key) => (
               <React.Fragment key={key}>
                 {renderSliderRow(
-                  key[0].toUpperCase() + key.slice(1),
+                  t(ADJUSTMENT_LABELS[key]),
                   normalizedDocument.recipe.adjustments[key],
                   0,
                   200,
@@ -1893,7 +1919,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 )}
               </React.Fragment>
             ))}
-            {renderSliderRow('Hue', normalizedDocument.recipe.adjustments.hue, -180, 180, (value) => updateRecipe({
+            {renderSliderRow(t('imageViewer.editor.hue'), normalizedDocument.recipe.adjustments.hue, -180, 180, (value) => updateRecipe({
               ...normalizedDocument.recipe,
               adjustments: {
                 ...normalizedDocument.recipe.adjustments,
@@ -1903,7 +1929,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-100">Crop</h3>
+            <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.crop')}</h3>
             <div className="flex items-center justify-between gap-2">
               <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-300">
                 <input
@@ -1921,7 +1947,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   })}
                   className="h-4 w-4 accent-cyan-500"
                 />
-                Enable
+                {t('settings.general.enable')}
               </label>
               <select
                 value={normalizedDocument.recipe.crop.aspect}
@@ -1936,15 +1962,15 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                   },
                 })}
                 className="h-8 rounded-md border border-gray-700 bg-gray-950 px-2 text-xs text-gray-100 outline-none focus:border-cyan-500"
-                aria-label="Crop aspect ratio"
+                aria-label={t('imageViewer.editor.cropAspect')}
               >
-                {CROP_ASPECTS.map((aspect) => <option key={aspect} value={aspect}>{ASPECT_LABELS[aspect]}</option>)}
+                {CROP_ASPECTS.map((aspect) => <option key={aspect} value={aspect}>{aspect === 'free' ? t('imageViewer.editor.freeAspect') : aspect === 'original' ? t('imageViewer.editor.originalAspect') : aspect}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {(['x', 'y', 'width', 'height'] as const).map((key) => (
                 <label key={key} className="space-y-1 text-xs text-gray-400">
-                  <span className="capitalize">{key}</span>
+                  <span>{key === 'x' || key === 'y' ? CROP_FIELD_LABELS[key] : t(CROP_FIELD_LABELS[key])}</span>
                   <input
                     type="number"
                     min={key === 'x' || key === 'y' ? 0 : 1}
@@ -1962,7 +1988,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                       },
                     })}
                     className="h-8 w-full rounded-md border border-gray-700 bg-gray-950 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500 disabled:opacity-50"
-                    aria-label={`Crop ${key}`}
+                    aria-label={t('imageViewer.editor.cropField', { field: key === 'x' || key === 'y' ? key : t(CROP_FIELD_LABELS[key]) })}
                   />
                 </label>
               ))}
@@ -1970,25 +1996,25 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-100">Transform</h3>
+            <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.transform')}</h3>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, rotation: normalizeImageEditRotation(normalizedDocument.recipe.transform.rotation - 90) } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
-                <RotateCcw className="h-3.5 w-3.5" /> Left
+                <RotateCcw className="h-3.5 w-3.5" /> {t('comparison.left')}
               </button>
               <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, rotation: normalizeImageEditRotation(normalizedDocument.recipe.transform.rotation + 90) } })} className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs hover:bg-gray-800">
-                <RotateCw className="h-3.5 w-3.5" /> Right
+                <RotateCw className="h-3.5 w-3.5" /> {t('comparison.right')}
               </button>
               <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, flipHorizontal: !normalizedDocument.recipe.transform.flipHorizontal } })} className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs ${normalizedDocument.recipe.transform.flipHorizontal ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100' : 'border-gray-700 hover:bg-gray-800'}`}>
-                <FlipHorizontal className="h-3.5 w-3.5" /> Flip H
+                <FlipHorizontal className="h-3.5 w-3.5" />{' '}{t('imageViewer.editor.flipHorizontal')}
               </button>
               <button type="button" onClick={() => updateRecipe({ ...normalizedDocument.recipe, transform: { ...normalizedDocument.recipe.transform, flipVertical: !normalizedDocument.recipe.transform.flipVertical } })} className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs ${normalizedDocument.recipe.transform.flipVertical ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100' : 'border-gray-700 hover:bg-gray-800'}`}>
-                <FlipVertical className="h-3.5 w-3.5" /> Flip V
+                <FlipVertical className="h-3.5 w-3.5" />{' '}{t('imageViewer.editor.flipVertical')}
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {(['sharpen', 'blur'] as const).map((key) => (
                 <label key={key} className="space-y-1 text-xs text-gray-400">
-                  <span className="capitalize">{key}</span>
+                  <span>{key === 'blur' ? t('imageViewer.editor.blur') : t('imageViewer.editor.sharpen')}</span>
                   <input
                     type="number"
                     value={normalizedDocument.recipe.effects[key]}
@@ -2009,7 +2035,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-100">Resize</h3>
+            <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.resize')}</h3>
             <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-300">
               <input
                 type="checkbox"
@@ -2029,12 +2055,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 }}
                 className="h-4 w-4 accent-cyan-500"
               />
-              Enable
+              {t('settings.general.enable')}
             </label>
             <div className="grid grid-cols-2 gap-2">
               {(['width', 'height'] as const).map((key) => (
                 <label key={key} className="space-y-1 text-xs text-gray-400">
-                  <span className="capitalize">{key}</span>
+                  <span>{t(CROP_FIELD_LABELS[key])}</span>
                   <input
                     type="number"
                     min={1}
@@ -2067,7 +2093,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 onChange={(event) => updateRecipe({ ...normalizedDocument.recipe, resize: { ...normalizedDocument.recipe.resize, lockAspectRatio: event.target.checked } })}
                 className="h-4 w-4 accent-cyan-500"
               />
-              Lock ratio
+              {t('imageViewer.editor.lockRatio')}
             </label>
           </section>
         </div>
@@ -2079,12 +2105,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         return (
           <div className="space-y-4">
             <section className="rounded-md border border-gray-800 bg-gray-950 p-3">
-              <h3 className="text-sm font-semibold text-gray-100">{selectedCount} objects selected</h3>
-              <p className="mt-1 text-xs text-gray-500">Shared style controls are hidden for mixed selections.</p>
+              <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.objectsSelected', { count: selectedCount })}</h3>
+              <p className="mt-1 text-xs text-gray-500">{t('imageViewer.editor.mixedStyles')}</p>
             </section>
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={flattenSelection} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">Flatten</button>
-              <button type="button" onClick={deleteSelected} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">Delete</button>
+              <button type="button" onClick={flattenSelection} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">{t('imageViewer.editor.flatten')}</button>
+              <button type="button" onClick={deleteSelected} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">{t('libraryGallery.delete')}</button>
             </div>
           </div>
         );
@@ -2093,7 +2119,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
       if (!styleTargetType) {
         return (
           <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
-            Select an object or choose an annotation tool to show its style.
+            {t('imageViewer.editor.chooseStyle')}
           </div>
         );
       }
@@ -2102,12 +2128,12 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         <div className="space-y-4">
           <section className="space-y-3">
             <div>
-              <h3 className="text-sm font-semibold text-gray-100">{selectedObject ? `${selectedObject.type} style` : `${styleTargetType} defaults`}</h3>
-              <p className="mt-1 text-xs text-gray-500">{selectedObject ? 'Editing the selected object.' : 'Applies to the next object you draw.'}</p>
+              <h3 className="text-sm font-semibold text-gray-100">{selectedObject ? t('imageViewer.editor.objectStyle', { type: toolName(selectedObject.type) }) : t('imageViewer.editor.objectDefaults', { type: toolName(styleTargetType) })}</h3>
+              <p className="mt-1 text-xs text-gray-500">{selectedObject ? t('imageViewer.editor.editingObject') : t('imageViewer.editor.nextObject')}</p>
             </div>
             {selectedObject?.type === 'text' && (
               <label className="block space-y-1 text-xs text-gray-400">
-                <span>Content</span>
+                <span>{t('imageViewer.editor.content')}</span>
                 <input
                   type="text"
                   value={selectedObject.text || ''}
@@ -2117,19 +2143,19 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               </label>
             )}
             <div className="grid grid-cols-2 gap-2">
-              {canUseStrokeColor && renderColorSwatch('Stroke', displayedStyle.strokeColor, (value) => setActiveOrSelectedStyle({ strokeColor: value }))}
-              {canUseFillColor && renderColorSwatch('Fill', displayedStyle.fillColor, (value) => setActiveOrSelectedStyle({ fillColor: value }), { allowTransparent: true })}
-              {canUseTextColor && renderColorSwatch('Text', displayedStyle.textColor, (value) => setActiveOrSelectedStyle({ textColor: value }))}
+              {canUseStrokeColor && renderColorSwatch(t('imageViewer.editor.stroke'), displayedStyle.strokeColor, (value) => setActiveOrSelectedStyle({ strokeColor: value }))}
+              {canUseFillColor && renderColorSwatch(t('imageViewer.editor.fill'), displayedStyle.fillColor, (value) => setActiveOrSelectedStyle({ fillColor: value }), { allowTransparent: true })}
+              {canUseTextColor && renderColorSwatch(t('imageViewer.editor.text'), displayedStyle.textColor, (value) => setActiveOrSelectedStyle({ textColor: value }))}
             </div>
             {canUseStrokeWidth && renderSliderRow(
-              styleTargetType === 'blur' || styleTargetType === 'pixelate' ? 'Strength' : 'Width',
+              styleTargetType === 'blur' || styleTargetType === 'pixelate' ? t('imageViewer.editor.strength') : t('comparison.width'),
               displayedStyle.strokeWidth,
               1,
               80,
               (value) => setActiveOrSelectedStyle({ strokeWidth: clamp(Math.round(value) || 1, 1, 80) }),
             )}
             {canUseFontSize && renderSliderRow(
-              'Font',
+              t('imageViewer.editor.font'),
               displayedStyle.fontSize,
               8,
               240,
@@ -2138,7 +2164,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             )}
             {canUseFontFamily && (
               <label className="block space-y-1.5 text-xs text-gray-400">
-                <span>Font family</span>
+                <span>{t('imageViewer.editor.fontFamily')}</span>
                 <select
                   value={displayedStyle.fontFamily}
                   onChange={(event) => setActiveOrSelectedStyle({ fontFamily: event.target.value })}
@@ -2146,14 +2172,14 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                 >
                   {FONT_FAMILY_OPTIONS.map((font) => (
                     <option key={font.value} value={font.value}>
-                      {font.label}
+                      {font.messageKey ? t(font.messageKey) : font.label}
                     </option>
                   ))}
                 </select>
               </label>
             )}
             {styleTargetType === 'spotlight' && renderSliderRow(
-              'Intensity',
+              t('imageViewer.editor.intensity'),
               Math.round(displayedStyle.opacity * 100),
               10,
               100,
@@ -2164,16 +2190,16 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
 
           {selectedObject && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-100">Object</h3>
+              <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.object')}</h3>
               <div className="grid grid-cols-4 gap-1">
-                <button type="button" onClick={() => moveSelected('front')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Front</button>
-                <button type="button" onClick={() => moveSelected('forward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Up</button>
-                <button type="button" onClick={() => moveSelected('backward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Down</button>
-                <button type="button" onClick={() => moveSelected('back')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">Back</button>
+                <button type="button" onClick={() => moveSelected('front')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">{t('imageViewer.editor.front')}</button>
+                <button type="button" onClick={() => moveSelected('forward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">{t('imageViewer.editor.up')}</button>
+                <button type="button" onClick={() => moveSelected('backward')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">{t('imageViewer.editor.down')}</button>
+                <button type="button" onClick={() => moveSelected('back')} className="rounded border border-gray-700 px-1 py-1 text-xs hover:bg-gray-800">{t('imageViewer.editor.backLayer')}</button>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={duplicateSelected} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">Duplicate</button>
-                <button type="button" onClick={deleteSelected} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">Delete</button>
+                <button type="button" onClick={duplicateSelected} className="rounded-md border border-gray-700 px-2 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">{t('imageViewer.editor.duplicate')}</button>
+                <button type="button" onClick={deleteSelected} className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20">{t('libraryGallery.delete')}</button>
               </div>
             </section>
           )}
@@ -2186,18 +2212,18 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         <div className="space-y-4">
           <section className="rounded-md border border-gray-800 bg-gray-950 p-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-gray-100">AI Transform</h3>
+              <h3 className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.aiTransform')}</h3>
               <span className="rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[11px] font-semibold uppercase text-gray-300">
-                Planned
+                {t('imageViewer.editor.planned')}
               </span>
             </div>
             <p className="mt-2 text-xs leading-5 text-gray-400">
-              AI-assisted editor tools are being prepared for a later update.
+              {t('imageViewer.editor.aiPlanned')}
             </p>
             <div className="mt-3 grid grid-cols-2 gap-1 text-xs">
-              {['Upscale', 'Detail Restore', 'Face Restore', 'Inpaint', 'Outpaint'].map((label) => (
+              {AI_TOOL_LABELS.map((label) => (
                 <div key={label} className="rounded-md border border-gray-800 px-2 py-1.5 text-gray-500">
-                  {label}
+                  {t(label)}
                 </div>
               ))}
             </div>
@@ -2206,7 +2232,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             {onOpenComfyUIWorkflow && (
               <button type="button" onClick={() => onOpenComfyUIWorkflow(image)} className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800">
                 <Workflow className="h-4 w-4" />
-                Open Workflow
+                {t('imageViewer.editor.openWorkflow')}
               </button>
             )}
           </section>
@@ -2219,7 +2245,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
   if (!normalizedDocument || !sourceUrl) {
     return (
       <div className="flex h-full items-center justify-center bg-gray-950 text-gray-300">
-        Opening editor...
+        {t('imageViewer.editor.opening')}
       </div>
     );
   }
@@ -2228,41 +2254,41 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
     <div className="flex h-full min-h-0 flex-col bg-gray-950 text-gray-100">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-800 bg-gray-900 px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <button type="button" onClick={handleBack} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Back" aria-label="Back">
+          <button type="button" onClick={handleBack} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title={t('libraryGallery.back')} aria-label={t('libraryGallery.back')}>
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{image.name}</div>
             <div className="text-xs text-gray-500">
               {activeOutputDimensions?.width || normalizedDocument.canvasDimensions.width}x{activeOutputDimensions?.height || normalizedDocument.canvasDimensions.height}
-              {hasChanges ? ' · Unsaved edits' : ' · Clean'}
+              {' · ' + (hasChanges ? t('imageViewer.editor.unsaved') : t('imageViewer.editor.clean'))}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={undo} disabled={!history.past.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title={!history.past.length ? 'Nothing to undo' : 'Undo'} aria-label={!history.past.length ? 'Nothing to undo' : 'Undo'}>
+          <button type="button" onClick={undo} disabled={!history.past.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title={!history.past.length ? t('imageViewer.editor.noUndo') : t('settings.native.undo')} aria-label={!history.past.length ? t('imageViewer.editor.noUndo') : t('settings.native.undo')}>
             <Undo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={redo} disabled={!history.future.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title={!history.future.length ? 'Nothing to redo' : 'Redo'} aria-label={!history.future.length ? 'Nothing to redo' : 'Redo'}>
+          <button type="button" onClick={redo} disabled={!history.future.length} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 disabled:opacity-40" title={!history.future.length ? t('imageViewer.editor.noRedo') : t('settings.native.redo')} aria-label={!history.future.length ? t('imageViewer.editor.noRedo') : t('settings.native.redo')}>
             <Redo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Flatten" aria-label="Flatten">
+          <button type="button" onClick={flattenSelection} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title={t('imageViewer.editor.flatten')} aria-label={t('imageViewer.editor.flatten')}>
             <Layers className="h-4 w-4" />
           </button>
-          <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title="Copy image" aria-label="Copy image">
+          <button type="button" onClick={handleCopy} className="rounded-md p-2 text-gray-300 hover:bg-gray-800" title={t('imageViewer.editor.copyImage')} aria-label={t('imageViewer.editor.copyImage')}>
             <Copy className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setIsInspectorOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 xl:hidden" title="Open inspector">
+          <button type="button" onClick={() => setIsInspectorOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 xl:hidden" title={t('imageViewer.editor.openInspector')}>
             <Layers className="h-4 w-4" />
-            Inspector
+            {t('imageViewer.editor.inspector')}
           </button>
-          <button type="button" onClick={handleSave} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500" title={canOverwrite ? 'Save' : 'Save As'}>
+          <button type="button" onClick={handleSave} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500" title={canOverwrite ? t('imageViewer.editor.save') : t('imageViewer.editor.saveAs')}>
             <Save className="h-4 w-4" />
-            Save
+            {t('imageViewer.editor.save')}
           </button>
           <button type="button" onClick={handleSaveAs} disabled={isSaving || !hasChanges} className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
             <Download className="h-4 w-4" />
-            Save As
+            {t('imageViewer.editor.saveAs')}
           </button>
         </div>
       </div>
@@ -2277,8 +2303,8 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               className={`flex h-10 w-10 items-center justify-center rounded-md border text-gray-300 transition-colors ${
                 activeTool === tool.id ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100' : 'border-transparent hover:bg-gray-800'
               }`}
-              title={tool.label}
-              aria-label={tool.label}
+              title={t(tool.messageKey)}
+              aria-label={t(tool.messageKey)}
             >
               {tool.icon}
             </button>
@@ -2457,7 +2483,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                         fontFamily={style.fontFamily}
                         opacity={style.opacity}
                       >
-                        {object.text || (editingTextObjectId === object.id ? '' : 'Text')}
+                        {object.text || (editingTextObjectId === object.id ? '' : t('imageViewer.editor.text'))}
                       </text>
                     );
                   }
@@ -2670,14 +2696,18 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                     fontFamily: selectedObject.style.fontFamily,
                     opacity: selectedObject.style.opacity,
                   }}
-                  aria-label="Edit text annotation"
+                  aria-label={t('imageViewer.editor.editText')}
                 />
               )}
             </div>
           </div>
           <div className="flex h-9 shrink-0 items-center justify-between border-t border-gray-800 bg-gray-900 px-4 text-xs text-gray-400">
-            <span>{TOOL_HINTS[activeTool]}</span>
-            <span>{isRendering ? 'Rendering preview...' : `${Math.round(zoom * 100)}% · ${normalizedDocument.objects.length} objects · ${selectedCount} selected`}</span>
+            <span>{t(TOOL_HINTS[activeTool])}</span>
+            <span>{isRendering ? t('imageViewer.editor.rendering') : t('imageViewer.editor.renderStats', {
+              zoom: Math.round(zoom * 100),
+              objects: t('imageViewer.editor.objects', { count: normalizedDocument.objects.length }),
+              selected: t('imageViewer.editor.selected', { count: selectedCount }),
+            })}</span>
           </div>
         </div>
 
@@ -2686,7 +2716,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
             type="button"
             className="fixed inset-0 z-30 bg-black/60 xl:hidden"
             onClick={() => setIsInspectorOpen(false)}
-            aria-label="Close inspector overlay"
+            aria-label={t('imageViewer.editor.closeOverlay')}
           />
         )}
         <aside className={`fixed inset-y-0 right-0 z-40 flex w-[min(22rem,calc(100vw-4rem))] shrink-0 flex-col border-l border-gray-800 bg-gray-900 transition-transform xl:static xl:z-auto xl:w-80 xl:translate-x-0 ${
@@ -2694,16 +2724,16 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
         }`}>
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-800 px-3 py-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-gray-100">Inspector</div>
+              <div className="text-sm font-semibold text-gray-100">{t('imageViewer.editor.inspector')}</div>
               <div className="truncate text-xs text-gray-500">
                 {selectedCount > 1
-                  ? `${selectedCount} selected`
+                  ? t('imageViewer.editor.selected', { count: selectedCount })
                   : selectedObject
-                    ? selectedObject.type
-                    : TOOL_DEFS.find((tool) => tool.id === activeTool)?.label}
+                    ? toolName(selectedObject.type)
+                    : toolName(activeTool)}
               </div>
             </div>
-            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title="Close inspector" aria-label="Close inspector">
+            <button type="button" onClick={() => setIsInspectorOpen(false)} className="rounded-md p-2 text-gray-300 hover:bg-gray-800 xl:hidden" title={t('imageViewer.editor.closeInspector')} aria-label={t('imageViewer.editor.closeInspector')}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -2719,7 +2749,7 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
                     : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`}
               >
-                {tab.label}
+                {t(tab.messageKey)}
               </button>
             ))}
           </div>
@@ -2732,10 +2762,10 @@ const ImageEditorWorkspace: React.FC<ImageEditorWorkspaceProps> = ({
               <span className="truncate">{image.name}</span>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
-              <span>Source {normalizedDocument.sourceDimensions.width}x{normalizedDocument.sourceDimensions.height}</span>
-              <span>Output {activeOutputDimensions?.width || normalizedDocument.canvasDimensions.width}x{activeOutputDimensions?.height || normalizedDocument.canvasDimensions.height}</span>
-              <span>{normalizedDocument.objects.length} objects</span>
-              <span>{hasChanges ? 'Unsaved edits' : 'No editor changes'}</span>
+              <span>{t('imageViewer.editor.sourceSize', normalizedDocument.sourceDimensions)}</span>
+              <span>{t('imageViewer.editor.outputSize', activeOutputDimensions || normalizedDocument.canvasDimensions)}</span>
+              <span>{t('imageViewer.editor.objects', { count: normalizedDocument.objects.length })}</span>
+              <span>{hasChanges ? t('imageViewer.editor.unsaved') : t('imageViewer.editor.noEdits')}</span>
             </div>
           </div>
         </aside>

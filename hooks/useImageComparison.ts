@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import { useMemo, useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from './useFeatureAccess';
@@ -6,6 +7,7 @@ import { IndexedImage } from '../types';
 export const comparisonWillAutoOpen = (comparisonCount: number) => comparisonCount + 1 >= 2;
 
 export const useImageComparison = () => {
+  const { t } = useTranslation();
   const {
     comparisonImages,
     setComparisonImages,
@@ -35,13 +37,13 @@ export const useImageComparison = () => {
     }
 
     if (comparisonCount >= 4) {
-      alert('Maximum 4 images can be compared. Remove one first.');
+      alert(t('comparison.alerts.limit'));
       return false;
     }
 
     // Check if image already in comparison
     if (comparisonImages.some(img => img.id === image.id)) {
-      alert('This image is already in comparison');
+      alert(t('comparison.alerts.duplicate'));
       return false;
     }
 
@@ -53,18 +55,18 @@ export const useImageComparison = () => {
     }
 
     return true;
-  }, [comparisonImages, comparisonCount, addImageToComparison, openComparisonModal, canUseComparison, showProModal]);
+  }, [comparisonImages, comparisonCount, addImageToComparison, openComparisonModal, canUseComparison, showProModal, t]);
 
   const handleStartComparison = useCallback((images: IndexedImage[]) => {
     if (images.length < 2 || images.length > 4) {
-      alert('Please select between 2 and 4 images to compare');
+      alert(t('comparison.alerts.selection'));
       return false;
     }
 
     setComparisonImages(images);
     openComparisonModal();
     return true;
-  }, [setComparisonImages, openComparisonModal]);
+  }, [setComparisonImages, openComparisonModal, t]);
 
   return {
     comparisonImages,
