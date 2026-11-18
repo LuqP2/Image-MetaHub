@@ -3589,7 +3589,29 @@ app.whenReady().then(async () => {
   if (app.isPackaged && process.env.IMH_PACKAGED_COMPARE_SMOKE === '1') {
     try {
       const root = process.env.IMH_PACKAGED_COMPARE_SMOKE_ROOT;
-      const result = await runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root });
+      createApplicationMenu();
+      const result = await runComparisonPackagedSmoke({
+        app, BrowserWindow, ipcMain, root,
+        verifyLanguages: process.env.IMH_PACKAGED_COMPARE_I18N === '1',
+        verifyNativeLanguage: async (window, language) => {
+          applyAppLanguage({ language });
+          const menu = Menu.getApplicationMenu();
+          const fileLabel = formatMessage(language, 'settings.native.file');
+          if (!menu?.items.some(item => item.label === fileLabel)) throw new Error('Native menu language did not update.');
+          const aboutLabel = formatMessage(language, 'settings.native.aboutImageMetahub');
+          const about = menu.items.flatMap(item => item.submenu?.items ?? []).find(item => item.label === aboutLabel);
+          if (!about) throw new Error('Native About action missing.');
+          const originalMain = mainWindow;
+          const showMessageBox = dialog.showMessageBox;
+          let options;
+          mainWindow = window;
+          dialog.showMessageBox = async (_owner, value) => { options = value; return { response: 0, checkboxChecked: false }; };
+          try { await about.click(); } finally { mainWindow = originalMain; dialog.showMessageBox = showMessageBox; }
+          if (options?.title !== aboutLabel || options?.detail !== formatMessage(language, 'settings.native.aboutDetail')) {
+            throw new Error('Native dialog language did not update.');
+          }
+        },
+      });
       await fs.writeFile(path.join(root, 'result.json'), JSON.stringify(result), 'utf8'); app.exit(0);
     } catch (error) { console.error('[comparison-smoke]', error); app.exit(1); }
     return;

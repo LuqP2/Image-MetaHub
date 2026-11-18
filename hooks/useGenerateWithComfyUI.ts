@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 /**
  * Generate with ComfyUI Hook
  * Sends workflow to ComfyUI and tracks generation progress
@@ -12,14 +13,14 @@ import { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from '../services/comfy
 import {
   hasPromptMetadata,
   mergeNormalizedMetadata,
-  NO_METADATA_MESSAGE,
   getRequestedImageCount,
   TEMPORARY_STATUS_TIMEOUT_MS,
 } from '../utils/imageMetadata';
 
 interface GenerateStatus {
   success: boolean;
-  message: string;
+  key: MessageKey;
+  values?: Record<string, string>;
 }
 
 export interface GenerateParams {
@@ -34,6 +35,7 @@ export interface GenerateParams {
 }
 
 export function useGenerateWithComfyUI() {
+  const { t } = useTranslation();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateStatus, setGenerateStatus] = useState<GenerateStatus | null>(null);
 
@@ -49,7 +51,7 @@ export function useGenerateWithComfyUI() {
         setIsGenerating(false);
         setGenerateStatus({
           success: false,
-          message: NO_METADATA_MESSAGE,
+          key: 'imageViewer.status.noMetadata',
         });
         setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
@@ -59,7 +61,8 @@ export function useGenerateWithComfyUI() {
         setIsGenerating(false);
         setGenerateStatus({
           success: false,
-          message: 'ComfyUI server URL not configured. Please check Settings.',
+          key: 'imageViewer.status.serverMissing',
+          values: { provider: 'ComfyUI' },
         });
         setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
@@ -90,7 +93,8 @@ export function useGenerateWithComfyUI() {
         setIsGenerating(false);
         setGenerateStatus({
           success: true,
-          message: 'Generation queued. Waiting for current ComfyUI job to finish.',
+          key: 'imageViewer.status.queuedWaiting',
+          values: { provider: 'ComfyUI' },
         });
         setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
@@ -99,7 +103,7 @@ export function useGenerateWithComfyUI() {
       setIsGenerating(false);
       setGenerateStatus({
         success: true,
-        message: 'Generation queued.',
+        key: 'imageViewer.details.queued',
       });
       setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
     },
@@ -109,6 +113,9 @@ export function useGenerateWithComfyUI() {
   return {
     generateWithComfyUI,
     isGenerating,
-    generateStatus,
+    generateStatus: generateStatus ? {
+      success: generateStatus.success,
+      message: t(generateStatus.key, generateStatus.values),
+    } : null,
   };
 }

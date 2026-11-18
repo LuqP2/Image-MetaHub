@@ -13,7 +13,7 @@ import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../utils/safeMo
 import { useBoardQueries } from '../hooks/useBoardQueries';
 import { useBoardQueryStore } from '../store/useBoardQueryStore';
 import { BoardQueryContext } from './boards/BoardQueryContext';
-import { replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
+import { createSmartFrame, replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { BoardAssetReference } from '../services/boards/types';
 import { ExternalLink, Star } from 'lucide-react';
@@ -33,9 +33,9 @@ import { boardMediaType, createBoardAssetReference, resolveLiveBoardImage } from
 import { getBoardReferenceBaseline } from '../services/boards/referenceSync';
 import { updateObjects } from '../services/boards/operations';
 import type { BoardAssetObject } from '../services/boards/types';
-import type { BoardPoint } from '../services/boards/layout';
+import { findFreeBoardPosition, type BoardPoint } from '../services/boards/layout';
 
-export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onExploreLibrary, onOpenPromptLibrary }: { onOpenPromptLibrary?(id: string): void; onExploreLibrary?(boardId: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
+export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onOpenPromptLibrary }: { onOpenPromptLibrary?(id: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
   const { images, directories, resolve } = useBoardAssets(loading);
   const boardId = useBoardStore(state => state.activeBoardId);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
@@ -131,7 +131,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
     {libraryBacked && <RatingStars size={16} className="board-rating" rating={resolution.image.rating} onChange={rating => { void useImageStore.getState().setImageRating(resolution.image.id, rating).catch(cause => setError(String(cause))); }} />}
   </> : null;
   const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel promptActions={selectedAsset ? <BoardImagePromptActions image={resolution.image} object={selectedAsset} editable={editable} /> : undefined} className="board-embedded-metadata" image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
-  const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><label className="board-button">Locate external file<input type="file" className="hidden" disabled={!editable} onChange={event => { const file = event.target.files?.[0]; if (file) void relinkExternal(file); event.target.value = ''; }} /></label><p>Or choose the library file for this board item to restore its reference.</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>Locate missing file</button></>}</div> : null;
+  const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? 'Library is loading…' : resolution?.status === 'ambiguous' ? 'Multiple files match this reference.' : 'This file is not available in the current library.'}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><label className="board-button">Locate external file<input type="file" className="hidden" disabled={!editable} onChange={event => { const file = event.target.files?.[0]; if (file) void relinkExternal(file); event.target.value = ''; }} /></label><p>Choose the library file for this board item to restore its reference.</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>Locate missing file</button></>}</div> : null;
 
   const captureReferences = async (selected: IndexedImage[]): Promise<BoardAssetReference[]> => {
     const baseline = await getBoardReferenceBaseline();
@@ -167,7 +167,21 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
       : updateSmartFrameQuery(reconnectSmartFrameSource(document, frameId, captured.source), frameId, captured.criteria));
   };
   const queryActions = { images: imagesById, collections, retry: retryQueries,
-    create: () => { if (editable && boardId) onExploreLibrary?.(boardId); }, snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
+    create: (center: BoardPoint) => {
+      try {
+        ensureEditable();
+        const state = useBoardStore.getState();
+        if (!state.sessions[boardId!]) return;
+        const id = crypto.randomUUID();
+        state.executeOperation(boardId!, document => createSmartFrame(document, {
+          id, ...findFreeBoardPosition(document.objects, { width: 640, height: 420 }, { x: center.x - 320, y: center.y - 210 }),
+        }));
+        state.setSelection(boardId!, [id]);
+        state.requestReveal(boardId!, [id], true);
+        useBoardUIStore.getState().setFilterTarget(null);
+        setError(null);
+      } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    }, snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
     useCurrentFilters: (id: string) => runQueryAction(() => applyCurrentView(id)),
     open: (imageId: string, frameId: string, navigationIds?: string[]) => {
       const result = useBoardQueryStore.getState().results[boardId!]?.[frameId];

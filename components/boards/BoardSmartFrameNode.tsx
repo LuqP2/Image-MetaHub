@@ -26,20 +26,22 @@ export default memo(function BoardSmartFrameNode({ data, selected }: NodeProps<B
   if (data.object.type !== 'smart-frame') return null;
   const frame = data.object;
   const criteria = [...frame.groupConstraints.map(boardConstraintLabel), ...summarizeBoardCriteria(frame.criteria)];
+  const unfilteredLibrary = frame.source.kind === 'library' && criteria.length === 0;
   return <div aria-busy={result?.status === 'loading' || result?.status === 'updating'} className="board-smart-frame" style={{ borderColor: frame.color }}>
     <BoardNodeControls selected={!!selected} />
     <header><strong><BoardRichText text={frame.title} /></strong><span>{result?.status === 'ready' ? `${result.totalCount.toLocaleString()} ${result.totalCount === 1 ? 'image' : 'images'} in frame` : result?.status === 'error' || result?.status === 'source-missing' ? 'Unavailable' : 'Loading…'}</span>
-      <button className="board-button nodrag nopan" data-board-filter-trigger={frame.id} disabled={!editor.editable} aria-label={`Filters for ${frame.title}`} onClick={() => {
+      <button className={`board-button nodrag nopan${unfilteredLibrary ? ' board-filter-primary' : ''}`} data-board-filter-trigger={frame.id} disabled={!editor.editable} aria-label={`Filters for ${frame.title}`} onClick={() => {
         if (!boardId) return;
         const ui = useBoardUIStore.getState(); ui.setFilterTarget(ui.filterTarget?.frameId === frame.id && ui.filterTarget.boardId === boardId ? null : { boardId, frameId: frame.id });
       }}>Filters{criteria.length ? ` (${criteria.length})` : ''}</button>
     </header>
     <div className="board-frame-context"><span>{boardSourceLabel(frame.source, objects)}</span><small>{boardSourceMode(frame.source)}</small></div>
+    {unfilteredLibrary && <small className="board-frame-hint">New matching images appear automatically. Use Filters to narrow the results.</small>}
     {criteria.length > 0 && <small className="board-frame-criteria" title={criteria.join(' · ')}>{criteria.slice(0, 2).join(' · ')}{criteria.length > 2 ? ` · +${criteria.length - 2} filters` : ''}</small>}
     {result?.error && <div role="alert">{result.error}<button className="board-button nodrag" onClick={() => actions?.retry()}>Retry</button></div>}
     {!!result?.unavailableReferences && <small>{result.unavailableReferences} {result.unavailableReferences === 1 ? 'reference' : 'references'} unavailable</small>}
     {shown?.status === 'ready' && shown.grouped?.kind === 'groups' && <BoardSmartFrameGroups key={JSON.stringify(frame.layout)} frameId={frame.id} groups={shown.grouped.groups} />}
     {shown?.status === 'ready' && shown.grouped?.kind === 'matrix' && <BoardSmartFrameMatrix key={JSON.stringify(frame.layout)} frameId={frame.id} matrix={shown.grouped} />}
-    {shown?.status === 'ready' && !shown.grouped && <BoardSmartFrameResults imageIds={shown.imageIds} frameId={frame.id} />}
+    {shown?.status === 'ready' && !shown.grouped && <BoardSmartFrameResults imageIds={shown.imageIds} frameId={frame.id} emptyMessage="No images match this frame." />}
   </div>;
 });

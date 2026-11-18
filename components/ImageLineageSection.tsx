@@ -142,9 +142,7 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
         <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{t('imageViewer.lineage.title')}</div>
         {resolvedLineage && (
           <span className={badgeClassName}>
-            {resolvedLineage.generationType === 'image2model3d'
-              ? t('imageViewer.preview.imageTo3d')
-              : getGenerationTypeLabel(resolvedLineage.generationType)}
+            {getGenerationTypeLabel(resolvedLineage.generationType, t)}
           </span>
         )}
       </div>

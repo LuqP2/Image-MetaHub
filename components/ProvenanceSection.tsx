@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import React from 'react';
 import { Copy, Fingerprint, LoaderCircle } from 'lucide-react';
 import { type BaseMetadata, type IndexedImage } from '../types';
@@ -31,8 +32,8 @@ const getElectronFilePath = (image: IndexedImage): string | null => (
   (image.handle as FileSystemFileHandle & { _filePath?: string } | undefined)?._filePath || null
 );
 
-const formatDate = (timestamp: number | null): string | null => (
-  timestamp ? new Date(timestamp).toLocaleString() : null
+const formatDate = (timestamp: number | null, language: string): string | null => (
+  timestamp ? new Date(timestamp).toLocaleString(language) : null
 );
 
 const formatBytes = (bytes: number | null): string | null => {
@@ -42,7 +43,9 @@ const formatBytes = (bytes: number | null): string | null => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const EvidenceBadge: React.FC<{ evidence: ProvenanceEvidence }> = ({ evidence }) => (
+const EvidenceBadge: React.FC<{ evidence: ProvenanceEvidence }> = ({ evidence }) => {
+  const { t } = useTranslation();
+  return (
   <span className={
     evidence === 'inferred'
       ? 'rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300'
@@ -56,9 +59,10 @@ const EvidenceBadge: React.FC<{ evidence: ProvenanceEvidence }> = ({ evidence })
               ? 'rounded border border-gray-400/30 bg-gray-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:text-gray-300'
               : 'rounded border border-blue-400/30 bg-blue-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300'
   }>
-    {getProvenanceEvidenceLabel(evidence)}
+    {getProvenanceEvidenceLabel(evidence, t)}
   </span>
-);
+  );
+};
 
 const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   image,
@@ -67,6 +71,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
   loadFullRawMetadata,
   displayMode = 'full',
 }) => {
+  const { t, language } = useTranslation();
   const isDetailsCompact = displayMode === 'details-compact';
   const resolvedLineage = useImageStore(
     React.useCallback((state) => state.getResolvedLineage(image.id), [image.id])
@@ -95,9 +100,9 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
     [derivedIds, getDerivedImages, image.id],
   );
   const [sha256, setSha256] = React.useState<string | null>(null);
-  const [hashError, setHashError] = React.useState<string | null>(null);
+  const [hashError, setHashError] = React.useState<{ key?: MessageKey; message?: string } | null>(null);
   const [isHashing, setIsHashing] = React.useState(false);
-  const [copyStatus, setCopyStatus] = React.useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = React.useState<MessageKey | null>(null);
   const [hydratedRawMetadata, setHydratedRawMetadata] = React.useState<unknown>(null);
   const [isHydratingProvenance, setIsHydratingProvenance] = React.useState(false);
   const [hydratedProvenanceRevision, setHydratedProvenanceRevision] = React.useState<string | null>(null);
@@ -174,7 +179,8 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
     resolvedLineage,
     sourceImage,
     derivedImages,
-  }), [derivedImages, hydratedRawMetadata, image, metadata, rawMetadata, resolvedLineage, sourceImage]);
+    translate: t,
+  }), [derivedImages, hydratedRawMetadata, image, metadata, rawMetadata, resolvedLineage, sourceImage, t]);
 
   const calculateFingerprint = async () => {
     if (!window.electronAPI?.hashFileSha256 || isHashing) return;
@@ -195,7 +201,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
       if (!isCurrentRequest()) return;
       if (!targetPath) {
         setIsHashing(false);
-        setHashError('The file path is unavailable. Reopen the library and try again.');
+        setHashError({ key: 'imageViewer.provenance.pathUnavailable' });
         return;
       }
 
@@ -209,12 +215,12 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
         return;
       }
       if (result.errorType !== 'CANCELLED') {
-        setHashError(result.error || 'Could not calculate the file fingerprint.');
+        setHashError(result.error ? { message: result.error } : { key: 'imageViewer.provenance.hashFailed' });
       }
     } catch {
       if (!isCurrentRequest()) return;
       setIsHashing(false);
-      setHashError('Could not calculate the file fingerprint.');
+      setHashError({ key: 'imageViewer.provenance.hashFailed' });
     } finally {
       if (ipcRequestId && activeFingerprintRequestIdRef.current === ipcRequestId) {
         activeFingerprintRequestIdRef.current = null;
@@ -224,13 +230,13 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
 
   const copySummary = async () => {
     if (isProvenanceCopyBlocked) return;
-    const text = serializeProvenanceSummary(model, sha256);
+    const text = serializeProvenanceSummary(model, sha256, t);
     try {
       await navigator.clipboard.writeText(text);
-      setCopyStatus('Copied');
+      setCopyStatus('imageViewer.provenance.copied');
     } catch {
       const result = await window.electronAPI?.copyTextToClipboard?.(text);
-      setCopyStatus(result?.success ? 'Copied' : 'Copy failed');
+      setCopyStatus(result?.success ? 'imageViewer.provenance.copied' : 'imageViewer.provenance.copyFailed');
     }
   };
 
@@ -238,9 +244,9 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
     <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700/60 dark:bg-slate-900/40">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Provenance</h3>
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.title')}</h3>
           {!isDetailsCompact && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">What this file says, what Image MetaHub recorded, and what it inferred.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t('imageViewer.provenance.description')}</p>
           )}
         </div>
         <button
@@ -248,19 +254,19 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
           onClick={() => void copySummary()}
           disabled={isProvenanceCopyBlocked}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-gray-800 px-2 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait disabled:opacity-60"
-          title="Copy provenance summary"
+          title={t('imageViewer.provenance.copyHint')}
         >
           {isProvenanceCopyBlocked ? <LoaderCircle size={13} className="animate-spin" /> : <Copy size={13} />}
-          {isProvenanceCopyBlocked ? 'Loading…' : copyStatus || 'Copy summary'}
+          {isProvenanceCopyBlocked ? t('imageViewer.provenance.loading') : (copyStatus ? t(copyStatus) : t('imageViewer.provenance.copy'))}
         </button>
       </div>
 
       {!isDetailsCompact && (
         <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-          <div><span className="font-medium text-gray-800 dark:text-gray-100">File:</span> {model.fileName}</div>
-          <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">Library item:</span> {model.imageId}</div>
-          {formatDate(model.lastModified) && <div><span className="font-medium text-gray-800 dark:text-gray-100">Last modified:</span> {formatDate(model.lastModified)}</div>}
-          {formatBytes(model.fileSize) && <div><span className="font-medium text-gray-800 dark:text-gray-100">File size:</span> {formatBytes(model.fileSize)}</div>}
+          <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.fileLabel')}</span> {model.fileName}</div>
+          <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.itemLabel')}</span> {model.imageId}</div>
+          {formatDate(model.lastModified, language) && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.modifiedLabel')}</span> {formatDate(model.lastModified, language)}</div>}
+          {formatBytes(model.fileSize) && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.sizeLabel')}</span> {formatBytes(model.fileSize)}</div>}
         </div>
       )}
 
@@ -271,7 +277,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
           {sha256 ? (
             <code className="min-w-0 flex-1 break-all text-[11px] text-gray-600 dark:text-gray-300">{sha256}</code>
           ) : (
-            <span className="text-xs text-gray-500 dark:text-gray-400">{hashError || 'Not calculated'}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{hashError?.key ? t(hashError.key) : hashError?.message || t('imageViewer.provenance.notCalculated')}</span>
           )}
           {window.electronAPI?.hashFileSha256 && !sha256 && (
             <button
@@ -281,7 +287,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
               className="inline-flex items-center gap-1 rounded border border-gray-300 px-1.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               {isHashing && <LoaderCircle size={12} className="animate-spin" />}
-              {isHashing ? 'Calculating…' : 'Calculate'}
+              {isHashing ? t('imageViewer.provenance.calculating') : t('imageViewer.provenance.calculate')}
             </button>
           )}
         </div>
@@ -289,7 +295,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
 
       {!isDetailsCompact && model.generation.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Generation information</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{t('imageViewer.provenance.generation')}</div>
           <div className="space-y-2">
             {model.generation.map((field) => (
               <div key={field.label} className="rounded-md border border-gray-200 bg-white/60 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/20">
@@ -306,7 +312,7 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
 
       {!isDetailsCompact && model.relationships.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Known relationships</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{t('imageViewer.provenance.relationships')}</div>
           {model.relationships.map((relationship, index) => (
             <div key={`${relationship.label}-${relationship.value}-${index}`} className="rounded-md border border-gray-200 bg-white/60 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/20">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -322,16 +328,16 @@ const ProvenanceSection: React.FC<ProvenanceSectionProps> = ({
       {model.operation && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            <span>{model.operation.kind === 'export' ? 'Image MetaHub export' : 'Image MetaHub edit'}</span>
+            <span>{model.operation.kind === 'export' ? t('imageViewer.provenance.export') : t('imageViewer.provenance.edit')}</span>
             <EvidenceBadge evidence="metahub-operation" />
           </div>
           <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-            {model.operation.tool && <div><span className="font-medium text-gray-800 dark:text-gray-100">Tool:</span> {model.operation.tool}</div>}
-            {model.operation.sourceGenerator && <div><span className="font-medium text-gray-800 dark:text-gray-100">Original generator:</span> {model.operation.sourceGenerator}</div>}
-            {model.operation.sourceImageId && <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">Editor source item:</span> {model.operation.sourceImageId}</div>}
-            {model.operation.editedAt && <div><span className="font-medium text-gray-800 dark:text-gray-100">Edited at:</span> {model.operation.editedAt}</div>}
-            {model.operation.exportedAt && <div><span className="font-medium text-gray-800 dark:text-gray-100">Exported at:</span> {model.operation.exportedAt}</div>}
-            {model.operation.recipeSummary && <div><span className="font-medium text-gray-800 dark:text-gray-100">Edit recipe:</span> {model.operation.recipeSummary}</div>}
+            {model.operation.tool && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.toolLabel')}</span> {model.operation.tool}</div>}
+            {model.operation.sourceGenerator && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.generatorLabel')}</span> {model.operation.sourceGenerator}</div>}
+            {model.operation.sourceImageId && <div className="break-all"><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.editorSourceLabel')}</span> {model.operation.sourceImageId}</div>}
+            {model.operation.editedAt && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.editedLabel')}</span> {model.operation.editedAt}</div>}
+            {model.operation.exportedAt && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.exportedLabel')}</span> {model.operation.exportedAt}</div>}
+            {model.operation.recipeSummary && <div><span className="font-medium text-gray-800 dark:text-gray-100">{t('imageViewer.provenance.recipeLabel')}</span> {model.operation.recipeSummary}</div>}
           </div>
         </div>
       )}

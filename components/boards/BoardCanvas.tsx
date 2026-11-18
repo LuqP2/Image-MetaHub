@@ -255,7 +255,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
       <h2>Start your board</h2><p>Arrange selected references, or explore a source with a Smart Frame.</p>
       <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Select files in the side library, then drag them here or use Add to canvas.</small></div>
-      <div><button className="board-button" onClick={() => queryActions?.create()}>Explore library</button><small>Choose and filter a source in Library, then add it to this board. Dynamic results update; Snapshots keep a fixed set.</small></div>
+      <div><button className="board-button" onClick={() => { const center = editor.getVisibleCenter?.(); if (center) { queryActions?.create(center); editor.setTool?.('select'); } }}>Add Smart Frame</button><small>Show your library here, then use Filters to narrow the results. Matching images update automatically.</small></div>
       <footer>Ctrl + wheel to zoom · Wheel to scroll · Shift + wheel to scroll horizontally · Right drag or Space + drag to pan</footer>
     </div>}
     {drawingTool && <div className="board-drawing-hint">Drag to draw {drawingTool === 'text' ? 'a text box' : `a ${drawingTool}`} · Esc to cancel</div>}

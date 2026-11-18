@@ -209,6 +209,19 @@ describe('ImageModal ComfyUI workflow action', () => {
     }));
   });
 
+  it('copies original metadata through a localized viewer context menu', async () => {
+    const image = createImage();
+    image.metadata.normalizedMetadata!.negativePrompt = 'negative {fixture} 海';
+    const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    render(<ImageModal image={image} onClose={vi.fn()} directoryPath="C:/synthetic" isActive />);
+    const viewport = await screen.findByRole('dialog', { name: `Image viewer: ${image.name}` });
+    fireEvent.contextMenu(viewport.querySelector('img')!);
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar prompt negativo' }));
+    await waitFor(() => expect(clipboard).toHaveBeenCalledWith('negative {fixture} 海'));
+    expect(screen.queryByRole('button', { name: 'Copiar prompt negativo' })).toBeNull();
+  });
+
   it.each(['modal', 'sidebar'] as const)('copies the embedded UI workflow from the %s', async (surface) => {
     const image = createImage();
     const workflow = {
@@ -231,6 +244,9 @@ describe('ImageModal ComfyUI workflow action', () => {
 
     await waitFor(() => expect(clipboard).toHaveBeenCalledWith(JSON.stringify(workflow)));
     await screen.findByText(/Workflow JSON copied!/);
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    await screen.findByText(/JSON do workflow copiado!/);
+    expect(clipboard).toHaveBeenCalledTimes(1);
   });
 
   it('reports a missing original workflow without writing to the clipboard', async () => {

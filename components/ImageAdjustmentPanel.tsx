@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import React from 'react';
 import {
   Crop,
@@ -52,33 +53,26 @@ interface ImageAdjustmentPanelProps {
 
 const ADJUSTMENT_CONTROLS: Array<{
   key: keyof ImageAdjustments;
-  label: string;
+  messageKey: MessageKey;
   min: number;
   max: number;
   unit: string;
 }> = [
-  { key: 'brightness', label: 'Brightness', min: 0, max: 200, unit: '%' },
-  { key: 'contrast', label: 'Contrast', min: 0, max: 200, unit: '%' },
-  { key: 'saturation', label: 'Saturation', min: 0, max: 200, unit: '%' },
-  { key: 'hue', label: 'Hue', min: -180, max: 180, unit: 'deg' },
+  { key: 'brightness', messageKey: 'imageViewer.editor.brightness', min: 0, max: 200, unit: '%' },
+  { key: 'contrast', messageKey: 'imageViewer.editor.contrast', min: 0, max: 200, unit: '%' },
+  { key: 'saturation', messageKey: 'imageViewer.editor.saturation', min: 0, max: 200, unit: '%' },
+  { key: 'hue', messageKey: 'imageViewer.editor.hue', min: -180, max: 180, unit: 'deg' },
 ];
 
-const TABS: Array<{ key: EditorTab; label: string }> = [
-  { key: 'adjust', label: 'Adjust' },
-  { key: 'crop', label: 'Crop' },
-  { key: 'transform', label: 'Transform' },
-  { key: 'enhance', label: 'Enhance' },
+const TABS: Array<{ key: EditorTab; messageKey: MessageKey }> = [
+  { key: 'adjust', messageKey: 'imageViewer.adjustments.adjust' },
+  { key: 'crop', messageKey: 'imageViewer.editor.crop' },
+  { key: 'transform', messageKey: 'imageViewer.editor.transform' },
+  { key: 'enhance', messageKey: 'imageViewer.adjustments.enhance' },
 ];
 
-const ASPECT_LABELS: Record<ImageEditCropAspect, string> = {
-  free: 'Free',
-  original: 'Original',
-  '1:1': '1:1',
-  '4:3': '4:3',
-  '3:2': '3:2',
-  '16:9': '16:9',
-  '9:16': '9:16',
-};
+const CROP_FIELD_LABELS = { x: 'x', y: 'y', width: 'comparison.width', height: 'comparison.height' } as const;
+const EFFECT_LABELS = { sharpen: 'imageViewer.editor.sharpen', blur: 'imageViewer.editor.blur' } as const;
 
 const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
   recipe,
@@ -90,14 +84,15 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
   activeTab = 'adjust',
   onActiveTabChange,
   canOverwrite = true,
-  overwriteUnavailableReason = 'Overwrite original file',
+  overwriteUnavailableReason,
   isSaving = false,
   disabled = false,
   onAIUpscale,
   canAIUpscale = true,
-  aiUpscaleDisabledReason = 'Connect ComfyUI to use AI Upscale.',
+  aiUpscaleDisabledReason,
   isAIUpscaling = false,
 }) => {
+  const { t } = useTranslation();
   const normalizedRecipe = normalizeImageEditRecipe(recipe, sourceDimensions);
   const hasChanges = hasImageEditRecipeChanges(normalizedRecipe);
   const controlsDisabled = disabled || isSaving;
@@ -224,9 +219,9 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
     <div className="space-y-4 rounded-lg border border-cyan-500/20 bg-gray-950/50 p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-100">Edit</h3>
+          <h3 className="text-sm font-semibold text-gray-100">{t('settings.native.edit')}</h3>
           <p className="text-xs text-gray-500">
-            PNG output{outputDimensions ? ` · ${outputDimensions.width}x${outputDimensions.height}` : ''}
+            {t('imageViewer.adjustments.pngOutput')}{outputDimensions ? ` · ${outputDimensions.width}x${outputDimensions.height}` : ''}
           </p>
         </div>
         <button
@@ -234,10 +229,10 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
           onClick={onReset}
           disabled={controlsDisabled || !hasChanges}
           className="inline-flex items-center gap-1.5 rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Reset edits"
+          title={t('imageViewer.adjustments.reset')}
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Reset
+          {t('settings.shortcuts.reset')}
         </button>
       </div>
 
@@ -253,7 +248,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                 : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
             }`}
           >
-            {tab.label}
+            {t(tab.messageKey)}
           </button>
         ))}
       </div>
@@ -263,7 +258,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
           {ADJUSTMENT_CONTROLS.map((control) => (
             <label key={control.key} className="block space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-gray-300">{control.label}</span>
+                <span className="text-xs font-medium text-gray-300">{t(control.messageKey)}</span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -273,14 +268,14 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                     disabled={controlsDisabled}
                     onChange={(event) => updateAdjustment(control.key, Number(event.target.value))}
                     className="h-7 w-16 rounded-md border border-gray-700 bg-gray-900 px-2 text-right text-xs text-gray-100 outline-none transition-colors focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label={control.label}
+                    aria-label={t(control.messageKey)}
                   />
                   <span className="w-7 text-xs text-gray-500">{control.unit}</span>
                 </div>
               </div>
               <input
                 type="range"
-                aria-label={`${control.label} slider`}
+                aria-label={t('imageViewer.editor.slider', { label: t(control.messageKey) })}
                 min={control.min}
                 max={control.max}
                 value={normalizedRecipe.adjustments[control.key]}
@@ -304,17 +299,17 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                 onChange={(event) => setCropEnabled(event.target.checked)}
                 className="h-4 w-4 accent-cyan-500"
               />
-              Enable crop
+              {t('imageViewer.adjustments.enableCrop')}
             </label>
             <select
               value={normalizedRecipe.crop.aspect}
               disabled={controlsDisabled || !sourceDimensions}
               onChange={(event) => setCropAspect(event.target.value as ImageEditCropAspect)}
               className="h-8 rounded-md border border-gray-700 bg-gray-900 px-2 text-xs text-gray-100 outline-none focus:border-cyan-500"
-              aria-label="Crop aspect ratio"
+              aria-label={t('imageViewer.editor.cropAspect')}
             >
               {CROP_ASPECTS.map((aspect) => (
-                <option key={aspect} value={aspect}>{ASPECT_LABELS[aspect]}</option>
+                <option key={aspect} value={aspect}>{aspect === 'free' ? t('imageViewer.editor.freeAspect') : aspect === 'original' ? t('imageViewer.editor.originalAspect') : aspect}</option>
               ))}
             </select>
           </div>
@@ -322,7 +317,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
           <div className="grid grid-cols-2 gap-2">
             {(['x', 'y', 'width', 'height'] as const).map((key) => (
               <label key={key} className="space-y-1 text-xs text-gray-400">
-                <span className="capitalize">{key}</span>
+                <span>{key === 'x' || key === 'y' ? key : t(CROP_FIELD_LABELS[key])}</span>
                 <input
                   type="number"
                   min={key === 'x' || key === 'y' ? 0 : 1}
@@ -330,7 +325,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                   disabled={controlsDisabled || !normalizedRecipe.crop.enabled}
                   onChange={(event) => updateCropValue(key, Number(event.target.value))}
                   className="h-8 w-full rounded-md border border-gray-700 bg-gray-900 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label={`Crop ${key}`}
+                  aria-label={t('imageViewer.editor.cropField', { field: key === 'x' || key === 'y' ? key : t(CROP_FIELD_LABELS[key]) })}
                 />
               </label>
             ))}
@@ -344,7 +339,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs font-medium text-gray-300 hover:border-gray-600 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Crop className="h-3.5 w-3.5" />
-              Center Crop
+              {t('imageViewer.adjustments.centerCrop')}
             </button>
             <button
               type="button"
@@ -353,10 +348,10 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs font-medium text-gray-300 hover:border-gray-600 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Maximize2 className="h-3.5 w-3.5" />
-              Full Image
+              {t('imageViewer.adjustments.fullImage')}
             </button>
           </div>
-          <p className="text-xs text-gray-500">Drag the crop box on the image to reposition it.</p>
+          <p className="text-xs text-gray-500">{t('imageViewer.adjustments.cropHint')}</p>
         </div>
       )}
 
@@ -370,7 +365,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-gray-700 bg-gray-900 px-2 py-2 text-xs font-medium text-gray-300 hover:border-gray-600 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              Rotate Left
+              {t('imageViewer.adjustments.rotateLeft')}
             </button>
             <button
               type="button"
@@ -379,7 +374,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-gray-700 bg-gray-900 px-2 py-2 text-xs font-medium text-gray-300 hover:border-gray-600 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RotateCw className="h-3.5 w-3.5" />
-              Rotate Right
+              {t('imageViewer.adjustments.rotateRight')}
             </button>
             <button
               type="button"
@@ -390,7 +385,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               }`}
             >
               <FlipHorizontal className="h-3.5 w-3.5" />
-              Flip H
+              {t('imageViewer.editor.flipHorizontal')}
             </button>
             <button
               type="button"
@@ -401,7 +396,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               }`}
             >
               <FlipVertical className="h-3.5 w-3.5" />
-              Flip V
+              {t('imageViewer.editor.flipVertical')}
             </button>
           </div>
 
@@ -415,7 +410,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                   onChange={(event) => setResizeEnabled(event.target.checked)}
                   className="h-4 w-4 accent-cyan-500"
                 />
-                Resize
+                {t('imageViewer.editor.resize')}
               </label>
               <label className="inline-flex items-center gap-1.5 text-xs text-gray-400">
                 <input
@@ -425,12 +420,12 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                   onChange={(event) => emit({ ...normalizedRecipe, resize: { ...normalizedRecipe.resize, lockAspectRatio: event.target.checked } })}
                   className="h-4 w-4 accent-cyan-500"
                 />
-                Lock
+                {t('imageViewer.adjustments.lock')}
               </label>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="space-y-1 text-xs text-gray-400">
-                <span>Width</span>
+                <span>{t('comparison.width')}</span>
                 <input
                   type="number"
                   min={1}
@@ -438,11 +433,11 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                   disabled={controlsDisabled || !sourceDimensions}
                   onChange={(event) => updateResizeDimension('width', Number(event.target.value))}
                   className="h-8 w-full rounded-md border border-gray-700 bg-gray-900 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Resize width"
+                  aria-label={t('imageViewer.navigation.resizeWidth')}
                 />
               </label>
               <label className="space-y-1 text-xs text-gray-400">
-                <span>Height</span>
+                <span>{t('comparison.height')}</span>
                 <input
                   type="number"
                   min={1}
@@ -450,7 +445,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                   disabled={controlsDisabled || !sourceDimensions}
                   onChange={(event) => updateResizeDimension('height', Number(event.target.value))}
                   className="h-8 w-full rounded-md border border-gray-700 bg-gray-900 px-2 text-right text-xs text-gray-100 outline-none focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Resize height"
+                  aria-label={t('imageViewer.navigation.resizeHeight')}
                 />
               </label>
             </div>
@@ -476,7 +471,7 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
           {(['sharpen', 'blur'] as const).map((key) => (
             <label key={key} className="block space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium capitalize text-gray-300">{key}</span>
+                <span className="text-xs font-medium capitalize text-gray-300">{t(EFFECT_LABELS[key])}</span>
                 <input
                   type="number"
                   min={0}
@@ -491,12 +486,12 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
                     },
                   })}
                   className="h-7 w-16 rounded-md border border-gray-700 bg-gray-900 px-2 text-right text-xs text-gray-100 outline-none transition-colors focus:border-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label={key}
+                  aria-label={t(EFFECT_LABELS[key])}
                 />
               </div>
               <input
                 type="range"
-                aria-label={`${key} slider`}
+                aria-label={t('imageViewer.editor.slider', { label: t(EFFECT_LABELS[key]) })}
                 min={0}
                 max={key === 'blur' ? 20 : 100}
                 value={normalizedRecipe.effects[key]}
@@ -519,12 +514,12 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
               onClick={onAIUpscale}
               disabled={controlsDisabled || isAIUpscaling || !canAIUpscale}
               className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-purple-400/30 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-100 transition-colors hover:border-purple-300/50 hover:bg-purple-500/25 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
-              title={canAIUpscale ? 'Queue a ComfyUI upscale workflow' : aiUpscaleDisabledReason}
+              title={canAIUpscale ? t('imageViewer.adjustments.queueUpscale') : aiUpscaleDisabledReason || t('imageViewer.adjustments.connectComfy')}
             >
               <Sparkles className="h-3.5 w-3.5" />
-              {isAIUpscaling ? 'Queueing...' : 'AI Upscale'}
+              {isAIUpscaling ? t('imageViewer.adjustments.queueing') : t('imageViewer.adjustments.aiUpscale')}
             </button>
-            <p className="mt-1.5 text-xs text-purple-200/70">ComfyUI transform</p>
+            <p className="mt-1.5 text-xs text-purple-200/70">{t('imageViewer.adjustments.comfyTransform')}</p>
           </div>
         </div>
       )}
@@ -535,27 +530,27 @@ const ImageAdjustmentPanel: React.FC<ImageAdjustmentPanelProps> = ({
           onClick={onSaveAs}
           disabled={controlsDisabled || !hasChanges}
           className="inline-flex items-center justify-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
-          title="Save edited copy"
+          title={t('imageViewer.adjustments.saveCopy')}
         >
           <Save className="h-3.5 w-3.5" />
-          Save As
+          {t('imageViewer.editor.saveAs')}
         </button>
         <button
           type="button"
           onClick={onOverwrite}
           disabled={overwriteDisabled}
           className="inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
-          title={canOverwrite ? 'Overwrite original file' : overwriteUnavailableReason}
+          title={canOverwrite ? t('imageViewer.adjustments.overwriteHint') : overwriteUnavailableReason || t('imageViewer.adjustments.overwriteHint')}
         >
           <SaveAll className="h-3.5 w-3.5" />
-          Overwrite
+          {t('imageViewer.adjustments.overwrite')}
         </button>
       </div>
 
-      {isSaving && <div className="text-xs text-gray-400">Saving edited image...</div>}
+      {isSaving && <div className="text-xs text-gray-400">{t('imageViewer.adjustments.saving')}</div>}
       {!hasChanges && (
         <div className="text-xs text-gray-500">
-          Neutral: {DEFAULT_IMAGE_EDIT_RECIPE.adjustments.brightness}/{DEFAULT_IMAGE_EDIT_RECIPE.adjustments.contrast}/{DEFAULT_IMAGE_EDIT_RECIPE.adjustments.saturation}/{DEFAULT_IMAGE_EDIT_RECIPE.adjustments.hue}
+          {t('imageViewer.adjustments.neutral', { ...DEFAULT_IMAGE_EDIT_RECIPE.adjustments })}
         </div>
       )}
     </div>

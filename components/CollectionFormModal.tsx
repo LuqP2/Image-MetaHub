@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useRef, useState } from 'react';
 import hotkeyManager from '../services/hotkeyManager';
 
@@ -40,9 +41,10 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
   disableSourceTag = false,
   showAutoUpdate = false,
   showIncludeTargetImages = false,
-  includeTargetImagesLabel = 'Add the current images now',
+  includeTargetImagesLabel,
   showAutomationRulesOption = false,
 }) => {
+  const { t } = useTranslation();
   const {
     name: initialName,
     description: initialDescription,
@@ -172,7 +174,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
 
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Title</span>
+            <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">{t('imageViewer.collection.title')}</span>
             <input
               ref={titleInputRef}
               autoFocus
@@ -186,24 +188,24 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 }
               }}
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="Collection name"
+              placeholder={t('imageViewer.collection.name')}
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Description</span>
+            <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">{t('imageViewer.collection.description')}</span>
             <textarea
               value={values.description}
               onChange={(event) => setValues((current) => ({ ...current, description: event.target.value }))}
               rows={3}
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="Optional notes about this collection"
+              placeholder={t('imageViewer.collection.notes')}
             />
           </label>
 
           {showSourceTag && (
             <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Auto-Add Tags</span>
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">{t('imageViewer.collection.autoTags')}</span>
               <input
                 type="text"
                 value={values.sourceTag}
@@ -212,7 +214,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
                 placeholder=""
               />
-              <span className="mt-1 block text-xs text-gray-500">Separate tags with commas.</span>
+              <span className="mt-1 block text-xs text-gray-500">{t('imageViewer.collection.separateTags')}</span>
             </label>
           )}
 
@@ -226,11 +228,11 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <span>
-                <span className="block text-sm font-medium text-gray-100">Add matching tagged images automatically</span>
+                <span className="block text-sm font-medium text-gray-100">{t('imageViewer.collection.autoAdd')}</span>
                 <span className="mt-1 block text-xs text-gray-400">
                   {hasSourceTag
-                    ? 'New images with this tag will appear here automatically.'
-                    : 'Choose a tag above to enable this.'}
+                    ? t('imageViewer.collection.newImages')
+                    : t('imageViewer.collection.chooseTag')}
                 </span>
               </span>
             </label>
@@ -245,7 +247,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
               />
               <span>
-                <span className="block text-sm font-medium text-gray-100">{includeTargetImagesLabel}</span>
+                <span className="block text-sm font-medium text-gray-100">{includeTargetImagesLabel || t('imageViewer.collection.includeImages')}</span>
               </span>
             </label>
           )}
@@ -257,8 +259,8 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 onClick={() => setIsAdvancedOpen((current) => !current)}
                 className="flex w-full items-center justify-between px-3 py-3 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800/70"
               >
-                <span className="font-medium">Advanced</span>
-                <span className="text-xs text-gray-500">{isAdvancedOpen ? 'Hide' : 'Show'}</span>
+                <span className="font-medium">{t('imageViewer.collection.advanced')}</span>
+                <span className="text-xs text-gray-500">{isAdvancedOpen ? t('imageViewer.collection.hide') : t('imageViewer.collection.show')}</span>
               </button>
               {isAdvancedOpen && (
                 <label className="flex items-start gap-3 border-t border-gray-700 px-3 py-3">
@@ -272,9 +274,9 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                     className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
                   />
                   <span>
-                    <span className="block text-sm font-medium text-gray-100">Set up rules after creating</span>
+                    <span className="block text-sm font-medium text-gray-100">{t('imageViewer.collection.rules')}</span>
                     <span className="mt-1 block text-xs text-gray-400">
-                      Create the collection first, then open Rules with this collection already selected.
+                      {t('imageViewer.collection.rulesHelp')}
                     </span>
                   </span>
                 </label>
@@ -289,7 +291,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
             onClick={onClose}
             className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800"
           >
-            Cancel
+            {t('batchExport.cancel')}
           </button>
           <button
             type="button"

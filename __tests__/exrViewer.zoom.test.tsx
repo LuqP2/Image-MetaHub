@@ -4,6 +4,7 @@ import { act, cleanup, render, waitFor, fireEvent, screen } from '@testing-libra
 import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import type { IndexedImage } from '../types';
 import ExrViewer from '../components/ExrViewer';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 const zoom = vi.hoisted(() => ({ setTransform: vi.fn(), centerOnInit: true }));
 vi.mock('../components/SettingsModal', () => ({ default: ({ isOpen, focusSection }: any) => isOpen ? <div role="dialog" data-section={focusSection}>Settings</div> : null }));
@@ -23,7 +24,7 @@ vi.mock('react-zoom-pan-pinch', async () => {
     }),
   };
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); useSettingsStore.setState({ language: 'en' }); });
 
 describe('EXR comparison zoom', () => {
   it('applies an existing synchronized transform when the asynchronous overview mounts', async () => {
@@ -50,5 +51,25 @@ describe('EXR comparison zoom', () => {
     expect(screen.getByRole('dialog').getAttribute('data-section')).toBe('exr');
     fireEvent.keyDown(screen.getByLabelText('EXR part'), { key: 'ArrowRight' });
     expect(click).not.toHaveBeenCalled(); expect(key).not.toHaveBeenCalled();
+    const exrApi = window.electronAPI!.exr!;
+    act(() => useSettingsStore.setState({ language: 'ja' }));
+    expect(screen.getByRole('combobox', { name: 'EXR パート' })).toHaveProperty('value', '1');
+    expect(screen.getByRole('option', { name: 'beauty' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '拡大' })).toBeTruthy();
+    expect(exrApi.inspect).toHaveBeenCalledTimes(1);
+    expect(preview).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates the disabled-support error when the language changes without checking the runtime again', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const status = vi.fn(async () => ({ success: true, value: { installed: false, enabled: false } }));
+    Object.defineProperty(window, 'electronAPI', { configurable: true, value: { exr: {
+      status, onChanged: () => () => {},
+    } } });
+    render(<ExrViewer image={{ id: 'synthetic', name: 'synthetic.exr' } as IndexedImage} />);
+    expect((await screen.findByRole('alert')).textContent).toContain('EXR support not installed or disabled');
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    expect(screen.getByRole('alert').textContent).toContain('O suporte a EXR está desativado');
+    expect(status).toHaveBeenCalledTimes(1);
   });
 });
