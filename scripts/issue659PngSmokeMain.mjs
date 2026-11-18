@@ -20,11 +20,11 @@ try {
     assert.deepEqual(image.getSize(), { width: 2200 * scale, height: 320 * scale });
     const pixel = image.crop({ x: 2100 * scale, y: 280 * scale, width: 1, height: 1 }).toBitmap();
     assert.equal(image.crop({ x: 10, y: 310 * scale, width: 1, height: 1 }).toBitmap()[3], 0, 'Transparent background was lost');
-    assert(pixel[2] > 240 && pixel[1] < 10 && pixel[3] > 240, `Tile pixel failed at ${scale}x: ${pixel}`);
+    assert(pixel[2] > 240 && pixel[1] < 10 && pixel[3] > 240, `Scene pixel failed at ${scale}x: ${pixel}`);
   }
   const cancelled = await exportBoardPng({ BrowserWindow, dialog: { showSaveDialog: async () => ({ canceled: true }) }, input: { html: '<div/>', width: 1, height: 1, scale: 1, name: 'cancelled' } });
   assert.equal(cancelled, null);
-  console.log('Synthetic PNG smoke passed: 1x/2x/4x, multiple tiles, pixels, alpha and cancellation.');
+  console.log('Synthetic PNG smoke passed: 1x/2x/4x, large scene pixels, alpha and cancellation.');
   app.exit(0);
 } catch (error) { console.error(error); app.exit(1); }
 
