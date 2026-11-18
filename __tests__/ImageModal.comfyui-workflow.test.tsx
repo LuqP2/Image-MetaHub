@@ -244,6 +244,9 @@ describe('ImageModal ComfyUI workflow action', () => {
 
     await waitFor(() => expect(clipboard).toHaveBeenCalledWith(JSON.stringify(workflow)));
     await screen.findByText(/Workflow JSON copied!/);
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    await screen.findByText(/JSON do workflow copiado!/);
+    expect(clipboard).toHaveBeenCalledTimes(1);
   });
 
   it('reports a missing original workflow without writing to the clipboard', async () => {

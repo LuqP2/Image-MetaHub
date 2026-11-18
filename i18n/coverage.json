@@ -28,8 +28,8 @@
     "literalExceptions": ["ZIP"]
   },
   "imageViewer": {
-    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx", "components/ImagePreviewSidebar.tsx", "components/ImageLineageSection.tsx", "components/TextureMapsSection.tsx", "components/ExrViewer.tsx", "components/Model3DViewer.tsx", "components/AudioPlayer.tsx", "components/ImageModal.tsx"],
-    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x", "VAE", "FPS", "MetaHub Save Node", "ComfyUI", "A1111", "PyTorch:", "Python:", "IMH", "EXR", "EV", "FOV", "GLB", "OBJ", "STL", "FBX", "X", "Y", "Z"]
+    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx", "components/ImagePreviewSidebar.tsx", "components/ImageLineageSection.tsx", "components/TextureMapsSection.tsx", "components/ExrViewer.tsx", "components/Model3DViewer.tsx", "components/AudioPlayer.tsx", "components/ImageModal.tsx", "components/ImageAdjustmentPanel.tsx", "components/FindSimilarModal.tsx", "components/ProvenanceSection.tsx", "components/CollectionFormModal.tsx"],
+    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x", "VAE", "FPS", "MetaHub Save Node", "ComfyUI", "A1111", "PyTorch:", "Python:", "IMH", "EXR", "EV", "FOV", "GLB", "OBJ", "STL", "FBX", "X", "Y", "Z", "SHA-256"]
   },
   "metadataEditor": {
     "paths": ["components/MetadataEditorModal.tsx"],

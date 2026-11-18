@@ -8,6 +8,7 @@ import {
 } from '../services/provenanceSummary';
 import { type BaseMetadata, type IndexedImage, type InvokeAIMetadata } from '../types';
 import { type ResolvedLineageEntry } from '../services/lineageRegistry';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 
 const createImage = (name: string, metadata: Partial<BaseMetadata> = {}): IndexedImage => ({
   id: `library::${name}`,
@@ -24,6 +25,28 @@ const createImage = (name: string, metadata: Partial<BaseMetadata> = {}): Indexe
 });
 
 describe('Provenance Summary view model', () => {
+  it.each(languages)('preserves original metadata in the localized %s summary', (language) => {
+    const image = createImage('fixture {name} 海.png', {
+      generator: 'ComfyUI',
+      model: 'FixtureModel_v9.safetensors',
+      prompt: 'original {prompt} 海',
+      sampler: 'dpmpp_2m',
+      scheduler: 'karras',
+      seed: 123,
+    });
+    const translate = (key, values?) => formatMessage(language, key, values);
+    const model = buildProvenanceViewModel({ image, translate });
+    const summary = serializeProvenanceSummary(model, 'digest-fixture', translate);
+    for (const value of [image.name, image.id, 'ComfyUI', 'FixtureModel_v9.safetensors', 'original {prompt} 海', 'dpmpp_2m', 'karras', '123', 'digest-fixture']) {
+      expect(summary).toContain(value);
+    }
+    expect(summary).toContain(formatMessage(language, 'imageViewer.provenance.summaryTitle'));
+    expect(model.generation).toContainEqual(expect.objectContaining({
+      label: formatMessage(language, 'imageViewer.provenance.positive'),
+      value: 'original {prompt} 海',
+    }));
+  });
+
   it('presents representative ComfyUI metadata as embedded generation information', () => {
     const image = createImage('comfy.png', {
       generator: 'ComfyUI',

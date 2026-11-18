@@ -4267,12 +4267,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   activeTab={imageEditorTab}
                   onActiveTabChange={setImageEditorTab}
                   canOverwrite={canOverwriteEditedImage}
-                  overwriteUnavailableReason="Overwrite is only available for PNG images. Use Save As to create an edited PNG copy."
+                  overwriteUnavailableReason={t('imageViewer.errors.pngOverwrite')}
                   isSaving={isSavingEditedImage}
                   disabled={!isFullImageSourceReady}
                   onAIUpscale={() => void handleAIUpscale()}
                   canAIUpscale={canUseComfyUI}
-                  aiUpscaleDisabledReason="Enable ComfyUI and configure the server URL in Settings."
+                  aiUpscaleDisabledReason={t('imageViewer.adjustments.enableComfy')}
                   isAIUpscaling={isGeneratingComfyUI}
                 />
               )}
