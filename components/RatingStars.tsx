@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useMemo, useState } from 'react';
 import { Star } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -63,18 +64,21 @@ export const RatingValueIcons: React.FC<RatingValueIconsProps> = ({
   size = 12,
   className = '',
   starClassName = 'fill-current',
-}) => (
-  <span className={`inline-flex items-center gap-0.5 ${className}`.trim()} aria-label={getRatingLabel(value)}>
-    {Array.from({ length: value }, (_, index) => (
-      <Star
-        key={`${value}-${index}`}
-        size={size}
-        className={starClassName}
-        strokeWidth={1.9}
-      />
-    ))}
-  </span>
-);
+}) => {
+  const { t } = useTranslation();
+  return (
+    <span className={`inline-flex items-center gap-0.5 ${className}`.trim()} aria-label={t('librarySearch.starCount', { count: value })}>
+      {Array.from({ length: value }, (_, index) => (
+        <Star
+          key={`${value}-${index}`}
+          size={size}
+          className={starClassName}
+          strokeWidth={1.9}
+        />
+      ))}
+    </span>
+  );
+};
 
 const RatingStars: React.FC<RatingStarsProps> = ({
   rating = null,
@@ -83,6 +87,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
   className = '',
   disabled = false,
 }) => {
+  const { t } = useTranslation();
   const [hoverRating, setHoverRating] = useState<ImageRating | null>(null);
   const previewRating = useMemo(() => hoverRating ?? rating ?? null, [hoverRating, rating]);
   const isInteractive = !disabled && typeof onChange === 'function';
@@ -91,10 +96,11 @@ const RatingStars: React.FC<RatingStarsProps> = ({
     <div
       className={`inline-flex items-center gap-1 ${className}`.trim()}
       onMouseLeave={() => setHoverRating(null)}
-      aria-label={rating ? `Rating ${rating} of 5` : 'Unrated'}
+      aria-label={rating ? t('libraryGallery.ratingRatingOf5', { rating }) : t('libraryGallery.unrated')}
     >
       {RATING_VALUES.map((value) => {
         const active = previewRating !== null && value <= previewRating;
+        const ratingAction = t(rating === value ? 'libraryGallery.clearRatingValue' : 'libraryGallery.setRatingNumber', { value });
         return (
           <motion.button
             key={value}
@@ -120,8 +126,8 @@ const RatingStars: React.FC<RatingStarsProps> = ({
                 ? 'text-gray-200'
                 : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300'
             } ${!isInteractive ? 'cursor-default opacity-90' : ''}`.trim()}
-            title={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}
-            aria-label={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}
+            title={ratingAction}
+            aria-label={ratingAction}
           >
             <Star size={size} className={active ? 'fill-current' : ''} strokeWidth={1.9} />
           </motion.button>

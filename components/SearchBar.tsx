@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 
 import React from 'react';
 import { Sparkles } from 'lucide-react';
@@ -28,6 +29,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onVisualSubmit,
   visualLoading = false,
 }) => {
+  const { t } = useTranslation();
   const handleClear = () => {
     if (visualMode) {
       onVisualChange?.('');
@@ -74,8 +76,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
         value={currentValue}
         onChange={(e) => handleInputChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={visualMode ? 'Experimental visual text query' : 'Search by prompt, model, etc...'}
-        aria-label={visualMode ? 'Experimental visual text query' : 'Search'}
+        placeholder={visualMode ? t('librarySearch.experimentalVisualTextQuery') : t('librarySearch.searchByPromptModelEtc')}
+        aria-label={visualMode ? t('librarySearch.experimentalVisualTextQuery') : t('librarySearch.search')}
         className={`peer w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 ${showVisualToggle ? 'pr-20' : 'pr-10'} rounded-xl border transition-all duration-300 shadow-sm hover:bg-gray-800/70 focus:outline-none focus:ring-2 ${
           visualMode
             ? 'border-indigo-500/50 focus:border-indigo-500/60 focus:ring-indigo-500/20'
@@ -114,8 +116,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
           <button
             onClick={handleClear}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded-full hover:bg-gray-700/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            aria-label="Clear search"
-            title="Clear search"
+            aria-label={t('librarySearch.clearSearch')}
+            title={t('librarySearch.clearSearch')}
           >
             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -128,9 +130,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
             className={`p-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
               visualMode ? 'text-indigo-400 bg-indigo-500/10' : 'text-gray-400 hover:text-indigo-300 hover:bg-gray-700/50'
             }`}
-            aria-label="Toggle experimental visual text query"
+            aria-label={t('librarySearch.toggleExperimentalVisualTextQuery')}
             aria-pressed={visualMode}
-            title={visualMode ? 'Experimental visual text query on' : 'Experimental: search the visual index with text'}
+            title={visualMode ? t('librarySearch.experimentalVisualTextQueryOn') : t('librarySearch.experimentalSearchTheVisualIndexWithText')}
           >
             <Sparkles className="h-4 w-4" />
           </button>

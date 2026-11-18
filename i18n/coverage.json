@@ -6,5 +6,13 @@
   "libraryFolders": {
     "paths": ["components/DirectoryList.tsx", "components/FolderSelector.tsx"],
     "literalExceptions": []
+  },
+  "librarySearch": {
+    "paths": ["components/SearchBar.tsx", "components/SemanticSearchBar.tsx", "components/AdvancedFilters.tsx", "components/ActiveFilters.tsx", "components/FacetFilterSection.tsx", "components/LibraryFavoriteFilter.tsx", "components/LibraryRatingFilter.tsx"],
+    "literalExceptions": ["CFG", "GPU", "LoRA", "MetaHub", "VRAM"]
+  },
+  "libraryGallery": {
+    "paths": ["components/GridToolbar.tsx", "components/ImageGrid.tsx", "components/ImageSizeSlider.tsx", "components/ImageTable.tsx", "components/RatingStars.tsx", "components/contextMenu/RelatedImagesMenu.tsx"],
+    "literalExceptions": ["CFG"]
   }
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React, { useState } from 'react';
 import { CalendarDays, Clock, Images } from 'lucide-react';
 import type { IndexedImage } from '../../types';
@@ -12,6 +13,7 @@ interface RelatedImagesMenuProps {
 }
 
 export default function RelatedImagesMenu({ image, horizontalClass, onFindRelated, onClose }: RelatedImagesMenuProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const selectMode = (mode: RelatedImagesMode) => {
     onClose();
@@ -20,14 +22,14 @@ export default function RelatedImagesMenu({ image, horizontalClass, onFindRelate
 
   return (
     <ContextMenuSubmenu
-      label="Find Related Images"
+      label={t('libraryGallery.findRelatedImages')}
       icon={<Images size={16} />}
       isOpen={isOpen}
       onOpenChange={setIsOpen}
       horizontalClass={horizontalClass}
     >
-      <ContextMenuButton label="Same Session" icon={<Clock size={16} />} onClick={() => selectMode('session')} />
-      <ContextMenuButton label="Same Date" icon={<CalendarDays size={16} />} onClick={() => selectMode('date')} />
+      <ContextMenuButton label={t('libraryGallery.sameSession')} icon={<Clock size={16} />} onClick={() => selectMode('session')} />
+      <ContextMenuButton label={t('libraryGallery.sameDate')} icon={<CalendarDays size={16} />} onClick={() => selectMode('date')} />
     </ContextMenuSubmenu>
   );
 }

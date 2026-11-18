@@ -2,8 +2,10 @@ import React, { useRef, useEffect } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import Tooltip from './Tooltip';
+import { useTranslation } from '../i18n/useTranslation';
 
 const ImageSizeSlider: React.FC = () => {
+  const { t } = useTranslation();
   const { imageSize, setImageSize } = useSettingsStore();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -40,17 +42,17 @@ const ImageSizeSlider: React.FC = () => {
 
   return (
     <div className="flex items-center gap-2">
-      <Tooltip label="Zoom Out">
+      <Tooltip label={t('settings.native.zoomOut')}>
         <button 
           onClick={handleZoomOut}
           className="p-1 hover:bg-gray-700 rounded transition-colors"
-          title="Zoom Out"
-          aria-label="Zoom Out"
+          title={t('settings.native.zoomOut')}
+          aria-label={t('settings.native.zoomOut')}
         >
           <ZoomOut className="h-5 w-5 text-gray-400" />
         </button>
       </Tooltip>
-      <Tooltip label="Scroll to adjust zoom">
+      <Tooltip label={t('libraryGallery.adjustZoom')}>
         <input
           ref={inputRef}
           type="range"
@@ -60,16 +62,16 @@ const ImageSizeSlider: React.FC = () => {
           value={imageSize}
           onChange={handleSizeChange}
           className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-          title="Scroll to adjust zoom"
-          aria-label="Thumbnail size"
+          title={t('libraryGallery.adjustZoom')}
+          aria-label={t('libraryGallery.thumbnailSize')}
         />
       </Tooltip>
-      <Tooltip label="Zoom In">
+      <Tooltip label={t('settings.native.zoomIn')}>
         <button 
           onClick={handleZoomIn}
           className="p-1 hover:bg-gray-700 rounded transition-colors"
-          title="Zoom In"
-          aria-label="Zoom In"
+          title={t('settings.native.zoomIn')}
+          aria-label={t('settings.native.zoomIn')}
         >
           <ZoomIn className="h-5 w-5 text-gray-400" />
         </button>

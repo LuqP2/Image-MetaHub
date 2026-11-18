@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -22,6 +23,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   onClearAdvancedFilters,
   availableDimensions,
 }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [localFilters, setLocalFilters] = useState<AdvancedFilters>(advancedFilters || {});
 
@@ -117,7 +119,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             type="button"
             onClick={() => updateFilter(key, null)}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-            title={`Clear ${label.toLowerCase()} filter`}
+            title={t('librarySearch.clearNamedFilter', { label: label.toLowerCase() })}
           >
             <X size={14} />
           </button>
@@ -180,10 +182,10 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           className="flex-1 flex items-center justify-between hover:bg-gray-800/50 transition-colors -m-4 p-4"
         >
           <div className="flex items-center space-x-2">
-            <span className="text-gray-200 font-medium">Metadata & File Filters</span>
+            <span className="text-gray-200 font-medium">{t('librarySearch.metadataFileFilters')}</span>
             {hasActiveFilters && (
               <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
-                {advancedFilterCount} active
+                {t('librarySearch.activeCount', { count: advancedFilterCount })}
               </span>
             )}
           </div>
@@ -198,7 +200,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               onClearAdvancedFilters();
             }}
             className="ml-2 text-xs text-gray-400 hover:text-red-400 p-1"
-            title="Clear advanced filters"
+            title={t('librarySearch.clearAdvancedFilters')}
           >
             <X size={16} />
           </button>
@@ -216,33 +218,33 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             <div className="space-y-4 px-4 pb-4">
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Generation</h3>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.generation')}</h3>
                   {(localFilters.steps || localFilters.cfg) && (
                     <button
                       type="button"
                       onClick={() => setLocalFilters((prev) => normalizeFilters({ ...prev, steps: undefined, cfg: undefined }))}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear generation filters"
+                      title={t('librarySearch.clearGenerationFilters')}
                     >
                       <X size={14} />
                     </button>
                   )}
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  {renderNumberRange('Steps', 'steps', { max: '100', compactHeader: true })}
+                  {renderNumberRange(t('librarySearch.steps'), 'steps', { max: '100', compactHeader: true })}
                   {renderNumberRange('CFG', 'cfg', { step: '0.1', max: '20', compactHeader: true })}
                 </div>
               </div>
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Dimensions</h3>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.dimensions')}</h3>
                   {localFilters.dimension && (
                     <button
                       type="button"
                       onClick={() => updateFilter('dimension', null)}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear dimensions filter"
+                      title={t('librarySearch.clearDimensionsFilter')}
                     >
                       <X size={14} />
                     </button>
@@ -253,7 +255,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   onChange={(event) => updateFilter('dimension', event.target.value || null)}
                   className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                 >
-                  <option value="">All dimensions</option>
+                  <option value="">{t('librarySearch.allDimensions')}</option>
                   {availableDimensions.map((dimension) => (
                     <option key={dimension} value={dimension}>{dimension}</option>
                   ))}
@@ -262,13 +264,13 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Date</h3>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.date')}</h3>
                   {(localFilters.date?.from || localFilters.date?.to) && (
                     <button
                       type="button"
                       onClick={() => updateFilter('date', null)}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear date range"
+                      title={t('librarySearch.clearDateRange')}
                     >
                       <X size={14} />
                     </button>
@@ -298,7 +300,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Type</h3>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.type')}</h3>
                   {(generationModes.length > 0 || mediaTypes.length > 0) && (
                     <button
                       type="button"
@@ -308,7 +310,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         mediaTypes: [],
                       }))}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear metadata and file type filters"
+                      title={t('librarySearch.clearMetadataAndFileTypeFilters')}
                     >
                       <X size={14} />
                     </button>
@@ -317,7 +319,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">Generation Mode</h4>
+                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">{t('librarySearch.generationMode')}</h4>
                     <div className="mt-3 space-y-2">
                       {([
                         ['txt2img', 'txt2img'],
@@ -337,13 +339,13 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   </div>
 
                   <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">Media Type</h4>
+                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">{t('librarySearch.mediaType')}</h4>
                     <div className="mt-3 space-y-2">
                       {([
-                        ['image', 'Images'],
-                        ['video', 'Videos'],
-                        ['audio', 'Audio'],
-                        ['model3d', '3D Models'],
+                        ['image', t('librarySearch.images')],
+                        ['video', t('librarySearch.videos')],
+                        ['audio', t('librarySearch.audio')],
+                        ['model3d', t('librarySearch.3dModels')],
                       ] as const).map(([value, label]) => (
                         <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
                           <input
@@ -375,7 +377,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         vramPeakMb: undefined,
                       }))}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear MetaHub filters"
+                      title={t('librarySearch.clearMetahubFilters')}
                     >
                       <X size={14} />
                     </button>
@@ -393,13 +395,13 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
                   />
                   <div>
-                    <div className="text-sm text-gray-200">MetaHub Save Node only</div>
+                    <div className="text-sm text-gray-200">{t('librarySearch.metahubSaveNodeOnly')}</div>
                   </div>
                 </label>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {renderNumberRange('Generation Time (ms)', 'generationTimeMs', { step: '50' })}
-                  {renderNumberRange('Speed (it/s)', 'stepsPerSecond', { step: '0.1' })}
-                  {renderNumberRange('VRAM Peak (MB)', 'vramPeakMb', { step: '1' })}
+                  {renderNumberRange(t('librarySearch.generationTimeMs'), 'generationTimeMs', { step: '50' })}
+                  {renderNumberRange(t('librarySearch.speedItS'), 'stepsPerSecond', { step: '0.1' })}
+                  {renderNumberRange(t('librarySearch.vramPeakMb'), 'vramPeakMb', { step: '1' })}
                 </div>
               </div>
             </div>

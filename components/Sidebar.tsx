@@ -133,7 +133,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const generationFacets = [
     {
-      title: 'Checkpoints',
+      id: 'models',
+      title: t('librarySearch.checkpoints'),
       items: availableModels,
       selectedValues: selectedModels,
       excludedValues: excludedModels,
@@ -143,6 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       onClear: () => setSelectedFilters({ models: [], excludedModels: [] }),
     },
     {
+      id: 'loras',
       title: 'LoRAs',
       items: availableLoras,
       selectedValues: selectedLoras,
@@ -153,7 +155,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       onClear: () => setSelectedFilters({ loras: [], excludedLoras: [] }),
     },
     {
-      title: 'Samplers',
+      id: 'samplers',
+      title: t('librarySearch.samplers'),
       items: availableSamplers,
       selectedValues: selectedSamplers,
       excludedValues: excludedSamplers,
@@ -163,7 +166,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       onClear: () => setSelectedFilters({ samplers: [], excludedSamplers: [] }),
     },
     {
-      title: 'Schedulers',
+      id: 'schedulers',
+      title: t('librarySearch.schedulers'),
       items: availableSchedulers,
       selectedValues: selectedSchedulers,
       excludedValues: excludedSchedulers,
@@ -174,7 +178,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       // ComfyUI workflow nodes: include-only, OR semantics (replaces the old Node View).
-      title: 'ComfyUI Nodes',
+      id: 'nodes',
+      title: t('librarySearch.comfyuiNodes'),
       items: availableNodes,
       selectedValues: selectedNodes,
       excludedValues: [] as string[],
@@ -222,8 +227,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={onToggleCollapse}
           className="mb-6 rounded-xl p-2 text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-100"
-          title="Expand sidebar"
-          aria-label="Expand sidebar"
+          title={t('librarySearch.expandSidebar')}
+          aria-label={t('librarySearch.expandSidebar')}
         >
           <ChevronRight className="h-4 w-4" />
         </button>
@@ -248,7 +253,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             favoriteFilterMode !== 'neutral' ||
             selectedRatings.length > 0 ||
             Object.keys(advancedFilters || {}).length > 0) && (
-            <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title={t('librarySearch.activeFiltersIndicator')}></div>
           )}
         </div>
       </div>
@@ -270,7 +275,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         aria-orientation="vertical"
         onPointerDown={onResizeStart}
         className="absolute right-0 top-0 z-50 flex h-full w-3 translate-x-1/2 cursor-col-resize items-center justify-center"
-        title="Drag to resize filters sidebar"
+        title={t('librarySearch.dragToResizeFiltersSidebar')}
       >
         <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
       </div>
@@ -281,8 +286,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={onToggleCollapse}
             className="app-top-icon-button ml-auto h-8 w-8"
-            title="Collapse sidebar"
-            aria-label="Collapse sidebar"
+            title={t('librarySearch.collapseSidebar')}
+            aria-label={t('librarySearch.collapseSidebar')}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -338,7 +343,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => setIsGenerationParametersExpanded((prev) => !prev)}
               className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-800/40"
             >
-              <h3 className="text-base font-medium text-gray-200">Generation Parameters</h3>
+              <h3 className="text-base font-medium text-gray-200">{t('librarySearch.generationParameters')}</h3>
               <ChevronDown
                 className={`h-4 w-4 text-gray-500 transition-transform ${isGenerationParametersExpanded ? 'rotate-180' : ''}`}
               />
@@ -347,7 +352,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="space-y-3 px-4 pb-4">
                 {generationFacets.map((facet) => (
                   <FacetFilterSection
-                    key={facet.title}
+                    key={facet.id}
                     title={facet.title}
                     items={facet.items}
                     counts={facet.counts}
@@ -356,7 +361,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onIncludeToggle={facet.onIncludeToggle}
                     onExcludeToggle={facet.onExcludeToggle}
                     onClear={facet.onClear}
-                    hideExclude={facet.title === 'ComfyUI Nodes'}
+                    hideExclude={facet.id === 'nodes'}
                   />
                 ))}
               </div>
@@ -379,7 +384,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={onClearAllFilters}
             className="w-full text-red-400 hover:text-white hover:bg-red-900/30 border border-red-900/30 hover:border-red-500/50 px-4 py-2 rounded-lg text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50"
           >
-            Clear All Filters
+            {t('librarySearch.clearAllFilters')}
           </button>
         </div>
       )}

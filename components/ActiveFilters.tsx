@@ -1,3 +1,5 @@
+import { useTranslation } from '../i18n/useTranslation';
+import type { Translate } from '../i18n/useTranslation';
 import React from 'react';
 import { Box, Calendar, CheckCircle, FolderOpen, Heart, Layers, Search, Settings, X, type LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,13 +15,13 @@ const SCOPE_ICONS: Record<ImageScope['type'], LucideIcon> = {
   prompt: Search,
 };
 
-const SCOPE_LABELS: Record<ImageScope['type'], string> = {
-  model: 'Model',
-  managedModel: 'Managed model',
-  cluster: 'Cluster',
-  collection: 'Collection',
-  prompt: 'Prompt',
-};
+const getScopeLabels = (t: Translate): Record<ImageScope['type'], string> => ({
+  model: t('librarySearch.model'),
+  managedModel: t('librarySearch.managedModel'),
+  cluster: t('librarySearch.cluster'),
+  collection: t('librarySearch.collection'),
+  prompt: t('librarySearch.prompt'),
+});
 
 const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = '') => {
   if (!range) {
@@ -49,6 +51,7 @@ const CHIP_ANIMATION = {
 };
 
 const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
+  const { t } = useTranslation();
   const selectedFolders = useImageStore((state) => state.selectedFolders);
   const clearFolderSelection = useImageStore((state) => state.clearFolderSelection);
   const selectedModels = useImageStore((state) => state.selectedModels);
@@ -133,14 +136,14 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
     <div className="flex min-w-0 items-center gap-2 px-2">
       <div className="flex shrink-0 items-center gap-2">
         <span className="sr-only">
-          Active Filters
+          {t('librarySearch.activeFilters')}
         </span>
         {onClearAll && hasClearableFilters && (
           <button
             onClick={onClearAll}
             className="text-[10px] font-medium text-blue-400 transition-colors hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            Clear All
+            {t('librarySearch.clearAll')}
           </button>
         )}
       </div>
@@ -154,12 +157,12 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
             className={`${chipClass} border-gray-700/50 bg-gray-800/70 text-gray-200`}
           >
             <FolderOpen size={12} className="flex-shrink-0" />
-            <span className="opacity-70">{selectedFolderPaths.length === 1 ? 'Folder' : 'Folders'}</span>
+            <span className="opacity-70">{selectedFolderPaths.length === 1 ? t('librarySearch.folder') : t('libraryFolders.folders')}</span>
             <span className="max-w-[180px] truncate">{folderLabel}</span>
             <button
               onClick={clearFolderSelection}
-              aria-label="Clear folder selection"
-              title="Show all folders"
+              aria-label={t('libraryFolders.clearSelection')}
+              title={t('librarySearch.showAllFolders')}
               className="rounded p-0.5 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <X size={12} />
@@ -175,12 +178,12 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
               className="inline-flex items-center gap-1.5 rounded-md border border-indigo-500/60 bg-indigo-600/30 px-2 py-1 text-[11px] font-semibold text-indigo-100 shadow-[0_0_0_1px_rgba(99,102,241,0.25)]"
             >
               <ScopeIcon size={12} className="text-indigo-300" />
-              <span className="uppercase tracking-wide opacity-70">{SCOPE_LABELS[activeImageScope.type]}</span>
+              <span className="uppercase tracking-wide opacity-70">{getScopeLabels(t)[activeImageScope.type]}</span>
               <span className="max-w-[180px] truncate">{activeImageScope.label}</span>
               <button
                 onClick={() => setActiveImageScope(null)}
-                aria-label="Clear scope"
-                title="Clear scope"
+                aria-label={t('librarySearch.clearScope')}
+                title={t('librarySearch.clearScope')}
                 className="rounded p-0.5 hover:bg-indigo-500/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
               >
                 <X size={12} />
@@ -191,9 +194,9 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
 
         {searchQuery && (
           <motion.div key="filter-search" {...CHIP_ANIMATION} className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
-            <span className="opacity-70">Search</span>
+            <span className="opacity-70">{t('librarySearch.search')}</span>
             <span className="max-w-[180px] truncate">"{searchQuery}"</span>
-            <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" title="Clear search filter" className="rounded p-0.5 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button onClick={() => setSearchQuery('')} aria-label={t('librarySearch.clearSearchFilter')} title={t('librarySearch.clearSearchFilter')} className="rounded p-0.5 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
               <X size={12} />
             </button>
           </motion.div>
@@ -202,8 +205,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {favoriteFilterMode === 'include' && (
           <motion.div key="filter-fav-include" {...CHIP_ANIMATION} className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
             <Heart size={12} className="fill-current" />
-            <span>Favorites only</span>
-            <button onClick={() => setFavoriteFilterMode('neutral')} aria-label="Remove favorites only filter" title="Remove favorites only filter" className="rounded p-0.5 hover:bg-yellow-900/70">
+            <span>{t('librarySearch.favoritesOnly')}</span>
+            <button onClick={() => setFavoriteFilterMode('neutral')} aria-label={t('librarySearch.removeFavoritesOnlyFilter')} title={t('librarySearch.removeFavoritesOnlyFilter')} className="rounded p-0.5 hover:bg-yellow-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -212,8 +215,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {favoriteFilterMode === 'exclude' && (
           <motion.div key="filter-fav-exclude" {...CHIP_ANIMATION} className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
             <Heart size={12} />
-            <span>Exclude favorites</span>
-            <button onClick={() => setFavoriteFilterMode('neutral')} aria-label="Remove exclude favorites filter" title="Remove exclude favorites filter" className="rounded p-0.5 hover:bg-rose-900/70">
+            <span>{t('librarySearch.excludeFavoritesChip')}</span>
+            <button onClick={() => setFavoriteFilterMode('neutral')} aria-label={t('librarySearch.removeExcludeFavoritesFilter')} title={t('librarySearch.removeExcludeFavoritesFilter')} className="rounded p-0.5 hover:bg-rose-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -222,7 +225,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {selectedRatings.map((rating) => (
           <motion.div key={`rating-${rating}`} {...CHIP_ANIMATION} className={`${chipClass} border-gray-700 bg-gray-900/70 text-gray-200`}>
             <RatingValueIcons value={rating} size={11} starClassName="fill-current" />
-            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} aria-label={`Remove rating ${rating} filter`} title={`Remove rating ${rating} filter`} className="rounded p-0.5 hover:bg-gray-800">
+            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} aria-label={t('librarySearch.removeRatingRatingFilter', { rating })} title={t('librarySearch.removeRatingRatingFilter', { rating })} className="rounded p-0.5 hover:bg-gray-800">
               <X size={12} />
             </button>
           </motion.div>
@@ -231,8 +234,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.hasVerifiedTelemetry && (
           <motion.div key="filter-verified" {...CHIP_ANIMATION} className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <CheckCircle size={12} />
-            <span>Verified metrics</span>
-            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} aria-label="Remove verified metrics filter" title="Remove verified metrics filter" className="rounded p-0.5 hover:bg-emerald-900/70">
+            <span>{t('librarySearch.verifiedMetrics')}</span>
+            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} aria-label={t('librarySearch.removeVerifiedMetricsFilter')} title={t('librarySearch.removeVerifiedMetricsFilter')} className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -241,8 +244,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.telemetryState === 'present' && (
           <motion.div key="filter-telemetry-present" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <CheckCircle size={12} />
-            <span>Has performance data</span>
-            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove has performance data filter" title="Remove has performance data filter" className="rounded p-0.5 hover:bg-cyan-900/70">
+            <span>{t('librarySearch.hasPerformanceData')}</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label={t('librarySearch.removeHasPerformanceDataFilter')} title={t('librarySearch.removeHasPerformanceDataFilter')} className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -251,8 +254,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.telemetryState === 'missing' && (
           <motion.div key="filter-telemetry-missing" {...CHIP_ANIMATION} className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
             <CheckCircle size={12} />
-            <span>Missing performance data</span>
-            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label="Remove missing performance data filter" title="Remove missing performance data filter" className="rounded p-0.5 hover:bg-gray-800/70">
+            <span>{t('librarySearch.missingPerformanceData')}</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} aria-label={t('librarySearch.removeMissingPerformanceDataFilter')} title={t('librarySearch.removeMissingPerformanceDataFilter')} className="rounded p-0.5 hover:bg-gray-800/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -262,7 +265,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
           <motion.div key="filter-dimension" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{advancedFilters.dimension}</span>
-            <button onClick={() => removeAdvancedFilter('dimension')} aria-label="Remove dimension filter" title="Remove dimension filter" className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('dimension')} aria-label={t('librarySearch.removeDimensionFilter')} title={t('librarySearch.removeDimensionFilter')} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -271,8 +274,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.steps && (
           <motion.div key="filter-steps" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
-            <span>{formatRangeLabel('Steps', advancedFilters.steps)}</span>
-            <button onClick={() => removeAdvancedFilter('steps')} aria-label="Remove steps filter" title="Remove steps filter" className="rounded p-0.5 hover:bg-indigo-900/70">
+            <span>{formatRangeLabel(t('librarySearch.steps'), advancedFilters.steps)}</span>
+            <button onClick={() => removeAdvancedFilter('steps')} aria-label={t('librarySearch.removeStepsFilter')} title={t('librarySearch.removeStepsFilter')} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -282,7 +285,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
           <motion.div key="filter-cfg" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('CFG', advancedFilters.cfg)}</span>
-            <button onClick={() => removeAdvancedFilter('cfg')} aria-label="Remove CFG filter" title="Remove CFG filter" className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('cfg')} aria-label={t('librarySearch.removeCfgFilter')} title={t('librarySearch.removeCfgFilter')} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -292,7 +295,7 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
           <motion.div key="filter-date" {...CHIP_ANIMATION} className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Calendar size={12} />
             <span>{advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}</span>
-            <button onClick={() => removeAdvancedFilter('date')} aria-label="Remove date filter" title="Remove date filter" className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('date')} aria-label={t('librarySearch.removeDateFilter')} title={t('librarySearch.removeDateFilter')} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -301,8 +304,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.generationTimeMs && (
           <motion.div key="filter-gentime" {...CHIP_ANIMATION} className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <Settings size={12} />
-            <span>{formatRangeLabel('Gen time', advancedFilters.generationTimeMs, 'ms')}</span>
-            <button onClick={() => removeAdvancedFilter('generationTimeMs')} aria-label="Remove generation time filter" title="Remove generation time filter" className="rounded p-0.5 hover:bg-emerald-900/70">
+            <span>{formatRangeLabel(t('librarySearch.genTime'), advancedFilters.generationTimeMs, 'ms')}</span>
+            <button onClick={() => removeAdvancedFilter('generationTimeMs')} aria-label={t('librarySearch.removeGenerationTimeFilter')} title={t('librarySearch.removeGenerationTimeFilter')} className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -311,8 +314,8 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
         {advancedFilters?.stepsPerSecond && (
           <motion.div key="filter-speed" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <Settings size={12} />
-            <span>{formatRangeLabel('Speed', advancedFilters.stepsPerSecond, ' it/s')}</span>
-            <button onClick={() => removeAdvancedFilter('stepsPerSecond')} aria-label="Remove speed filter" title="Remove speed filter" className="rounded p-0.5 hover:bg-cyan-900/70">
+            <span>{formatRangeLabel(t('librarySearch.speed'), advancedFilters.stepsPerSecond, ' it/s')}</span>
+            <button onClick={() => removeAdvancedFilter('stepsPerSecond')} aria-label={t('librarySearch.removeSpeedFilter')} title={t('librarySearch.removeSpeedFilter')} className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </motion.div>
@@ -322,70 +325,70 @@ const ActiveFilters: React.FC<ActiveFiltersProps> = ({ onClearAll }) => {
           <motion.div key="filter-vram" {...CHIP_ANIMATION} className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
             <Settings size={12} />
             <span>{formatRangeLabel('VRAM', advancedFilters.vramPeakMb, ' MB')}</span>
-            <button onClick={() => removeAdvancedFilter('vramPeakMb')} aria-label="Remove VRAM filter" title="Remove VRAM filter" className="rounded p-0.5 hover:bg-cyan-900/70">
+            <button onClick={() => removeAdvancedFilter('vramPeakMb')} aria-label={t('librarySearch.removeVramFilter')} title={t('librarySearch.removeVramFilter')} className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </motion.div>
         )}
 
         {selectedNodes.map((value) => (
-          <FacetChip key={`node-${value}`} label="Node" value={value} tone="teal" onRemove={() => setSelectedNodes(selectedNodes.filter((item) => item !== value))} />
+          <FacetChip key={`node-${value}`} label={t('librarySearch.node')} value={value} tone="teal" onRemove={() => setSelectedNodes(selectedNodes.filter((item) => item !== value))} />
         ))}
 
         {selectedModels.map((value) => (
-          <FacetChip key={`checkpoint-${value}`} label="Checkpoint" value={value} tone="blue" onRemove={() => setSelectedFilters({ models: selectedModels.filter((item) => item !== value) })} />
+          <FacetChip key={`checkpoint-${value}`} label={t('librarySearch.checkpoint')} value={value} tone="blue" onRemove={() => setSelectedFilters({ models: selectedModels.filter((item) => item !== value) })} />
         ))}
         {excludedModels.map((value) => (
-          <FacetChip key={`checkpoint-ex-${value}`} label="Exclude checkpoint" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedModels: excludedModels.filter((item) => item !== value) })} />
+          <FacetChip key={`checkpoint-ex-${value}`} label={t('librarySearch.excludeCheckpoint')} value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedModels: excludedModels.filter((item) => item !== value) })} />
         ))}
 
         {selectedLoras.map((value) => (
           <FacetChip key={`lora-${value}`} label="LoRA" value={value} tone="violet" onRemove={() => setSelectedFilters({ loras: selectedLoras.filter((item) => item !== value) })} />
         ))}
         {excludedLoras.map((value) => (
-          <FacetChip key={`lora-ex-${value}`} label="Exclude LoRA" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedLoras: excludedLoras.filter((item) => item !== value) })} />
+          <FacetChip key={`lora-ex-${value}`} label={t('librarySearch.excludeLora')} value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedLoras: excludedLoras.filter((item) => item !== value) })} />
         ))}
 
         {selectedSamplers.map((value) => (
-          <FacetChip key={`sampler-${value}`} label="Sampler" value={value} tone="amber" onRemove={() => setSelectedFilters({ samplers: selectedSamplers.filter((item) => item !== value) })} />
+          <FacetChip key={`sampler-${value}`} label={t('librarySearch.sampler')} value={value} tone="amber" onRemove={() => setSelectedFilters({ samplers: selectedSamplers.filter((item) => item !== value) })} />
         ))}
         {excludedSamplers.map((value) => (
-          <FacetChip key={`sampler-ex-${value}`} label="Exclude sampler" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSamplers: excludedSamplers.filter((item) => item !== value) })} />
+          <FacetChip key={`sampler-ex-${value}`} label={t('librarySearch.excludeSampler')} value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSamplers: excludedSamplers.filter((item) => item !== value) })} />
         ))}
 
         {selectedSchedulers.map((value) => (
-          <FacetChip key={`scheduler-${value}`} label="Scheduler" value={value} tone="teal" onRemove={() => setSelectedFilters({ schedulers: selectedSchedulers.filter((item) => item !== value) })} />
+          <FacetChip key={`scheduler-${value}`} label={t('librarySearch.scheduler')} value={value} tone="teal" onRemove={() => setSelectedFilters({ schedulers: selectedSchedulers.filter((item) => item !== value) })} />
         ))}
         {excludedSchedulers.map((value) => (
-          <FacetChip key={`scheduler-ex-${value}`} label="Exclude scheduler" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSchedulers: excludedSchedulers.filter((item) => item !== value) })} />
+          <FacetChip key={`scheduler-ex-${value}`} label={t('librarySearch.excludeScheduler')} value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSchedulers: excludedSchedulers.filter((item) => item !== value) })} />
         ))}
 
         {selectedGenerators.map((value) => (
-          <FacetChip key={`generator-${value}`} label="Generator" value={value} tone="gray" onRemove={() => setSelectedFilters({ generators: selectedGenerators.filter((item) => item !== value) })} />
+          <FacetChip key={`generator-${value}`} label={t('librarySearch.generator')} value={value} tone="gray" onRemove={() => setSelectedFilters({ generators: selectedGenerators.filter((item) => item !== value) })} />
         ))}
         {excludedGenerators.map((value) => (
-          <FacetChip key={`generator-ex-${value}`} label="Exclude generator" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedGenerators: excludedGenerators.filter((item) => item !== value) })} />
+          <FacetChip key={`generator-ex-${value}`} label={t('librarySearch.excludeGenerator')} value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedGenerators: excludedGenerators.filter((item) => item !== value) })} />
         ))}
 
         {selectedGpuDevices.map((value) => (
           <FacetChip key={`gpu-${value}`} label="GPU" value={value} tone="sky" onRemove={() => setSelectedFilters({ gpuDevices: selectedGpuDevices.filter((item) => item !== value) })} />
         ))}
         {excludedGpuDevices.map((value) => (
-          <FacetChip key={`gpu-ex-${value}`} label="Exclude GPU" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedGpuDevices: excludedGpuDevices.filter((item) => item !== value) })} />
+          <FacetChip key={`gpu-ex-${value}`} label={t('librarySearch.excludeGpu')} value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedGpuDevices: excludedGpuDevices.filter((item) => item !== value) })} />
         ))}
 
         {selectedTags.map((value) => (
-          <FacetChip key={`tag-${value}`} label={selectedTagsMatchMode === 'all' ? 'Tag (all)' : 'Tag'} value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
+          <FacetChip key={`tag-${value}`} label={selectedTagsMatchMode === 'all' ? t('librarySearch.tagAll') : t('librarySearch.tag')} value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
         ))}
         {excludedTags.map((value) => (
-          <FacetChip key={`tag-ex-${value}`} label="Exclude tag" value={value} tone="rose" onRemove={() => setExcludedTags(excludedTags.filter((item) => item !== value))} />
+          <FacetChip key={`tag-ex-${value}`} label={t('librarySearch.excludeTag')} value={value} tone="rose" onRemove={() => setExcludedTags(excludedTags.filter((item) => item !== value))} />
         ))}
 
         {selectedAutoTags.map((value) => (
-          <FacetChip key={`auto-${value}`} label="Auto tag" value={value} tone="sky" onRemove={() => setSelectedAutoTags(selectedAutoTags.filter((item) => item !== value))} />
+          <FacetChip key={`auto-${value}`} label={t('librarySearch.autoTag')} value={value} tone="sky" onRemove={() => setSelectedAutoTags(selectedAutoTags.filter((item) => item !== value))} />
         ))}
         {excludedAutoTags.map((value) => (
-          <FacetChip key={`auto-ex-${value}`} label="Exclude auto tag" value={value} tone="rose" onRemove={() => setExcludedAutoTags(excludedAutoTags.filter((item) => item !== value))} />
+          <FacetChip key={`auto-ex-${value}`} label={t('librarySearch.excludeAutoTag')} value={value} tone="rose" onRemove={() => setExcludedAutoTags(excludedAutoTags.filter((item) => item !== value))} />
         ))}
         </AnimatePresence>
       </div>
@@ -410,14 +413,17 @@ const toneClasses: Record<FacetChipProps['tone'], string> = {
   rose: 'border-rose-700/50 bg-rose-950/50 text-rose-200',
 };
 
-const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) => (
+const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) => {
+  const { t } = useTranslation();
+  return (
   <motion.div key={`${label}-${value}`} {...CHIP_ANIMATION} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
     <span className="opacity-70">{label}</span>
     <span className="max-w-[180px] truncate">{value}</span>
-    <button onClick={onRemove} aria-label={`Remove ${label} filter`} title={`Remove ${label} filter`} className="rounded p-0.5 hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+    <button onClick={onRemove} aria-label={t('librarySearch.removeNamedFilter', { label })} title={t('librarySearch.removeNamedFilter', { label })} className="rounded p-0.5 hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
       <X size={12} />
     </button>
   </motion.div>
-);
+  );
+};
 
 export default ActiveFilters;
