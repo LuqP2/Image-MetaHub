@@ -1465,5 +1465,8 @@
   "imageViewer.status.a1111Copied": "コピーしました。A1111 のプロンプト欄に貼り付けて、青い矢印をクリックしてください。",
   "imageViewer.status.comfyCopied": "ワークフロー JSON をコピーしました。ComfyUI の「Load」で読み込んでください。",
   "imageViewer.status.serverMissing": "{provider} のサーバー URL が未設定です。設定を確認してください。",
-  "imageViewer.status.queuedWaiting": "生成をキューに追加しました。現在の {provider} の処理が終わるまで待機しています。"
+  "imageViewer.status.queuedWaiting": "生成をキューに追加しました。現在の {provider} の処理が終わるまで待機しています。",
+  "comparison.alerts.limit": "比較できる画像は最大 4 枚です。先に 1 枚削除してください。",
+  "comparison.alerts.duplicate": "この画像はすでに比較に含まれています",
+  "comparison.alerts.selection": "比較する画像を 2〜4 枚選択してください"
 }

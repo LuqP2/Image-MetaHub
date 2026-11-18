@@ -3,8 +3,9 @@ import electron from 'electron';
 import path from 'node:path';
 import { broadcastSettingsToWindows } from './settingsBroadcast.mjs';
 import { registerComparisonIpc } from './comparisonIpc.mjs';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
-export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root }) {
+export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, root, verifyLanguages = false, verifyNativeLanguage }) {
   const relative = path.relative(path.resolve(root), path.resolve(app.getPath('userData')));
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !path.basename(root).startsWith('imh-compare-smoke-')) throw new Error('An isolated comparison smoke profile is required.');
   const library = path.join(root, 'library ç'); await fs.mkdir(library, { recursive: true });
@@ -21,8 +22,9 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
     return { success: true, url: `data:${file.endsWith('.png') ? 'image/png' : 'application/octet-stream'};base64,${(await fs.readFile(file)).toString('base64')}` };
   });
   ipcMain.handle('license:get-status', () => ({ licenseStatus: 'free', trialAvailable: false }));
-  ipcMain.handle('get-settings', () => ({}));
-  ipcMain.handle('save-settings', () => ({ success: true }));
+  let settings = {};
+  ipcMain.handle('get-settings', () => settings);
+  ipcMain.handle('save-settings', (_event, next) => { settings = { ...settings, ...next }; return { success: true }; });
   ipcMain.handle('get-runtime-info', () => ({ isPortable: true, userDataPath: app.getPath('userData'), autoUpdateSupported: false }));
   ipcMain.handle('get-theme', () => ({ shouldUseDarkColors: true }));
   const settingsWindows = new Set();
@@ -52,6 +54,36 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
       await viewer.webContents.executeJavaScript(`new Promise((resolve, reject) => { const start = Date.now(); const tick = () => { const canvases = [...document.querySelectorAll('canvas')]; const images = [...document.querySelectorAll('img')]; if (canvases.length === ${names.filter(name => name.endsWith('.stl')).length} && images.filter(image => image.complete && image.naturalWidth > 0).length >= ${names.filter(name => name.endsWith('.png')).length} && !document.body.innerText.includes('Loading 3D model')) { resolve(true); return; } if (Date.now()-start > 25000) { reject(new Error(document.body.innerText)); return; } setTimeout(tick, 100); }; tick(); })`);
       const controls = await viewer.webContents.executeJavaScript(`(() => { const error = document.querySelector('[data-model3d-error]'); if (error) throw new Error(error.textContent); const sync = document.querySelector('[aria-label="Sync 3D cameras"]'); if (sync) { if (!sync.checked) throw new Error('3D sync did not default on'); sync.click(); if (sync.checked) throw new Error('3D sync did not toggle off'); const diff = [...document.querySelectorAll('button')].find(button => button.textContent === 'Diff Map'); if (!diff?.disabled) throw new Error('3D pixel differences enabled'); } const metadata = document.querySelector('[role="switch"]'); if (metadata?.getAttribute('aria-checked') !== 'false') throw new Error('Metadata mode was lost'); return true; })()`);
       assert(controls, 'Comparison controls failed.');
+      if (verifyLanguages) {
+        for (const language of languages) {
+          settings = { ...settings, language };
+          broadcastSettingsToWindows([main, ...settingsWindows], main.webContents);
+          const expected = {
+            language,
+            title: formatMessage(language, 'comparison.title'),
+            windowTitle: formatMessage(language, 'comparison.windowTitle'),
+          };
+          await viewer.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+            const expected = ${JSON.stringify(expected)};
+            const started = Date.now();
+            const poll = () => {
+              const heading = [...document.querySelectorAll('h2')].some(node => node.textContent === expected.title);
+              if (document.documentElement.lang === expected.language && document.title === expected.windowTitle && heading) {
+                const metadataSwitch = document.querySelector('[role="switch"]');
+                if (metadataSwitch?.getAttribute('aria-checked') !== 'false') return reject(new Error('Language change reset comparison state'));
+                if (!document.body.textContent.includes('Synthetic comparison fixture')) return reject(new Error('Original prompt missing'));
+                return resolve(true);
+              }
+              if (Date.now() - started > 5000) return reject(new Error('Comparison language did not propagate: ' + expected.language));
+              setTimeout(poll, 25);
+            };
+            poll();
+          })`);
+          await verifyNativeLanguage?.(main, language);
+        }
+        settings = { ...settings, language: 'en' };
+      }
+      if (!verifyLanguages) {
       // Wake hidden-page capture before taking the evidence frame.
       await viewer.webContents.capturePage();
       await viewer.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
@@ -62,10 +94,11 @@ export async function runComparisonPackagedSmoke({ app, BrowserWindow, ipcMain, 
         assert(models.length === 2, 'Expected two rendered WebGL canvases.');
         for (const [index, model] of models.entries()) await fs.writeFile(path.join(root, `model-${index}.png`), Buffer.from(model.split(',')[1], 'base64'));
       }
+      }
       await viewer.webContents.executeJavaScript(`window.electronAPI.comparison.close(${JSON.stringify(snapshot.sessionId)}, true)`);
       await main.webContents.executeJavaScript(`new Promise((resolve, reject) => { const start=Date.now(); const tick=()=>{ if(window.smokeEvents.some(event=>event.type==='returned' && event.sessionId === ${JSON.stringify(snapshot.sessionId)})) resolve(true); else if(Date.now()-start>3000) reject(new Error('Return event missing')); else setTimeout(tick,25); }; tick(); })`);
     }
     assert(settingsWindows.size === 0, 'Settings registry retained a closed comparison.');
-    return { success: true, settingsBroadcast: true, coverage: 'packaged-main-preload-ipc-renderer-and-webgl', canceledOpening: true, images: 2, mixedPanels: 4, models3D: 2, syncToggle: true, metadataStatePreserved: true, returnedToApp: true, screenshots: [path.join(root, 'compare-2.png'), path.join(root, 'compare-4.png'), path.join(root, 'compare-models.png')] };
+    return { success: true, settingsBroadcast: true, coverage: 'packaged-main-preload-ipc-renderer-and-webgl', canceledOpening: true, images: 2, mixedPanels: 4, models3D: 2, syncToggle: true, metadataStatePreserved: true, returnedToApp: true, languages: verifyLanguages ? languages : undefined, screenshots: verifyLanguages ? [] : [path.join(root, 'compare-2.png'), path.join(root, 'compare-4.png'), path.join(root, 'compare-models.png')] };
   } finally { for (const window of BrowserWindow.getAllWindows()) window.destroy(); for (const name of handlers) ipcMain.removeHandler(name); }
 }

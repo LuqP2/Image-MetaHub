@@ -420,7 +420,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
       case 'image2model3d': return t('imageViewer.preview.imageTo3d');
       case 'inpaint': return t('imageViewer.editor.inpaint');
       case 'outpaint': return t('imageViewer.editor.outpaint');
-      default: return getGenerationTypeLabel(type);
+      default: return getGenerationTypeLabel(type, t);
     }
   };
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;

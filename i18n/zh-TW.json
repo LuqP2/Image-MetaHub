@@ -1465,5 +1465,8 @@
   "imageViewer.status.a1111Copied": "已複製！請貼到 A1111 提示詞欄位並按一下藍色箭頭。",
   "imageViewer.status.comfyCopied": "工作流程 JSON 已複製！請在 ComfyUI 中使用「Load」匯入。",
   "imageViewer.status.serverMissing": "尚未設定 {provider} 伺服器 URL。請檢查設定。",
-  "imageViewer.status.queuedWaiting": "產生工作已加入佇列。正在等候目前的 {provider} 工作完成。"
+  "imageViewer.status.queuedWaiting": "產生工作已加入佇列。正在等候目前的 {provider} 工作完成。",
+  "comparison.alerts.limit": "最多可比較 4 張圖片。請先移除一張。",
+  "comparison.alerts.duplicate": "此圖片已在比較中",
+  "comparison.alerts.selection": "請選取 2 至 4 張圖片進行比較"
 }

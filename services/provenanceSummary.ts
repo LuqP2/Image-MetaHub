@@ -1,3 +1,4 @@
+import { getGenerationTypeLabel } from '../utils/imageLineage';
 import { formatMessage } from '../i18n/messages.mjs';
 import type { Translate } from '../i18n/useTranslation';
 import { type BaseMetadata, type ImageAdjustments, type IndexedImage, type LoRAInfo } from '../types';
@@ -66,14 +67,6 @@ const formatLoRA = (lora: string | LoRAInfo, t: Translate): string => {
   const name = lora.name || lora.model_name || t('imageViewer.preview.unknownLoRA');
   const weight = lora.weight ?? lora.model_weight;
   return weight == null ? name : `${name} (${weight})`;
-};
-
-const generationTypeLabels: Record<string, string> = {
-  txt2img: 'Txt2Img',
-  img2img: 'Img2Img',
-  inpaint: 'Inpaint',
-  outpaint: 'Outpaint',
-  image2model3d: 'Image to 3D',
 };
 
 const sourceReferenceLabel = (resolvedLineage: ResolvedLineageEntry): string | null => {
@@ -227,7 +220,7 @@ export const buildProvenanceViewModel = ({
   if (metadata) {
     add(t('imageViewer.provenance.generator'), nonBlank(metadata.generator));
     if (metadata.generationType) {
-      add(t('imageViewer.provenance.type'), metadata.generationType === 'image2model3d' ? t('imageViewer.preview.imageTo3d') : generationTypeLabels[metadata.generationType] || metadata.generationType);
+      add(t('imageViewer.provenance.type'), getGenerationTypeLabel(metadata.generationType, t));
     }
     add(t('imageViewer.provenance.model'), nonBlank(metadata.model) || nonBlank(metadata.models?.[0]));
     add(t('imageViewer.provenance.positive'), nonBlank(metadata.prompt));

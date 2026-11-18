@@ -1,3 +1,4 @@
+import type { Translate } from '../i18n/useTranslation';
 import { type BaseMetadata, type Directory, type GenerationType, type ImageLineage, type IndexedImage, type SourceImageReference } from '../types';
 
 export type ResolvedSourceStatus = 'linked' | 'missing' | 'ambiguous' | 'unavailable';
@@ -275,20 +276,20 @@ export const isTransformationGenerationType = (
   return !!generationType && TRANSFORMATION_TYPES.has(generationType as Exclude<GenerationType, 'txt2img'>);
 };
 
-export const getGenerationTypeLabel = (generationType?: GenerationType | null): string => {
+export const getGenerationTypeLabel = (generationType?: GenerationType | null, t?: Translate): string => {
   switch (generationType) {
     case 'img2img':
       return 'Img2Img';
     case 'inpaint':
-      return 'Inpaint';
+      return t ? t('imageViewer.editor.inpaint') : 'Inpaint';
     case 'outpaint':
-      return 'Outpaint';
+      return t ? t('imageViewer.editor.outpaint') : 'Outpaint';
     case 'txt2img':
       return 'Txt2Img';
     case 'image2model3d':
-      return 'Image to 3D';
+      return t ? t('imageViewer.preview.imageTo3d') : 'Image to 3D';
     default:
-      return 'Unknown';
+      return t ? t('libraryGallery.unknown') : 'Unknown';
   }
 };
 

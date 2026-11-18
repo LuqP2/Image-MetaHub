@@ -1466,7 +1466,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "pt-BR": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -2935,7 +2938,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "ja": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -4404,7 +4410,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "de": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -5873,7 +5882,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "fr": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -7342,7 +7354,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "ko": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -8811,7 +8826,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "zh-CN": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -10280,7 +10298,10 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   },
   "zh-TW": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -11749,6 +11770,9 @@
     "imageViewer.status.a1111Copied": "9235e49f678f2e92f2650472817ea0596bdfa5ed9fa3715d193d6205a0f85127",
     "imageViewer.status.comfyCopied": "9e503cf52fd97e558228892e1b0a795b99aec0752e2b093b1ce7266b49a30004",
     "imageViewer.status.serverMissing": "c725a05c283561c8da7fe2c02f18248c4eb897d8e19d414fbe4605816389464f",
-    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e"
+    "imageViewer.status.queuedWaiting": "bd821b7a2006ee476aa62cb99c25fba315fb1382515f80bba6d6db015b8d0c3e",
+    "comparison.alerts.limit": "78b049f95cbc1c18c940df949ad9b76a41db25bad3af19f53ec9195e5844ca2e",
+    "comparison.alerts.duplicate": "f26e92143a41a6d6b8ac616c819aa3f884147053a88d72ed649181b6a884fafa",
+    "comparison.alerts.selection": "0540dca5ed0435d99b479e120ff7d994459029167732e2e35f957351a479db86"
   }
 }

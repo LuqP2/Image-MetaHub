@@ -1465,5 +1465,8 @@
   "imageViewer.status.a1111Copied": "Copiado! Cole no campo de prompt do A1111 e clique na seta azul.",
   "imageViewer.status.comfyCopied": "JSON do workflow copiado! Use \"Load\" no ComfyUI para importar.",
   "imageViewer.status.serverMissing": "A URL do servidor do {provider} não está configurada. Confira as Configurações.",
-  "imageViewer.status.queuedWaiting": "Geração na fila. Aguardando o trabalho atual do {provider} terminar."
+  "imageViewer.status.queuedWaiting": "Geração na fila. Aguardando o trabalho atual do {provider} terminar.",
+  "comparison.alerts.limit": "É possível comparar até 4 imagens. Remova uma primeiro.",
+  "comparison.alerts.duplicate": "Esta imagem já está na comparação",
+  "comparison.alerts.selection": "Selecione de 2 a 4 imagens para comparar"
 }

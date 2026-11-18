@@ -1465,5 +1465,8 @@
   "imageViewer.status.a1111Copied": "Copied! Paste into A1111 prompt box and click the Blue Arrow.",
   "imageViewer.status.comfyCopied": "Workflow JSON copied! Use \"Load\" in ComfyUI to import.",
   "imageViewer.status.serverMissing": "{provider} server URL not configured. Please check Settings.",
-  "imageViewer.status.queuedWaiting": "Generation queued. Waiting for current {provider} job to finish."
+  "imageViewer.status.queuedWaiting": "Generation queued. Waiting for current {provider} job to finish.",
+  "comparison.alerts.limit": "Maximum 4 images can be compared. Remove one first.",
+  "comparison.alerts.duplicate": "This image is already in comparison",
+  "comparison.alerts.selection": "Please select between 2 and 4 images to compare"
 }

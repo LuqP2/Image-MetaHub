@@ -4558,7 +4558,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {showDetails && (
                   <div className="space-y-3 mt-3">
                     {nMeta.generationType && (
-                      <MetadataItem label={t('imageViewer.preview.generationType')} value={getGenerationTypeLabel(nMeta.generationType)} />
+                      <MetadataItem label={t('imageViewer.preview.generationType')} value={getGenerationTypeLabel(nMeta.generationType, t)} />
                     )}
                     <MetadataItem
                       label={t('libraryGallery.model')}
