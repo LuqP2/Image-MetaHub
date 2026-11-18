@@ -23,7 +23,7 @@ describe('Canvas usability corrections', () => {
     const links = screen.getAllByRole('link');
     expect(links.map(link => link.getAttribute('href'))).toEqual(['https://example.org/a', 'https://www.example.com']);
     expect(links[0].textContent).toBe('https://example.org/a');
-    fireEvent.doubleClick(links[0]); expect(edit).not.toHaveBeenCalled();
+    fireEvent.doubleClick(links[0]); expect(edit).toHaveBeenCalledOnce();
   });
   it('provides one font-size input and one color section for mixed selections', () => {
     let document = addText(addText(createBoardDocument(), { x: 0, y: 0 }), { x: 400, y: 0 });
@@ -63,7 +63,7 @@ describe('Canvas usability corrections', () => {
   it('marquee hit testing includes scrolled virtual rows and ignores gaps', () => {
     const ids = Array.from({ length: 10000 }, (_, index) => `image-${index}`);
     expect(browserMarqueeIds(ids, 264, { left: 0, right: 264, top: 0, bottom: 278 })).toEqual(['image-0', 'image-1', 'image-2', 'image-3']);
-    expect(browserMarqueeIds(ids, 264, { left: 8, right: 120, top: 14000, bottom: 14139 })).toEqual(['image-200']);
+    expect(browserMarqueeIds(ids, 264, { left: 8, right: 120, top: 16800, bottom: 16967 })).toEqual(['image-200']);
     expect(browserMarqueeIds(ids, 264, { left: 0, right: 7, top: 0, bottom: 300 })).toEqual([]);
   });
   it('chooses facing connection sides and round-trips line thickness', () => {

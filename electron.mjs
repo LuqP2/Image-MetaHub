@@ -1,3 +1,5 @@
+import { createBoardExternalAccess } from './electron/boardExternalAccess.mjs';
+const boardExternalAccess = createBoardExternalAccess();
 import { formatMessage, normalizeLanguage } from './i18n/messages.mjs';
 import electron from 'electron';
 import { runComparisonPackagedSmoke } from './electron/comparisonPackagedSmoke.mjs';
@@ -450,7 +452,7 @@ const registerMediaProtocol = () => {
       const normalizedFilePath = path.resolve(requestedPath);
       if (path.extname(normalizedFilePath).toLowerCase() === '.exr') { callback({ error: -10 }); return; }
       safeDetails = await getSafeFileDetails(normalizedFilePath);
-      if (!isPathAllowed(normalizedFilePath)) {
+      if (!isReadPathAllowed(normalizedFilePath)) {
         console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
         console.error('  [imh-media] Requested path:', requestedPath);
         console.error('  [imh-media] Normalized path:', normalizedFilePath);
@@ -3529,7 +3531,7 @@ async function createWindow(startupDirectory = null) {
 let exrRuntime;
 app.whenReady().then(async () => {
   appLanguage = normalizeLanguage((await readSettings()).language);
-  exrRuntime = registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed, cacheRoot: getCacheRootPath, translate: (key) => formatMessage(appLanguage, key) });
+  exrRuntime = registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed: isReadPathAllowed, cacheRoot: getCacheRootPath, translate: (key) => formatMessage(appLanguage, key) });
   registerProcessDiagnostics();
   registerMediaProtocol();
   registerThumbnailProtocol();
@@ -4232,6 +4234,8 @@ const isPathAllowed = (filePath) => {
   const normalizedFilePath = normalizeAllowedPath(filePath);
   return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
 };
+
+const isReadPathAllowed = filePath => isPathAllowed(filePath) || boardExternalAccess.allows(filePath);
 
 const isModelLibraryPathAllowed = (filePath) => {
   return isModelLibraryPathWithinRoots(filePath, modelLibraryRootPaths);
@@ -6406,7 +6410,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No file path provided' };
       }
 
-      if (!isPathAllowed(filePath)) {
+      if (!isReadPathAllowed(filePath)) {
         return { success: false, error: 'Access denied: Cannot generate thumbnails outside of allowed directories.' };
       }
 
@@ -6483,7 +6487,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No file path provided' };
       }
 
-      if (!isPathAllowed(filePath) && !promptPreviewPaths.has(path.resolve(filePath))) {
+      if (!isReadPathAllowed(filePath) && !promptPreviewPaths.has(path.resolve(filePath))) {
         return { success: false, error: 'Access denied: Cannot generate thumbnails outside of allowed directories.' };
       }
 
@@ -7705,7 +7709,7 @@ function setupFileOperationHandlers() {
   };
 
   registerComparisonIpc({ ipcMain, BrowserWindow, settingsWindows: comparisonSettingsWindows, getTitle: () => formatMessage(appLanguage, 'comparison.windowTitle'), getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.js'), indexPath: path.join(__dirname, 'dist', 'index.html'), isDev, configureNavigation: configureDetachedViewerNavigationHandlers });
-  boardPersistence = registerBoardIpc({ ipcMain, app, dialog, BrowserWindow, clipboard: electron.clipboard, getMainWindow: () => mainWindow });
+  boardPersistence = registerBoardIpc({ ipcMain, app, dialog, BrowserWindow, clipboard: electron.clipboard, getMainWindow: () => mainWindow, authorizeExternalFile: file => boardExternalAccess.authorize(file) });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;
   ipcMain.on('boards:dirty', (event, dirty) => {
@@ -7876,7 +7880,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No file path provided' };
       }
 
-      if (!isPathAllowed(filePath)) {
+      if (!isReadPathAllowed(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
         console.error('  [read-file] Requested path:', filePath);
         console.error('  [read-file] Normalized path:', path.normalize(filePath));
@@ -7924,7 +7928,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Invalid fingerprint request' };
       }
 
-      if (!isPathAllowed(filePath)) {
+      if (!isReadPathAllowed(filePath)) {
         return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
@@ -7965,7 +7969,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No file path provided' };
       }
 
-      if (!isPathAllowed(filePath)) {
+      if (!isReadPathAllowed(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
         console.error('  [read-video-metadata] Requested path:', filePath);
         console.error('  [read-video-metadata] Normalized path:', path.normalize(filePath));
@@ -8012,7 +8016,7 @@ function setupFileOperationHandlers() {
   ipcMain.handle('read-model3d-metadata', async (_event, { filePath }) => {
     try {
       const normalizedPath = path.resolve(filePath || '');
-      if (!filePath || !isModel3DFileName(normalizedPath) || !isPathAllowed(normalizedPath)) {
+      if (!filePath || !isModel3DFileName(normalizedPath) || !isReadPathAllowed(normalizedPath)) {
         return { success: false, error: 'Access denied' };
       }
       const result = await readModel3DMetadata(normalizedPath);
@@ -8416,7 +8420,7 @@ function setupFileOperationHandlers() {
       }
 
       // --- SECURITY CHECK ---
-      if (!isPathAllowed(filePath)) {
+      if (!isReadPathAllowed(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to get stats for file outside of allowed directories.');
         return { success: false, error: 'Access denied: Cannot get stats for files outside of the selected directory.' };
       }

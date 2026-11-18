@@ -27,7 +27,7 @@ describe('Canvas prompt document and matching', () => {
   });
   it.each([1, 2, 3, 4])('migrates schema %i without dropping existing data', version => {
     const old = { ...createBoardDocument(), schemaVersion: version, revision: 7 };
-    expect(normalizeBoardDocument(old)).toMatchObject({ schemaVersion: 5, revision: 7 });
+    expect(normalizeBoardDocument(old)).toMatchObject({ schemaVersion: 6, revision: 7 });
     expect(old.schemaVersion).toBe(version);
   });
   it('rejects cards in older schemas and malformed origins; discards runtime match fields', () => {

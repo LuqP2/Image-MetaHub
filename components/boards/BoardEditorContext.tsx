@@ -24,6 +24,7 @@ export interface BoardEditorActions {
   cancel(): void;
   openAsset?(object: BoardAssetObject): void;
   resolveAsset?(object: BoardAssetObject): { status: 'resolved' | 'loading' | 'missing' | 'ambiguous'; image?: IndexedImage };
+  dropFiles?(files: File[], anchor: BoardPoint): void;
   dropAssets?(ids: string[], anchor: BoardPoint): void;
 }
 export const BoardEditorContext = createContext<BoardEditorActions | null>(null);

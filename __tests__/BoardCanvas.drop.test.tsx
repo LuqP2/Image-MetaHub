@@ -131,3 +131,15 @@ it('drops a prompt at converted coordinates and reports invalid payloads without
   expect(reportError).toHaveBeenCalledWith('Invalid prompt drag data.');
   expect(add).toHaveBeenCalledTimes(1);
 });
+
+it('accepts Finder files on the canvas at the transformed drop position', () => {
+  const doc = createBoardDocument(); useBoardStore.getState().adoptBoard(doc);
+  const dropFiles = vi.fn();
+  const view = render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, dropFiles, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={doc.id} /></BoardEditorContext.Provider>);
+  const file = new File(['synthetic'], 'reference.png', { type: 'image/png' });
+  const dataTransfer = { types: ['Files'], files: [file] };
+  const stage = view.container.querySelector('.board-stage')!;
+  expect(fireEvent.dragOver(stage, { dataTransfer })).toBe(false);
+  fireEvent.drop(stage, { dataTransfer, clientX: 100, clientY: 100 });
+  expect(dropFiles).toHaveBeenCalledWith([file], { x: 75, y: -20 });
+});

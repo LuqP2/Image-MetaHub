@@ -37,6 +37,6 @@ export function readPromptDrag(data: DataTransfer): BoardPromptInput {
   try { value = JSON.parse(data.getData(PROMPT_DRAG_TYPE)); } catch { throw new Error('Invalid prompt drag data.'); }
   if (value?.version !== 1 || !value.prompt || typeof value.prompt.title !== 'string' || typeof value.prompt.positivePrompt !== 'string' || typeof value.prompt.negativePrompt !== 'string') throw new Error('Invalid prompt drag data.');
   // Use the shared document boundary to validate origins and discard unknown runtime fields.
-  const test = addPromptObject({ schemaVersion: 5, id: crypto.randomUUID(), name: 'Validation', revision: 0, createdAt: 0, updatedAt: 0, objects: [], connections: [], viewport: { x: 0, y: 0, zoom: 1 } }, value.prompt, { x: 0, y: 0 }).objects[0] as BoardPromptObject;
+  const test = addPromptObject({ schemaVersion: 6, id: crypto.randomUUID(), name: 'Validation', revision: 0, createdAt: 0, updatedAt: 0, objects: [], connections: [], viewport: { x: 0, y: 0, zoom: 1 } }, value.prompt, { x: 0, y: 0 }).objects[0] as BoardPromptObject;
   return { title: test.title, positivePrompt: test.positivePrompt, negativePrompt: test.negativePrompt, ...(test.origin ? { origin: test.origin } : {}) };
 }

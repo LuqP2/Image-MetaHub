@@ -1,3 +1,5 @@
+import { updateConnection } from '../../services/boards/operations';
+import type { BoardSide } from '../../services/boards/types';
 import { PROMPT_DRAG_TYPE, readPromptDrag } from '../../services/boards/prompts';
 import { useBoardPrompts } from './BoardPromptContext';
 import BoardPromptNode from './BoardPromptNode';
@@ -148,7 +150,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       setBoardPointer(boardId, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
       connections.pointerMove(event);
     }} onDoubleClick={event => { event.stopPropagation(); if (editor.editable && (event.target as HTMLElement).classList.contains('react-flow__pane')) setMenu({ x: event.clientX, y: event.clientY, point: flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }), kind: 'create' }); }}
-    onDragOver={event => { if (editor.editable && (event.dataTransfer.types.includes(PROMPT_DRAG_TYPE) || hasStackCardDrag(event.dataTransfer) || hasInternalImageDragType(event.dataTransfer))) { event.preventDefault(); event.dataTransfer.dropEffect = hasStackCardDrag(event.dataTransfer) ? 'move' : 'copy'; } }}
+    onDragOver={event => { if (editor.editable && (event.dataTransfer.types.includes('Files') || event.dataTransfer.types.includes(PROMPT_DRAG_TYPE) || hasStackCardDrag(event.dataTransfer) || hasInternalImageDragType(event.dataTransfer))) { event.preventDefault(); event.dataTransfer.dropEffect = hasStackCardDrag(event.dataTransfer) ? 'move' : 'copy'; } }}
     onDrop={event => {
       if (event.dataTransfer.types.includes(PROMPT_DRAG_TYPE)) {
         event.preventDefault(); event.stopPropagation();
@@ -167,6 +169,11 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
         useBoardStore.getState().setSelection(boardId, [source.objectId]);
         return;
       }
+      if (!hasInternalImageDragType(event.dataTransfer) && event.dataTransfer.types.includes('Files')) {
+        event.preventDefault(); event.stopPropagation();
+        if (editor.editable) editor.dropFiles?.(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        return;
+      }
       if (!editor.editable || !hasInternalImageDragType(event.dataTransfer)) return;
       event.preventDefault();
       const ids = getInternalImageDragIds(event.dataTransfer);
@@ -175,6 +182,10 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     }}>
     <BoardEditorContext.Provider value={canvasEditor}>
     <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} style={{ background: boardBackground(session.document.backgroundColor) }}
+      onReconnect={(edge, connection) => {
+        if (!editor.editable || !connection.source || !connection.target || connection.source === connection.target) return;
+        useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, edge.id, { sourceObjectId: connection.source, targetObjectId: connection.target, sourceSide: (connection.sourceHandle || 'right') as BoardSide, targetSide: (connection.targetHandle || 'left') as BoardSide, anchoring: 'manual' }));
+      }}
       onSelectionStart={() => { if (marquee.current) marquee.current.active = true; }}
       onSelectionEnd={event => {
         const gesture = marquee.current; marquee.current = null;

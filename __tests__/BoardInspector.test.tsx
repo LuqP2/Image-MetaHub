@@ -39,7 +39,7 @@ it('edits multiple selected connections together and remembers their style for n
  fireEvent.change(screen.getByLabelText('Connection color'), { target: { value: '#00aa44' } });
  fireEvent.blur(screen.getByLabelText('Connection color'));
  expect(useBoardStore.getState().sessions[board.id].document.connections.every(edge => edge.width === 5 && edge.lineStyle === 'dashed' && edge.color === '#00aa44')).toBe(true);
- expect(useBoardConnectionStyleStore.getState().style).toEqual({ color: '#00aa44', width: 5, lineStyle: 'dashed' });
+ expect(useBoardConnectionStyleStore.getState().style).toEqual({ color: '#00aa44', width: 5, lineStyle: 'dashed', routing: 'curved' });
  act(() => useBoardStore.getState().undo(board.id));
  expect(useBoardStore.getState().sessions[board.id].document.connections.map(edge => edge.color)).toEqual(['#112233', '#445566']);
 });

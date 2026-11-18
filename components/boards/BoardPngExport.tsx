@@ -55,7 +55,8 @@ export default function BoardPngExport({ boardId, selection, close }: { boardId:
         if (nodes.length === flow.nodes.length && [...nodes].every(node => getComputedStyle(node).visibility !== 'hidden') && paths.length >= flow.edges.length && !scene.current.querySelector('[data-export-pending="true"]')) break;
         if (Date.now() - started > 10000) throw new Error('The board is still preparing. Try exporting again.');
       }
-      const html = await serializeExportScene(scene.current);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const html = await Promise.race([serializeExportScene(scene.current), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Preparing export images and fonts timed out.')), 15000); })]).finally(() => clearTimeout(timer));
       const result = await window.electronAPI.boardsExportPng({ html, width: dimensions.width, height: dimensions.height, scale, name: snapshot.name });
       if (result.success === false) throw new Error(result.error);
       close();

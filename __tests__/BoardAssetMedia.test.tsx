@@ -55,8 +55,8 @@ describe('Canvas asset media', () => {
     await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
     const video = container.querySelector('video')!;
     const toggle = screen.getByRole('button', { name: 'Autoplay videos' });
-    expect(toggle.textContent).toBe('');
-    expect(toggle.title).toBe('Autoplay videos: off');
+    expect(toggle.textContent).toBe('Autoplay off');
+    expect(toggle.dataset.boardTooltip).toBe('Video autoplay: Autoplay off');
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(video.play).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Play video' }));

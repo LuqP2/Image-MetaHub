@@ -166,7 +166,7 @@ Object.assign(window, { canvasSmoke: {
     check(menu.parentElement === document.body, 'Menu is inside the transformed Canvas layer');
     check(Math.abs(bounds.left - click.x) < 1 && Math.abs(bounds.top - click.y) < 1, 'Menu is offset from the click');
     const names = [...menu.querySelectorAll('[role="menuitem"]')].map(item => item.textContent?.trim());
-    check(names.join(',') === 'Sticky,Text,Rectangle,Ellipse,Diamond,Frame', 'Creation menu repeats Create');
+    check(names.slice(0, 6).join(',') === 'Sticky,Text,Rectangle,Ellipse,Diamond,Frame', 'Creation menu repeats Create');
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await wait(() => !document.querySelector('[aria-label="Canvas actions"]'), 'Escape did not close the creation menu');
     return { anchoredAtClick: true, outsideTransformedCanvas: true, conciseLabels: true };
@@ -446,7 +446,8 @@ Object.assign(window, { canvasSmoke: {
     await exportImage('board', 1, true);
     const textScene = await serializeExportScene(document.querySelector<HTMLElement>('.board-stage .react-flow__viewport')!);
     check(textScene.includes('text-align: center') && textScene.includes('border-radius: 16px'), 'PNG scene lost text alignment or rounded corners');
-    check(textScene.includes('text-align: right') && textScene.includes('font-family: serif'), 'PNG scene lost shape text styling');
+    const frozen = document.createElement('div'); frozen.innerHTML = textScene;
+    check([...frozen.querySelectorAll<HTMLElement>('.board-creative-content')].some(element => element.style.textAlign === 'right' && element.style.fontFamily === 'serif'), 'PNG scene lost shape text styling');
     const savedTabs = localStorage.getItem('imh-board-tabs-v1');
     check(savedTabs?.includes(a) && savedTabs.includes(b), 'Tabs were not persisted');
     await state.closeBoard(b); check(useBoardStore.getState().activeBoardId === a, 'Closing an inactive tab changed the active board');

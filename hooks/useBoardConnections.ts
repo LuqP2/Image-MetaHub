@@ -43,7 +43,7 @@ export function useBoardConnections(boardId: string, stage: RefObject<HTMLDivEle
     if (!source) { cancel(); return; }
     const hit = objectAt(point);
     const target = hit.object?.id !== source.id ? hit.object : undefined;
-    setPreview({ source, target, path: boardConnectionPreview(source, flow.screenToFlowPosition(point), target, active.sourceSide, { source: flow.getInternalNode?.(source.id), target: target ? flow.getInternalNode?.(target.id) : undefined }, target ? hit.side : undefined).path });
+    setPreview({ source, target, path: boardConnectionPreview(source, flow.screenToFlowPosition(point), target, active.sourceSide, { source: flow.getInternalNode?.(source.id), target: target ? flow.getInternalNode?.(target.id) : undefined }, target ? hit.side : undefined, useBoardConnectionStyleStore.getState().style.routing).path });
   };
   const connect = useCallback((connection: Connection) => {
     if (!editor.editable || connection.source === connection.target) return;

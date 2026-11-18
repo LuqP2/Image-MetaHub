@@ -1,3 +1,4 @@
+import { getBoardLinkPreview } from './boardLinkPreview.mjs';
 import { parseBoardFile, serializeBoardFile } from '../services/boards/fileFormat.mjs';
 import { listSystemFonts } from './systemFonts.mjs';
 import fs from 'node:fs/promises';
@@ -10,7 +11,7 @@ export const boardExportFilename = name => `${Array.from(name, character =>
   character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? '_' : character).join('')}.imhboard.json`;
 
 /** Register once; getMainWindow is evaluated per request, including after window recreation. */
-export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow, BrowserWindow, clipboard }) {
+export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow, BrowserWindow, clipboard, authorizeExternalFile }) {
   let repository;
   const getRepository = () => repository ??= new BoardRepository({ directory: path.join(app.getPath('userData'), 'boards') });
   const register = (channel, operation) => ipcMain.handle(channel, async (event, ...args) => {
@@ -24,6 +25,8 @@ export function registerBoardIpc({ ipcMain, app, dialog, getMainWindow, BrowserW
       return { success: false, code: error.code || 'BOARD_OPERATION_FAILED', error: error.message || String(error) };
     }
   });
+  register('boards:link-preview', async (_repository, _window, url) => getBoardLinkPreview({ url, nativeImage: (await import('electron')).nativeImage, cacheDirectory: path.join(app.getPath('userData'), 'boards', 'link-previews') }));
+  register('boards:authorize-file', (_repository, _window, file) => { if (!authorizeExternalFile) throw new Error('External files are unavailable.'); return authorizeExternalFile(file); });
   register('boards:fonts', () => listSystemFonts());
   register('boards:list', repository => repository.list());
   register('boards:reference-baseline', repository => repository.referenceBaseline());

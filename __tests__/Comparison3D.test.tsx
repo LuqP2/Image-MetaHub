@@ -40,7 +40,22 @@ describe('3D comparison', () => {
     expect(useComparisonUIStore.getState().ui.cameras3D.c).toEqual(pose(9));
     fireEvent.click(screen.getByLabelText('Sync 3D cameras'));
     act(() => useImageStore.getState().removeImageFromComparison(0));
-    expect(useComparisonUIStore.getState().ui.cameras3D.c).toEqual(pose(4));
+    expect(useComparisonUIStore.getState().ui.cameras3D.c).toEqual(pose(9));
   });
 
+});
+
+it('preserves independent alignment when relinking, including the primary Sync button', () => {
+  render(<ComparisonSurface isOpen onClose={vi.fn()} />);
+  act(() => cameraCallbacks.get('a')!(pose(1), false));
+  fireEvent.click(screen.getByLabelText('Sync 3D cameras'));
+  act(() => cameraCallbacks.get('b')!(pose(5), true));
+  const beforeA = useComparisonUIStore.getState().ui.cameras3D.a;
+  const beforeB = useComparisonUIStore.getState().ui.cameras3D.b;
+  fireEvent.click(screen.getByRole('button', { name: 'Sync: OFF' }));
+  expect(useComparisonUIStore.getState().ui.sync3DEnabled).toBe(true);
+  expect(useComparisonUIStore.getState().ui.cameras3D.a).toEqual(beforeA);
+  expect(useComparisonUIStore.getState().ui.cameras3D.b).toEqual(beforeB);
+  act(() => cameraCallbacks.get('b')!(pose(6), true));
+  expect(useComparisonUIStore.getState().ui.cameras3D.a).not.toEqual(useComparisonUIStore.getState().ui.cameras3D.b);
 });
