@@ -34,5 +34,9 @@
   "metadataEditor": {
     "paths": ["components/MetadataEditorModal.tsx"],
     "literalExceptions": ["LoRA", "Euler a", "normal", "ComfyUI / A1111 / InvokeAI..."]
+  },
+  "shell": {
+    "paths": ["components/Header.tsx", "components/Sidebar.tsx"],
+    "literalExceptions": ["ComfyUI", "Image MetaHub", "Image MetaHub Pro", "v0.23.1"]
   }
 }

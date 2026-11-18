@@ -10,7 +10,8 @@ import { ProPlanSelectorModal } from './ProPlanSelector';
 import { clearInternalImageDragData, getInternalImageDragId, hasInternalImageDragType } from '../utils/internalImageDrag';
 import type { ExploreDimension, LibraryView } from '../types';
 import { TRIAL_EXTENSION_DAYS, useLicenseStore } from '../store/useLicenseStore';
-import { formatLicenseValidity } from '../utils/licenseDisplay';
+import { useTranslation } from '../i18n/useTranslation';
+import { formatMessage } from '../i18n/messages.mjs';
 import BrandLogo from './BrandLogo';
 
 
@@ -37,6 +38,7 @@ const Header: React.FC<HeaderProps> = ({
     onNavigateExplore,
     onOpenDroppedImageInComfyUI,
 }) => {
+  const { t } = useTranslation();
   const {
     canUseComfyUI,
     canUseImageEditor,
@@ -130,16 +132,16 @@ const Header: React.FC<HeaderProps> = ({
 
   const handleLaunchGenerator = async () => {
     if (!window.electronAPI?.launchGenerator) {
-      setError('Launch Generator is only available in the desktop app.');
+      setError(t('shell.desktopOnly'));
       return;
     }
 
     if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
       const openResult = await (window.electronAPI.openExternalUrl
         ? window.electronAPI.openExternalUrl(relevantServerUrl)
-        : Promise.resolve({ success: false, error: 'Cannot open the generator from this environment.' }));
+        : Promise.resolve({ success: false, error: t('shell.cannotOpen') }));
       if (!openResult.success) {
-        setError(openResult.error || `Failed to open ${detectedGenerator.displayName}.`);
+        setError(openResult.error || t('shell.openFailed', { provider: detectedGenerator.displayName }));
       }
       return;
     }
@@ -167,8 +169,8 @@ const Header: React.FC<HeaderProps> = ({
     if (result.success) {
       setSuccess(
         shouldTrackStartup
-          ? `${detectedGenerator.displayName} launch command started. Checking status...`
-          : `${detectedGenerator.displayName} launch command started.`
+          ? t('shell.launchStartedChecking', { provider: detectedGenerator.displayName })
+          : t('shell.launchStarted', { provider: detectedGenerator.displayName })
       );
       if (!shouldTrackStartup) {
         setIsLaunchingGenerator(false);
@@ -178,7 +180,7 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     setIsLaunchingGenerator(false);
-    setError(result.error || 'Failed to launch generator.');
+    setError(result.error || t('shell.launchFailed'));
   };
 
   useEffect(() => {
@@ -194,7 +196,7 @@ const Header: React.FC<HeaderProps> = ({
         if (isConnected && isLaunchingGenerator) {
           setIsLaunchingGenerator(false);
           launchPollingDeadlineRef.current = null;
-          setSuccess(`${detectedGenerator.displayName} is running.`);
+          setSuccess(formatMessage(useSettingsStore.getState().language, 'shell.running', { provider: detectedGenerator.displayName }));
           return;
         }
 
@@ -231,20 +233,20 @@ const Header: React.FC<HeaderProps> = ({
   const generatorButtonLabel = useMemo(() => {
     if (isLaunchingGenerator) {
       return detectedGenerator.id === 'unknown'
-        ? 'Starting...'
-        : `Starting ${detectedGenerator.displayName}...`;
+        ? t('shell.starting')
+        : t('shell.startingProvider', { provider: detectedGenerator.displayName });
     }
 
     if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
       return detectedGenerator.id === 'unknown'
-        ? 'Open Generator'
-        : `Open ${detectedGenerator.displayName}`;
+        ? t('shell.openGenerator')
+        : t('shell.openProvider', { provider: detectedGenerator.displayName });
     }
 
     return detectedGenerator.id === 'unknown'
-      ? 'Launch Generator'
-      : `Launch ${detectedGenerator.displayName}`;
-  }, [detectedGenerator.displayName, detectedGenerator.id, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus]);
+      ? t('shell.launchGenerator')
+      : t('shell.launchProvider', { provider: detectedGenerator.displayName });
+  }, [detectedGenerator.displayName, detectedGenerator.id, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus, t]);
 
   const generatorButtonClassName = useMemo(() => {
     if (isLaunchingGenerator) {
@@ -264,73 +266,82 @@ const Header: React.FC<HeaderProps> = ({
   const generatorButtonTitle = useMemo(() => {
     if (isLaunchingGenerator) {
       return detectedGenerator.id === 'unknown'
-        ? 'Waiting for the generator to come online'
-        : `Waiting for ${detectedGenerator.displayName} to come online`;
+        ? t('shell.waitingGenerator')
+        : t('shell.waitingProvider', { provider: detectedGenerator.displayName });
     }
 
     if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
       return detectedGenerator.id === 'unknown'
-        ? 'Open the generator in your browser'
-        : `Open ${detectedGenerator.displayName} in your browser`;
+        ? t('shell.openGeneratorHelp')
+        : t('shell.openProviderHelp', { provider: detectedGenerator.displayName });
     }
 
     if (hasLaunchCommand) {
-      return 'Run the saved generator launch command';
+      return t('shell.runCommand');
     }
 
-    return 'Add a launch command in Settings > Integrations';
-  }, [detectedGenerator.displayName, detectedGenerator.id, hasLaunchCommand, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus]);
+    return t('shell.addCommand');
+  }, [detectedGenerator.displayName, detectedGenerator.id, hasLaunchCommand, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus, t]);
 
   const statusConfig = (() => {
     if (!initialized) {
       return {
-        label: 'Checking license',
+        label: t('shell.checkingLicense'),
         classes: 'text-gray-300',
       };
     }
     if (isTrialActive) {
-      const daysLabel = `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left`;
       return {
-        label: `Trial • ${daysLabel}`,
+        label: t('shell.trial', { days: trialDaysRemaining }),
         classes: 'border-amber-500/40 bg-amber-500/15 text-amber-200 hover:border-amber-400/50 hover:bg-amber-500/20 hover:text-amber-100',
       };
     }
     if (isExpired) {
       return {
-        label: 'Trial expired',
+        label: t('settings.license.trialExpired'),
         classes: 'border-amber-600/30 bg-amber-500/10 text-amber-200 hover:border-amber-500/40 hover:bg-amber-500/15 hover:text-amber-100',
       };
     }
     return {
-      label: 'Free',
+      label: t('settings.license.free'),
       classes: 'border-amber-700/30 bg-amber-500/10 text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100',
     };
   })();
 
+  const expiry = licenseExpiresAt ? Date.parse(licenseExpiresAt) : NaN;
+  const licenseValidity = licensePlan === 'lifetime'
+    ? t('settings.license.noExpiration')
+    : (licensePlan === 'monthly' || licensePlan === 'annual') && Number.isFinite(expiry)
+      ? t('settings.license.validThrough', { date: expiry })
+      : null;
+  const connectionStatus = comfyUILastConnectionStatus === 'connected'
+    ? t('settings.integrations.connected')
+    : comfyUILastConnectionStatus === 'error' ? t('shell.errorStatus') : t('libraryGallery.unknown');
+
   const classicMode = useSettingsStore((state) => state.classicMode);
   const viewTabs = useMemo(
     () => [
-      { id: 'library' as const, label: 'Library' },
-      { id: 'prompts' as const, label: 'Prompts' },
-      { id: 'explore' as const, label: 'Explore' },
-      { id: 'models' as const, label: 'Models' },
-      ...(window.electronAPI ? [{ id: 'canvas' as const, label: 'Canvas' }] : []),
-      { id: 'editor' as const, label: 'Image Editor' },
+      { id: 'library' as const, label: t('settings.library.library') },
+      { id: 'prompts' as const, label: t('metadataEditor.prompts') },
+      { id: 'explore' as const, label: t('shell.explore') },
+      { id: 'models' as const, label: t('libraryGallery.models') },
+      ...(window.electronAPI ? [{ id: 'canvas' as const, label: t('comparison.canvas') }] : []),
+      { id: 'editor' as const, label: t('shell.editor') },
       { id: 'comfyui' as const, label: 'ComfyUI' },
     ],
-    []
+    [t]
   );
   // Classic mode: legacy labels as pure deep-links into Explore (no separate surfaces).
   const classicTabs = useMemo(
     () => (classicMode
       ? [
-          { key: 'smart', label: 'Smart Library', count: clustersCount > 0 ? clustersCount : null, run: () => onNavigateExplore?.('clusters') },
-          { key: 'model', label: 'Model View', count: null, run: () => onNavigateExplore?.('models') },
-          { key: 'collections', label: 'Collections', count: null, run: () => onLibraryViewChange?.('collections') },
-          { key: 'node', label: 'Node View', count: null, run: () => onLibraryViewChange?.('library') },
+          { key: 'smart', label: t('shell.smartLibrary'), count: clustersCount > 0 ? clustersCount : null, run: () => onNavigateExplore?.('clusters') },
+          { key: 'model', label: t('shell.modelView'), count: null, run: () => onNavigateExplore?.('models') },
+          { key: 'collections', label: t('libraryGallery.collections'), count: null, run: () => onLibraryViewChange?.('collections') },
+          { key: 'node', label: t('shell.nodeView'), count: null, run: () => onLibraryViewChange?.('library') },
         ]
       : []),
-    [classicMode, clustersCount, onLibraryViewChange, onNavigateExplore]
+    [classicMode, clustersCount, onLibraryViewChange, onNavigateExplore, t]
   );
   const utilityButtonClassName = 'app-top-icon-button';
   const handleViewTabClick = useCallback((view: LibraryView) => {
@@ -359,7 +370,7 @@ const Header: React.FC<HeaderProps> = ({
             <BrandLogo variant="header" />
             <div className="hidden xl:flex flex-col">
               <span className="text-sm font-semibold text-gray-100">
-                {isPro ? 'Image MetaHub Pro' : isTrialActive ? 'Image MetaHub Pro Trial' : 'Image MetaHub'}
+                {isPro ? 'Image MetaHub Pro' : isTrialActive ? t('shell.trialBrand') : 'Image MetaHub'}
               </span>
               <span className="text-[10px] text-gray-500">v0.23.1</span>
             </div>
@@ -369,8 +380,8 @@ const Header: React.FC<HeaderProps> = ({
               onClick={onOpenLicense}
               className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
               title={isFree
-                ? (canStartTrial ? 'Start trial or activate license' : 'Activate license')
-                : formatLicenseValidity(licensePlan, licenseExpiresAt) ?? 'Manage license and status'}
+                ? (canStartTrial ? t('shell.startTrial') : t('settings.license.activateLicense'))
+                : licenseValidity ?? t('shell.manageLicense')}
             >
               <Crown className="h-3 w-3" />
               <span>{statusConfig.label}</span>
@@ -379,7 +390,7 @@ const Header: React.FC<HeaderProps> = ({
 
           {libraryView && onLibraryViewChange && (
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
-              <nav aria-label="Workspaces" className="flex w-max items-center gap-1">
+              <nav aria-label={t('shell.workspaces')} className="flex w-max items-center gap-1">
                 {viewTabs.map((tab) => {
                   const isComfyUITab = tab.id === 'comfyui';
                   return (
@@ -425,14 +436,14 @@ const Header: React.FC<HeaderProps> = ({
                           ? 'ring-2 ring-cyan-400 bg-cyan-500/25 text-cyan-100'
                           : ''
                       }`}
-                      title={isComfyUITab ? 'Open ComfyUI, or drop an image here to load its workflow' : undefined}
+                      title={isComfyUITab ? t('shell.comfyDrop') : undefined}
                     >
                       <span>{tab.label}</span>
                       {isComfyUITab && libraryView === 'comfyui' && (
                         <span
                           role="status"
-                          aria-label={`ComfyUI: ${comfyUILastConnectionStatus}`}
-                          title={`ComfyUI: ${comfyUILastConnectionStatus}`}
+                          aria-label={t('shell.connection', { status: connectionStatus })}
+                          title={t('shell.connection', { status: connectionStatus })}
                           className={`h-1.5 w-1.5 shrink-0 rounded-full ${comfyUILastConnectionStatus === 'connected' ? 'bg-green-400' : comfyUILastConnectionStatus === 'error' ? 'bg-red-400' : 'bg-gray-500'}`}
                         />
                       )}
@@ -444,7 +455,7 @@ const Header: React.FC<HeaderProps> = ({
                     key={tab.key}
                     onClick={tab.run}
                     className="app-workspace-tab"
-                    title={`${tab.label} (opens Explore)`}
+                    title={t('shell.opensExplore', { label: tab.label })}
                   >
                     <span>{tab.label}</span>
                     {tab.count ? (
@@ -483,11 +494,11 @@ const Header: React.FC<HeaderProps> = ({
                 onClick={() => setIsPlanSelectorOpen(true)}
                 className="app-top-pill h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100"
               >
-                Get Pro
+                {t('shell.getPro')}
               </button>
               {canExtendTrial && onOpenTrialExtension && (
                 <button type="button" onClick={onOpenTrialExtension} className="text-[11px] leading-tight text-accent hover:underline">
-                  Activate {TRIAL_EXTENSION_DAYS} extra trial days
+                  {t('shell.extendTrial', { days: TRIAL_EXTENSION_DAYS })}
                 </button>
               )}
             </div>
@@ -497,7 +508,7 @@ const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setEnableSafeMode(!enableSafeMode)}
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent ${enableSafeMode ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : 'text-gray-500 hover:text-gray-200'}`}
-              title={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'} aria-label={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'}
+              title={enableSafeMode ? t('shell.safeOn') : t('shell.safeOff')} aria-label={enableSafeMode ? t('shell.safeOn') : t('shell.safeOff')}
             >
               {enableSafeMode ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
@@ -506,14 +517,14 @@ const Header: React.FC<HeaderProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
-              title="Report a bug or provide feedback" aria-label="Report a bug or provide feedback"
+              title={t('shell.feedback')} aria-label={t('shell.feedback')}
             >
               <Bug size={16} />
             </a>
             <button
               onClick={onOpenSettings}
               className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
-              title="Open Settings" aria-label="Open Settings"
+              title={t('shell.openSettings')} aria-label={t('shell.openSettings')}
             >
               <Settings size={16} />
             </button>

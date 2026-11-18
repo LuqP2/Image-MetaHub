@@ -145,7 +145,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'loras',
-      title: 'LoRAs',
+      title: t('comparison.loras'),
       items: availableLoras,
       selectedValues: selectedLoras,
       excludedValues: excludedLoras,
@@ -271,7 +271,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       className={`fixed left-0 top-[var(--imh-header-height,61px)] bottom-0 z-40 flex flex-col border-r border-gray-800/70 bg-gray-900/90 backdrop-blur-md shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
       <div
         role="separator"
-        aria-label="Resize filters sidebar"
+        aria-label={t('shell.resizeFilters')}
         aria-orientation="vertical"
         onPointerDown={onResizeStart}
         className="absolute right-0 top-0 z-50 flex h-full w-3 translate-x-1/2 cursor-col-resize items-center justify-center"
@@ -282,7 +282,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Header with collapse button */}
       <div className="flex flex-col border-b border-gray-800/70 bg-gray-900/55">
         <div className="flex items-center gap-3 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-100">Filters</h2>
+          <h2 className="text-sm font-semibold text-gray-100">{t('shell.filters')}</h2>
           <button
             onClick={onToggleCollapse}
             className="app-top-icon-button ml-auto h-8 w-8"

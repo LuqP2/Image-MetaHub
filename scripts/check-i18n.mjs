@@ -7,7 +7,7 @@ const base = process.argv[2];
 function fromBase(path) {
   if (!base || /^0{40}$/.test(base)) return {};
   try {
-    return JSON.parse(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    return JSON.parse(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }));
   } catch {
     const paths = execFileSync('git', ['ls-tree', '--name-only', base, '--', path], { encoding: 'utf8' });
     if (paths.trim()) throw new Error(`Cannot read ${path} at ${base}`);
