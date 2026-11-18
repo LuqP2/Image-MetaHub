@@ -307,3 +307,6 @@ button.board-tab-name { cursor:pointer; }
 .board-prompt-library-preview img { width:100%; height:100%; object-fit:cover; }
 .board-prompt-library-copy { flex:1; min-width:0; overflow-wrap:anywhere; }
 .board-prompt-library-copy strong { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+
+.board-smart-frame .board-filter-primary{background:rgb(var(--accent) / .18);border-color:rgb(var(--accent));color:rgb(var(--accent));flex-shrink:0}
+.board-frame-hint{color:rgb(var(--gray-400));flex-shrink:0}

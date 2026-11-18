@@ -2,6 +2,9 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CanvasWorkspace from '../components/CanvasWorkspace';
+import { useBoardQueryActions } from '../components/boards/BoardQueryContext';
+import { useBoardUIStore } from '../store/useBoardUIStore';
+import { normalizeLibraryQueryCriteria } from '../services/libraryQuery/criteria';
 import { useImageStore } from '../store/useImageStore';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
@@ -13,7 +16,7 @@ const feature = vi.hoisted(() => ({ canUseCanvas: true, canUseComparison: true, 
 const editor = vi.hoisted(() => ({ latest: null as Record<string, unknown> | null }));
 vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => feature }));
 vi.mock('../services/boards/boardService', () => ({ boardService: { save: async (document, revision) => ({ ...document, revision: revision + 1 }), flush: async () => {} } }));
-vi.mock('../components/BoardWorkspace', () => ({ default: props => { editor.latest = props; return <div>{props.selectionActions}{props.assetActions}{props.assetMetadata}{props.assetStatus}</div>; } }));
+vi.mock('../components/BoardWorkspace', () => ({ default: props => { editor.latest = props; const queries = useBoardQueryActions(); return <div><button onClick={() => queries?.create({ x: 900, y: 600 })}>Create test Smart Frame</button>{props.selectionActions}{props.assetActions}{props.assetMetadata}{props.assetStatus}</div>; } }));
 vi.mock('../components/ComparisonMetadataPanel', () => ({ default: ({ image }) => <div>Metadata {image.name}</div> }));
 
 beforeEach(() => { feature.canUseCanvas = true; feature.canUseComparison = true; feature.showProModal.mockClear(); useBoardStore.setState({ sessions: {}, activeBoardId: null, closing: false }); });
@@ -62,4 +65,46 @@ describe('Canvas IMH integration', () => {
     expect(screen.queryByRole('button', { name: 'Compare selected images' })).toBeNull();
     feature.canUseCanvas = false;
   });
+});
+
+
+it('creates an independent whole-library frame immediately while loading and supports undo/redo', () => {
+  const board = createBoardDocument();
+  useBoardStore.getState().adoptBoard(board);
+  useImageStore.setState({ images: [], searchQuery: 'forest', selectedModels: ['Flux'], isLoading: true });
+  useBoardUIStore.getState().setFilterTarget({ boardId: board.id, frameId: 'previous' });
+  render(<CanvasWorkspace loading onOpenImage={vi.fn()} onCompareImages={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create test Smart Frame' }));
+  const session = useBoardStore.getState().sessions[board.id];
+  const frame = session.document.objects[0];
+  expect(frame).toMatchObject({ type: 'smart-frame', title: 'Smart Frame', x: 580, y: 390, width: 640, height: 420,
+    source: { kind: 'library' }, criteria: normalizeLibraryQueryCriteria(), groupConstraints: [], layout: { kind: 'grid' } });
+  expect(session.document.objects).toHaveLength(1);
+  expect(session.selectedObjectIds).toEqual([frame.id]);
+  expect(session.revealRequest).toMatchObject({ ids: [frame.id], shrink: true });
+  expect(session.past).toHaveLength(1);
+  expect(useBoardStore.getState().activeBoardId).toBe(board.id);
+  expect(useBoardUIStore.getState().filterTarget).toBeNull();
+  expect(useImageStore.getState()).toMatchObject({ searchQuery: 'forest', selectedModels: ['Flux'] });
+  act(() => useBoardStore.getState().undo(board.id));
+  expect(useBoardStore.getState().sessions[board.id].document.objects).toEqual([]);
+  act(() => useBoardStore.getState().redo(board.id));
+  expect(useBoardStore.getState().sessions[board.id].document.objects).toEqual([frame]);
+  fireEvent.click(screen.getByRole('button', { name: 'Create test Smart Frame' }));
+  const frames = useBoardStore.getState().sessions[board.id].document.objects;
+  expect(frames).toHaveLength(2);
+  expect(frames[1].id).not.toBe(frame.id);
+  expect(frames[1].x === frame.x && frames[1].y === frame.y).toBe(false);
+  useImageStore.setState({ isLoading: false, searchQuery: '', selectedModels: [] });
+});
+
+it.each(['read-only', 'closing', 'recovering'] as const)('blocks Smart Frame creation when %s', reason => {
+  const board = createBoardDocument();
+  useBoardStore.getState().adoptBoard(board);
+  if (reason === 'read-only') feature.canUseCanvas = false;
+  if (reason === 'closing') useBoardStore.setState({ closing: true });
+  if (reason === 'recovering') useBoardStore.setState(state => ({ sessions: { ...state.sessions, [board.id]: { ...state.sessions[board.id], recovering: true } } }));
+  render(<CanvasWorkspace loading={false} onOpenImage={vi.fn()} onCompareImages={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create test Smart Frame' }));
+  expect(useBoardStore.getState().sessions[board.id].document.objects).toEqual([]);
 });

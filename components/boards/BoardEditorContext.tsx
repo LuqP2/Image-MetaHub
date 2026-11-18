@@ -16,6 +16,7 @@ export interface BoardEditorActions {
   editingObjectId?: string | null;
   editObject?(id: string | null): void;
   inspectSelection?(): void;
+  getVisibleCenter?(): BoardPoint | undefined;
   reportError?(message: string): void;
   exportPng?(selection: boolean): void;
   begin(): void;
