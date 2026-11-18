@@ -50,5 +50,13 @@
   "generationQueue": {
     "paths": ["components/GenerationQueueSidebar.tsx"],
     "literalExceptions": ["A1111", "ComfyUI"]
+  },
+  "updates": {
+    "paths": ["components/UpdateNotificationModal.tsx"],
+    "literalExceptions": []
+  },
+  "licensing": {
+    "paths": ["components/TrialExpiredBanner.tsx", "components/ReleaseTrialExtensionNotice.tsx", "components/TrialExtensionModal.tsx"],
+    "literalExceptions": []
   }
 }

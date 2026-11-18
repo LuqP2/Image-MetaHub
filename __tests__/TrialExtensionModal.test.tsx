@@ -1,13 +1,30 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import TrialExtensionModal from '../components/TrialExtensionModal';
 import { useLicenseStore } from '../store/useLicenseStore';
 
 describe('extra trial offer', () => {
+  it.each(languages)('keeps the extra trial action unchanged in %s', async (language) => {
+    const activate = vi.spyOn(useLicenseStore.getState(), 'activateTrialExtension').mockResolvedValue(false);
+    const close = vi.fn();
+    render(<TrialExtensionModal isOpen onClose={close} />);
+    act(() => useSettingsStore.setState({ language }));
+    expect(screen.getByRole('heading', { name: formatMessage(language, 'licensing.extraTitle', { days: 3 }) })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'shell.extendTrial', { days: 3 }) }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(formatMessage(language, 'licensing.extraFailed')));
+    expect(activate).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'licensing.closeExtra') }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(useLicenseStore.getState().licenseStatus).toBe('expired');
+  });
+
   beforeEach(() => {
     localStorage.clear();
-    useLicenseStore.setState({ initialized: true, trialAvailable: true, licenseStatus: 'expired', trialActivated: true, trialStartDate: Date.now() - 20 * 86400000, trialExtensionStartDate: null });
+    useSettingsStore.getState().resetState();
+    useLicenseStore.setState({ initialized: true, trialAvailable: true, licenseStatus: 'expired', trialActivated: true, trialStartDate: Date.now() - 20 * 86400000, trialExtensionStartDate: null, licenseMessage: null });
   });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 

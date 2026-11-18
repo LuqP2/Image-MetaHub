@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import TrialExpiredBanner from '../components/TrialExpiredBanner';
 import { useLicenseStore } from '../store/useLicenseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -32,6 +33,18 @@ const bannerText = /your pro trial has ended/i;
 const ctaName = /get the lifetime license/i;
 
 describe('TrialExpiredBanner', () => {
+  it.each(languages)('preserves checkout URLs and dismissal while translating to %s', (language) => {
+    setLicense('expired');
+    const { container } = render(<TrialExpiredBanner />);
+    const links = [...container.querySelectorAll('a')].map(link => link.href);
+    act(() => useSettingsStore.setState({ language }));
+    expect(screen.getByRole('region', { name: formatMessage(language, 'licensing.endedRegion') })).toBeTruthy();
+    expect(screen.getByText(formatMessage(language, 'licensing.endedTitle'))).toBeTruthy();
+    expect([...container.querySelectorAll('a')].map(link => link.href)).toEqual(links);
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'licensing.dismissEnded') }));
+    expect(useLicenseStore.getState().trialExpiredNoticeDismissed).toBe(true);
+  });
+
   beforeEach(() => {
     localStorage.clear();
     useSettingsStore.getState().resetState();
