@@ -66,7 +66,9 @@ const DetachedImageModalApp: React.FC = () => {
       .then(() => useLicenseStore.getState().checkLicenseStatus());
   }, []);
 
-  const sendCommand = useCallback(async (command: ImageViewerCommand) => {
+  const sendCommand = useCallback(async (
+    command: ImageViewerCommand,
+  ): ReturnType<NonNullable<typeof window.electronAPI>['imageViewerCommand']> => {
     const api = window.electronAPI;
     if (!api?.imageViewerCommand) return { success: false, error: translateViewer('imageViewer.bridgeUnavailable') };
     return api.imageViewerCommand({ sessionId: sessionIdRef.current, command });
