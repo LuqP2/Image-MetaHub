@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import RelatedImagesMenu from './contextMenu/RelatedImagesMenu';
 import type { RelatedImagesMode } from '../utils/relatedImages';
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
@@ -961,6 +962,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   diagnosticsFlowId,
   onSlideshowStartAcknowledged,
 }) => {
+  const { t } = useTranslation();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
@@ -4010,8 +4012,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomIn}
                 disabled={zoom >= maxViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
-                aria-label={zoom >= maxViewerZoom ? 'Zoom In (Maximum reached)' : 'Zoom In'}
+                title={zoom >= maxViewerZoom ? t('imageViewer.maximumZoom') : t('comparisonPane.zoomIn')}
+                aria-label={zoom >= maxViewerZoom ? t('imageViewer.maximumZoom') : t('comparisonPane.zoomIn')}
               >
                 <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -4022,8 +4024,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onClick={handleZoomOut}
                 disabled={zoom <= minViewerZoom}
                 className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                title={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
-                aria-label={zoom <= minViewerZoom ? 'Zoom Out (Minimum reached)' : 'Zoom Out'}
+                title={zoom <= minViewerZoom ? t('imageViewer.minimumZoom') : t('comparisonPane.zoomOut')}
+                aria-label={zoom <= minViewerZoom ? t('imageViewer.minimumZoom') : t('comparisonPane.zoomOut')}
               >
                 <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -4032,18 +4034,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={handleActualSize}
                 className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isActualSizeZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
-                title={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
-                aria-label={isActualSizeZoom ? 'Actual Size (Current)' : 'Actual Size'}
+                title={isActualSizeZoom ? t('imageViewer.actualSizeCurrent') : t('imageViewer.actualSize')}
+                aria-label={isActualSizeZoom ? t('imageViewer.actualSizeCurrent') : t('imageViewer.actualSize')}
               >
                 1:1
               </button>
               <button
                 onClick={handleFitToScreen}
                 className={`rounded p-2 text-xs text-white/90 transition-all hover:bg-white/10 ${isFitZoom ? 'bg-white/15 ring-1 ring-white/25' : ''}`}
-                title={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
-                aria-label={isFitZoom ? 'Fit to Screen (Current)' : 'Fit to Screen'}
+                title={isFitZoom ? t('imageViewer.fitToScreenCurrent') : t('imageViewer.fitToScreen')}
+                aria-label={isFitZoom ? t('imageViewer.fitToScreenCurrent') : t('imageViewer.fitToScreen')}
               >
-                Fit
+                {t('settings.viewer.fit')}
               </button>
             </div>
           )}
@@ -4059,17 +4061,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 type="button"
                 onClick={() => setIsSlideshowPlaying((current) => !current)}
                 className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
-                title={isSlideshowPlaying ? 'Pause slideshow (Space)' : 'Play slideshow (Space)'}
+                title={isSlideshowPlaying ? t('imageViewer.pauseSlideshow') : t('imageViewer.playSlideshow')}
               >
                 {isSlideshowPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {isSlideshowPlaying ? 'Pause' : 'Play'}
+                {isSlideshowPlaying ? t('settings.visualSearch.pause') : t('imageViewer.play')}
               </button>
               <button
                 type="button"
                 onClick={exitSlideshow}
                 className="rounded-md bg-white/10 p-1.5 text-white/90 transition-colors hover:bg-white/20"
-                aria-label="Exit slideshow"
-                title="Exit slideshow"
+                aria-label={t('imageViewer.exitSlideshow')}
+                title={t('imageViewer.exitSlideshow')}
               >
                 <X className="h-4 w-4" />
               </button>

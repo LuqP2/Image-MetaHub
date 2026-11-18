@@ -1,3 +1,5 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import { formatMessage } from '../i18n/messages.mjs';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ImageModal from './ImageModal';
 import ProOnlyModal from './ProOnlyModal';
@@ -13,7 +15,10 @@ const getSessionId = () => new URLSearchParams(window.location.search).get('sess
 
 const asIndexedImage = (image: ImageViewerSnapshot['image']): IndexedImage => image as IndexedImage;
 
+const translateViewer = (key: MessageKey) => formatMessage(useSettingsStore.getState().language, key);
+
 const DetachedImageModalApp: React.FC = () => {
+  const { t } = useTranslation();
   const sessionIdRef = useRef(getSessionId());
   const latestRevisionRef = useRef(-1);
   const appliedSnapshotRef = useRef<{ sessionId: string; revision: number } | null>(null);
@@ -63,7 +68,7 @@ const DetachedImageModalApp: React.FC = () => {
 
   const sendCommand = useCallback(async (command: ImageViewerCommand) => {
     const api = window.electronAPI;
-    if (!api?.imageViewerCommand) return { success: false, error: 'Desktop viewer bridge is unavailable.' };
+    if (!api?.imageViewerCommand) return { success: false, error: translateViewer('imageViewer.bridgeUnavailable') };
     return api.imageViewerCommand({ sessionId: sessionIdRef.current, command });
   }, []);
 
@@ -147,7 +152,7 @@ const DetachedImageModalApp: React.FC = () => {
     useImageStore.setState({
       toggleFavorite: async (imageId: string) => {
         const result = await sendCommand({ type: 'toggle-favorite', imageId });
-        if (!result.success) throw new Error(result.error || 'Favorite was not saved.');
+        if (!result.success) throw new Error(result.error || translateViewer('imageViewer.favoriteNotSaved'));
         const isFavorite = result.isFavorite;
         if (typeof isFavorite !== 'boolean') return;
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
@@ -155,14 +160,14 @@ const DetachedImageModalApp: React.FC = () => {
       },
       setImageRating: async (imageId: string, rating) => {
         const result = await sendCommand({ type: 'set-rating', imageId, rating });
-        if (!result.success) throw new Error(result.error || 'Rating was not saved.');
+        if (!result.success) throw new Error(result.error || translateViewer('imageViewer.ratingNotSaved'));
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, rating } : entry) }));
       },
       addTagToImage: async (imageId: string, tag: string) => {
         const normalized = tag.trim().toLowerCase();
         const result = await sendCommand({ type: 'add-tag', imageId, tag });
-        if (!result.success) throw new Error(result.error || 'Tag was not saved.');
+        if (!result.success) throw new Error(result.error || translateViewer('imageViewer.tagNotSaved'));
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId && normalized && !entry.tags?.includes(normalized)
             ? { ...entry, tags: [...(entry.tags || []), normalized] }
@@ -170,7 +175,7 @@ const DetachedImageModalApp: React.FC = () => {
       },
       removeTagFromImage: async (imageId: string, tag: string) => {
         const result = await sendCommand({ type: 'remove-tag', imageId, tag });
-        if (!result.success) throw new Error(result.error || 'Tag removal was not saved.');
+        if (!result.success) throw new Error(result.error || translateViewer('imageViewer.tagNotRemoved'));
         useImageStore.setState((state) => ({ images: state.images.map((entry) =>
           entry.id === imageId ? { ...entry, tags: (entry.tags || []).filter((value) => value !== tag) } : entry) }));
       },
@@ -207,7 +212,7 @@ const DetachedImageModalApp: React.FC = () => {
   }, [snapshot]);
 
   if (!snapshot) {
-    return <div className="flex h-screen items-center justify-center bg-gray-950 text-sm text-gray-400">Opening image…</div>;
+    return <div className="flex h-screen items-center justify-center bg-gray-950 text-sm text-gray-400">{t('imageViewer.opening')}</div>;
   }
 
   const image = asIndexedImage(snapshot.image);

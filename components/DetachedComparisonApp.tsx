@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useState } from 'react';
 import { ComparisonSurface } from './ComparisonSurface';
 import { useImageStore } from '../store/useImageStore';
@@ -8,6 +9,8 @@ import { resolveTheme } from '../src/theme/themeRegistry';
 import type { ComparisonSnapshot } from '../services/comparisonContracts';
 import type { IndexedImage, Directory } from '../types';
 export default function DetachedComparisonApp() {
+  const { t } = useTranslation();
+  useEffect(() => { document.title = t('comparison.windowTitle'); }, [t]);
   const [snapshot, setSnapshot] = useState<ComparisonSnapshot | null>(null);
   const sessionId = new URLSearchParams(window.location.search).get('sessionId') || '';
   const theme = useSettingsStore(state => state.theme);
@@ -36,6 +39,6 @@ export default function DetachedComparisonApp() {
   }, [sessionId]);
   useEffect(() => { if (snapshot) void window.electronAPI?.comparison?.ready(sessionId, true); }, [snapshot, sessionId]);
   const api = window.electronAPI?.comparison;
-  if (!snapshot) return <p role="status">Loading comparison…</p>;
+  if (!snapshot) return <p role="status">{t('comparisonPane.loading')}</p>;
   return <ComparisonSurface onGenerate={async request => { await api?.command(sessionId, { type: 'generate', request }); }} isOpen onClose={() => { void api?.close(sessionId); }} onReturn={() => { void api?.close(sessionId, true); }} onSwap={() => { void api?.command(sessionId, { type: 'swap' }); }} onRemove={index => { void api?.command(sessionId, { type: 'remove', index }); }} />;
 }

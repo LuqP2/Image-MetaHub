@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { CSSProperties, FC, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Pause, Play } from 'lucide-react';
@@ -56,6 +57,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   onVisualAnalysisChange,
   highlightedRegion,
 }) => {
+  const { t } = useTranslation();
   const { imageUrl: leftUrl, loadError: leftError, isLoading: isLeftLoading } = useComparisonImageSource(leftImage, leftDirectory);
   const { imageUrl: rightUrl, loadError: rightError, isLoading: isRightLoading } = useComparisonImageSource(rightImage, rightDirectory);
   const [sliderValue, setSliderValue] = useState(50);
@@ -250,7 +252,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (visualError) {
       return (
         <div className="absolute left-1/2 top-4 max-w-md -translate-x-1/2 rounded-lg border border-amber-500/30 bg-amber-950/80 px-3 py-2 text-sm text-amber-100 shadow-lg">
-          Visual analysis unavailable: {visualError}
+          {t('comparison.analysisError', { error: visualError })}
         </div>
       );
     }
@@ -259,7 +261,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       return (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="rounded-lg border border-white/10 bg-black/70 px-4 py-2 text-sm text-gray-200 shadow">
-            Building visual comparison...
+            {t('comparison.building')}
           </div>
         </div>
       );
@@ -275,12 +277,12 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
               type="button"
               onClick={() => setIsFlickerPaused((current) => !current)}
               className="rounded p-1 text-gray-200 hover:bg-white/10 hover:text-white"
-              title={isFlickerPaused ? 'Resume flicker' : 'Pause flicker'}
-              aria-label={isFlickerPaused ? 'Resume flicker' : 'Pause flicker'}
+              title={isFlickerPaused ? t('comparison.resumeFlicker') : t('comparison.pauseFlicker')}
+              aria-label={isFlickerPaused ? t('comparison.resumeFlicker') : t('comparison.pauseFlicker')}
             >
               {isFlickerPaused ? <Play aria-hidden="true" className="h-3.5 w-3.5" /> : <Pause aria-hidden="true" className="h-3.5 w-3.5" />}
             </button>
-            {advancedSettings.showLabels ? <span>{isFlickerShowingRight ? `Image B: ${rightImage.name}` : `Image A: ${leftImage.name}`}</span> : <span>{isFlickerShowingRight ? 'Image B' : 'Image A'}</span>}
+            {advancedSettings.showLabels ? <span>{isFlickerShowingRight ? t('comparison.namedImage', { label: t('comparison.imageB'), name: rightImage.name }) : t('comparison.namedImage', { label: t('comparison.imageA'), name: leftImage.name })}</span> : <span>{isFlickerShowingRight ? t('comparison.imageB') : t('comparison.imageA')}</span>}
           </div>
         </>
       );
@@ -289,9 +291,9 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (mode === 'difference-map') {
       return (
         <>
-          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt="Difference base" className="absolute inset-0 h-full w-full select-none object-contain" />}
+          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt={t('comparison.differenceBase')} className="absolute inset-0 h-full w-full select-none object-contain" />}
           {diffOnly && <div className="absolute inset-0 bg-black" />}
-          {heatmapUrl && <img src={heatmapUrl} alt="Difference heatmap" className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
+          {heatmapUrl && <img src={heatmapUrl} alt={t('comparison.heatmap')} className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
           {regionStyle && <div className="absolute border-2 border-white/80 bg-white/10 shadow-[0_0_18px_rgba(255,255,255,0.35)]" style={regionStyle} />}
         </>
       );
@@ -300,13 +302,13 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     if (mode === 'edge-difference') {
       return (
         <>
-          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt="Edge base" className="absolute inset-0 h-full w-full select-none object-contain opacity-45" />}
+          {!diffOnly && advancedBaseUrl && <img src={advancedBaseUrl} alt={t('comparison.edgeBase')} className="absolute inset-0 h-full w-full select-none object-contain opacity-45" />}
           {diffOnly && <div className="absolute inset-0 bg-black" />}
-          {edgeMapUrl && <img src={edgeMapUrl} alt="Edge difference map" className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
+          {edgeMapUrl && <img src={edgeMapUrl} alt={t('comparison.edgeMap')} className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
           <div className="absolute left-4 top-4 rounded-lg border border-white/10 bg-black/65 px-3 py-1.5 text-xs text-gray-100">
-            <span className="text-cyan-200">Cyan: Image A</span>
+            <span className="text-cyan-200">{t('comparison.cyanA')}</span>
             <span className="mx-2 text-gray-500">/</span>
-            <span className="text-fuchsia-200">Magenta: Image B</span>
+            <span className="text-fuchsia-200">{t('comparison.magentaB')}</span>
           </div>
         </>
       );
@@ -317,7 +319,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
         <>
           {normalizedLeftUrl && <img src={normalizedLeftUrl} alt={leftImage.name} className="absolute inset-0 h-full w-full select-none object-contain" />}
           <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-white/10 bg-black/65 px-3 py-1 text-xs text-gray-100 shadow">
-            Move over the image to inspect A / Diff / B
+            {t('comparison.inspect')}
           </div>
         </>
       );
@@ -331,7 +333,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
     const loupeLayers = [
       { url: normalizedLeftUrl, label: 'A' },
-      { url: heatmapUrl, label: 'Diff', opacity: advancedSettings.opacity / 100 },
+      { url: heatmapUrl, label: t('comparison.diff'), opacity: advancedSettings.opacity / 100 },
       { url: normalizedRightUrl, label: 'B' },
     ];
     const container = containerRef.current?.getBoundingClientRect();
@@ -402,7 +404,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
         <div className="absolute inset-y-0 left-2/3 w-px bg-white/70" />
         <div className="absolute inset-x-0 top-2 grid grid-cols-3 px-4 text-center text-[10px] font-semibold uppercase tracking-wide text-white/85">
           <span>A</span>
-          <span>Diff</span>
+          <span>{t('comparison.diff')}</span>
           <span>B</span>
         </div>
       </div>
@@ -414,7 +416,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       <div className="relative h-[60vh] md:h-full flex items-center justify-center bg-gray-900/50 border-y border-gray-700">
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-red-300 font-semibold">Failed to load image</p>
+          <p className="text-red-300 font-semibold">{t('comparisonPane.loadFailed')}</p>
           <p className="text-gray-500 text-sm mt-2 max-w-md mx-auto">{errorMessage}</p>
         </div>
       </div>
@@ -541,7 +543,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
 
                 {ready && mode === 'hover' && (
                   <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 border border-white/10 text-xs text-gray-100 shadow backdrop-blur-sm">
-                    {isHovering ? `Showing: ${rightImage.name}` : `Hover to reveal: ${rightImage.name}`}
+                    {isHovering ? t('comparison.showing', { name: rightImage.name }) : t('comparison.hoverReveal', { name: rightImage.name })}
                   </div>
                 )}
               </div>
@@ -553,37 +555,37 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
               <button
                 onClick={() => zoomIn(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
-                title="Zoom In"
-                aria-label="Zoom In"
+                title={t('comparisonPane.zoomIn')}
+                aria-label={t('comparisonPane.zoomIn')}
               >
                 <ZoomIn aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
               <button
                 onClick={() => zoomOut(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
-                title="Zoom Out"
-                aria-label="Zoom Out"
+                title={t('comparisonPane.zoomOut')}
+                aria-label={t('comparisonPane.zoomOut')}
               >
                 <ZoomOut aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
               <button
                 onClick={() => resetTransform(0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
-                title="Reset Zoom"
-                aria-label="Reset Zoom"
+                title={t('comparisonPane.resetZoom')}
+                aria-label={t('comparisonPane.resetZoom')}
               >
                 <RotateCcw aria-hidden="true" className="w-5 h-5 text-white" />
               </button>
             </div>
 
             <div className="absolute bottom-4 left-4 bg-black/65 text-white text-sm font-medium rounded-lg px-3 py-1.5 backdrop-blur-sm border border-white/10 max-w-[45%] truncate">
-              <span className="text-xs uppercase tracking-wide text-gray-300 mr-2">Left</span>
+              <span className="text-xs uppercase tracking-wide text-gray-300 mr-2">{t('comparison.left')}</span>
               <span title={leftImage.name} className="align-middle">{leftImage.name}</span>
             </div>
 
             <div className="absolute bottom-4 right-4 bg-black/65 text-white text-sm font-medium rounded-lg px-3 py-1.5 backdrop-blur-sm border border-white/10 max-w-[45%] truncate text-right">
               <span title={rightImage.name} className="align-middle">{rightImage.name}</span>
-              <span className="text-xs uppercase tracking-wide text-gray-300 ml-2">Right</span>
+              <span className="text-xs uppercase tracking-wide text-gray-300 ml-2">{t('comparison.right')}</span>
             </div>
           </>
         )}

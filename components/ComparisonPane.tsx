@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import Model3DViewer from './Model3DViewer';
 import ExrViewer from './ExrViewer';
 import { isExrFileName, isModel3DFileName } from '../utils/mediaTypes.js';
@@ -23,6 +24,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   className,
   imageLabel,
 }) => {
+  const { t } = useTranslation();
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
   const isModel3D = isModel3DFileName(image.name);
@@ -31,14 +33,14 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   const { transformRef, applyExternalZoom, isApplyingExternalZoom } =
     useComparisonZoom(externalZoom, 0.5, !isExr && !isModel3D && !loadError);
 
-  if (isModel3D) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><Model3DViewer image={image} directoryPath={directoryPath} externalCamera={externalCamera} onCameraChange={onCameraChange} className="h-full" />{onRemove && <button aria-label={`Remove ${image.name}`} className="absolute bottom-2 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
-  if (isExr) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><ExrViewer image={image} directoryPath={directoryPath} externalZoom={externalZoom} onZoomChange={onZoomChange} />{onRemove && <button className="absolute bottom-8 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>Remove</button>}</div>;
+  if (isModel3D) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><Model3DViewer image={image} directoryPath={directoryPath} externalCamera={externalCamera} onCameraChange={onCameraChange} className="h-full" />{onRemove && <button aria-label={t('comparisonPane.removeFile', { name: image.name })} className="absolute bottom-2 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>{t('comparisonPane.remove')}</button>}</div>;
+  if (isExr) return <div className={`relative min-h-0 ${className ?? ''}`} onMouseEnter={() => onHoverChange?.(true)} onMouseLeave={() => onHoverChange?.(false)}><ExrViewer image={image} directoryPath={directoryPath} externalZoom={externalZoom} onZoomChange={onZoomChange} />{onRemove && <button className="absolute bottom-8 right-2 rounded bg-black/75 px-2 py-1 text-xs text-white" onClick={onRemove}>{t('comparisonPane.remove')}</button>}</div>;
   if (loadError) {
     return (
       <div className={`flex items-center justify-center bg-gray-900/50 ${className ?? ''}`}>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-red-300 font-semibold">Failed to load image</p>
+          <p className="text-red-300 font-semibold">{t('comparisonPane.loadFailed')}</p>
           <p className="text-gray-400 text-sm mt-2">{image.name}</p>
           <p className="text-gray-500 text-xs mt-1">{loadError}</p>
         </div>
@@ -91,24 +93,24 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
               <button
                 onClick={() => zoomIn(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
-                title="Zoom In"
-                aria-label="Zoom In"
+                title={t('comparisonPane.zoomIn')}
+                aria-label={t('comparisonPane.zoomIn')}
               >
                 <ZoomIn className="w-5 h-5 text-white" />
               </button>
               <button
                 onClick={() => zoomOut(0.1, 0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
-                title="Zoom Out"
-                aria-label="Zoom Out"
+                title={t('comparisonPane.zoomOut')}
+                aria-label={t('comparisonPane.zoomOut')}
               >
                 <ZoomOut className="w-5 h-5 text-white" />
               </button>
               <button
                 onClick={() => resetTransform(0)}
                 className="p-2 bg-black/60 hover:bg-black/80 rounded-lg backdrop-blur-sm transition-colors"
-                title="Reset Zoom"
-                aria-label="Reset Zoom"
+                title={t('comparisonPane.resetZoom')}
+                aria-label={t('comparisonPane.resetZoom')}
               >
                 <RotateCcw className="w-5 h-5 text-white" />
               </button>
@@ -123,8 +125,8 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                   setIsGenerateModalOpen(true);
                 }}
                 className="p-2 bg-purple-600/80 hover:bg-purple-700/90 rounded-lg backdrop-blur-sm transition-colors"
-                title="Generate Variation"
-                aria-label="Generate Variation"
+                title={t('comparisonPane.generateVariation')}
+                aria-label={t('comparisonPane.generateVariation')}
                 disabled={!image.metadata?.normalizedMetadata?.prompt}
               >
                 <Sparkles className="w-5 h-5 text-white" />
@@ -139,8 +141,8 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                   onRemove();
                 }}
                 className="absolute left-4 top-4 z-10 rounded-lg border border-white/10 bg-black/65 p-2 text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-red-600/90"
-                title={`Remove ${image.name} from comparison`}
-                aria-label={`Remove ${image.name} from comparison`}
+                title={t('comparisonPane.removeFromComparison', { name: image.name })}
+                aria-label={t('comparisonPane.removeFromComparison', { name: image.name })}
               >
                 <X className="h-4 w-4" />
               </button>

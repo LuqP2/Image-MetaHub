@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import React, { useState, useEffect, FC, useMemo, useRef } from 'react';
 import { X, Repeat, ArrowLeft } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
@@ -24,7 +25,29 @@ export const getComparisonMetadataReference = (
   return index === 0 ? null : metadataReference;
 };
 
+const metadataLabels: Readonly<Record<string, MessageKey>> = {
+  prompt: 'libraryGallery.prompt',
+  negativePrompt: 'libraryGallery.negativePrompt',
+  model: 'libraryGallery.model',
+  models: 'libraryGallery.models',
+  loras: 'comparison.loras',
+  cfg_scale: 'comparison.cfgScale',
+  clip_skip: 'comparison.clipSkip',
+  seed: 'libraryGallery.seed',
+  steps: 'libraryGallery.steps',
+  sampler: 'librarySearch.sampler',
+  scheduler: 'librarySearch.scheduler',
+  width: 'comparison.width',
+  height: 'comparison.height',
+  generator: 'comparison.generator',
+  version: 'comparison.version',
+  module: 'comparison.module',
+  notes: 'comparison.notes',
+  tags: 'comparison.tags',
+};
+
 export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (request: import('../services/comparisonContracts').ComparisonGenerateRequest) => Promise<void>; onDetach?: () => void; onReturn?: () => void; onSwap?: () => void; onRemove?: (index: number) => void }> = ({ isOpen, onClose, onDetach, onReturn, onSwap, onRemove, onGenerate }) => {
+  const { t } = useTranslation();
   const comparisonImages = useImageStore((state) => state.comparisonImages);
   const directories = useImageStore((state) => state.directories);
   const swapComparisonImages = useImageStore((state) => state.swapComparisonImages);
@@ -220,13 +243,13 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
   if (!isOpen || imageCount < 2) return null;
 
   const viewModes: { id: ComparisonViewMode; label: string; hint: string; disabled?: boolean }[] = [
-    { id: 'side-by-side', label: imageCount > 2 ? 'Compare' : 'Side-by-Side', hint: imageCount > 2 ? 'Compare all selected images together' : 'Two panes with optional synced zoom' },
-    { id: 'slider', label: 'Slider', hint: 'Drag the divider to reveal each image', disabled: !supportsOverlayModes },
-    { id: 'hover', label: 'Hover', hint: 'Hover to toggle between the images', disabled: !supportsOverlayModes },
-    { id: 'difference-map', label: 'Diff Map', hint: 'Highlight changed pixels as a heatmap', disabled: !supportsOverlayModes },
-    { id: 'flicker', label: 'Flicker', hint: 'Alternate images in the same viewport', disabled: !supportsOverlayModes },
-    { id: 'loupe', label: 'Loupe', hint: 'Inspect Image A, diff, and Image B under the cursor', disabled: !supportsOverlayModes },
-    { id: 'edge-difference', label: 'Edges', hint: 'Compare structural outlines and silhouettes', disabled: !supportsOverlayModes },
+    { id: 'side-by-side', label: imageCount > 2 ? t('comparison.compare') : t('comparison.sideBySide'), hint: imageCount > 2 ? t('comparison.compareAll') : t('comparison.twoPanes') },
+    { id: 'slider', label: t('comparison.slider'), hint: t('comparison.sliderHint'), disabled: !supportsOverlayModes },
+    { id: 'hover', label: t('comparison.hover'), hint: t('comparison.hoverHint'), disabled: !supportsOverlayModes },
+    { id: 'difference-map', label: t('comparison.differenceMap'), hint: t('comparison.differenceHint'), disabled: !supportsOverlayModes },
+    { id: 'flicker', label: t('comparison.flicker'), hint: t('comparison.flickerHint'), disabled: !supportsOverlayModes },
+    { id: 'loupe', label: t('comparison.loupe'), hint: t('comparison.loupeHint'), disabled: !supportsOverlayModes },
+    { id: 'edge-difference', label: t('comparison.edges'), hint: t('comparison.edgesHint'), disabled: !supportsOverlayModes },
   ];
 
   return (
@@ -234,21 +257,21 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
       <div className="sticky top-0 z-10 bg-gray-800/90 backdrop-blur-sm border-b border-gray-700 px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            {onDetach && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onDetach}>Open in separate window</button>}
-            {onReturn && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onReturn}>Return to app</button>}
-            {models.length >= 2 && <label className="flex items-center gap-2 text-sm text-gray-200"><input type="checkbox" aria-label="Sync 3D cameras" checked={sync3DEnabled} onChange={event => { const enabled = event.target.checked; if (shared3DCamera) useComparisonUIStore.setState(state => ({ ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, ...Object.fromEntries(models.map(image => [image.id, shared3DCamera])) } } })); setSync3DEnabled(enabled); }} />Sync 3D cameras</label>}
-            <h2 className="text-lg font-semibold text-gray-200">Comparison View</h2>
+            {onDetach && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onDetach}>{t('comparison.detach')}</button>}
+            {onReturn && <button className="rounded border border-gray-600 px-3 py-1 text-sm text-gray-200" onClick={onReturn}>{t('comparison.returnToApp')}</button>}
+            {models.length >= 2 && <label className="flex items-center gap-2 text-sm text-gray-200"><input type="checkbox" aria-label={t('comparison.syncCameras')} checked={sync3DEnabled} onChange={event => { const enabled = event.target.checked; if (shared3DCamera) useComparisonUIStore.setState(state => ({ ui: { ...state.ui, cameras3D: { ...state.ui.cameras3D, ...Object.fromEntries(models.map(image => [image.id, shared3DCamera])) } } })); setSync3DEnabled(enabled); }} />{t('comparison.syncCameras')}</label>}
+            <h2 className="text-lg font-semibold text-gray-200">{t('comparison.title')}</h2>
             <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-200">
-              {imageCount} image{imageCount === 1 ? '' : 's'}
+              {t('comparison.imageCount', { count: imageCount })}
             </span>
             <button
               onClick={handleSwap}
               disabled={imageCount !== 2}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-600/50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title={imageCount === 2 ? 'Swap images (Space)' : 'Swap is only available when comparing 2 images'}
+              title={imageCount === 2 ? t('comparison.swapHint') : t('comparison.swapDisabled')}
             >
               <Repeat className="w-4 h-4" />
-              <span className="hidden sm:inline">Swap</span>
+              <span className="hidden sm:inline">{t('comparison.swap')}</span>
             </button>
           </div>
 
@@ -261,16 +284,16 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                   ? 'bg-blue-600 hover:bg-accent-strong text-white border-blue-500'
                   : 'bg-gray-700/50 hover:bg-gray-700 text-gray-300 border-gray-600/50'
               } ${!isSideBySide ? 'opacity-60 cursor-not-allowed' : ''}`}
-              title={isSideBySide ? 'Toggle zoom synchronization (S)' : 'Sync is available in compare mode'}
+              title={isSideBySide ? t('comparison.syncHint') : t('comparison.syncDisabled')}
             >
-              Sync: {syncEnabled ? 'ON' : 'OFF'}
+              {t('comparison.syncState', { state: syncEnabled ? 'on' : 'off' })}
             </button>
 
             <button
               onClick={handleClose}
               className="p-1.5 hover:bg-gray-700/50 text-gray-400 hover:text-white rounded-lg transition-colors"
-              title="Close (Escape)"
-              aria-label="Close comparison"
+              title={t('comparison.closeHint')}
+              aria-label={t('comparison.closeComparison')}
             >
               <X className="w-5 h-5" />
             </button>
@@ -285,7 +308,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
               <button
                 onClick={() => handleRemoveImage(index)}
                 className="rounded-full p-0.5 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-                title={`Remove ${image.name} from comparison`}
+                title={t('comparisonPane.removeFromComparison', { name: image.name })}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -296,7 +319,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Mode</span>
+              <span className="text-xs uppercase tracking-[0.12em] text-gray-400">{t('comparison.mode')}</span>
               <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
                 {viewModes.map((mode) => (
                   <button
@@ -318,7 +341,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
 
             {imageCount > 2 && isSideBySide && (
               <div className="flex items-center gap-2">
-                <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Layout</span>
+                <span className="text-xs uppercase tracking-[0.12em] text-gray-400">{t('comparison.layout')}</span>
                 <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
                   {(['strip', 'grid'] as ComparisonLayoutMode[]).map((mode) => (
                     <button
@@ -330,7 +353,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                           : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
                       }`}
                     >
-                      {mode === 'strip' ? 'Side Strip' : '2x2 Grid'}
+                      {mode === 'strip' ? t('comparison.strip') : t('comparison.grid')}
                     </button>
                   ))}
                 </div>
@@ -343,17 +366,17 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-600/50 text-sm font-medium transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Grid</span>
+            <span>{t('comparison.backToGrid')}</span>
           </button>
         </div>
 
-        {models.length > 0 && <p className="text-xs text-gray-400">3D files use side-by-side comparison. Pixel overlay and difference modes are available for images only.</p>}
+        {models.length > 0 && <p className="text-xs text-gray-400">{t('comparison.modelNotice')}</p>}
         {isAdvancedMode && supportsOverlayModes && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-700/60 bg-gray-950/45 px-3 py-2">
             {(viewMode === 'difference-map' || viewMode === 'edge-difference' || viewMode === 'loupe') && (
               <>
                 <label className="flex items-center gap-2 text-xs text-gray-300">
-                  Sensitivity
+                  {t('comparison.sensitivity')}
                   <input
                     type="range"
                     min={0}
@@ -365,7 +388,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                   <span className="w-6 text-right text-gray-500">{advancedSettings.threshold}</span>
                 </label>
                 <label className="flex items-center gap-2 text-xs text-gray-300">
-                  Opacity
+                  {t('comparison.opacity')}
                   <input
                     type="range"
                     min={20}
@@ -381,11 +404,11 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                     value={advancedSettings.baseMode}
                     onChange={(event) => updateAdvancedSettings({ baseMode: event.target.value as ComparisonAdvancedSettings['baseMode'] })}
                     className="rounded-lg border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
-                    title="Choose the base image below the visual difference layer"
+                    title={t('comparison.baseHint')}
                   >
-                    <option value="left">Image A base</option>
-                    <option value="right">Image B base</option>
-                    <option value="diff">Diff only</option>
+                    <option value="left">{t('comparison.baseA')}</option>
+                    <option value="right">{t('comparison.baseB')}</option>
+                    <option value="diff">{t('comparison.diffOnly')}</option>
                   </select>
                 )}
               </>
@@ -394,7 +417,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
             {viewMode === 'flicker' && (
               <>
                 <label className="flex items-center gap-2 text-xs text-gray-300">
-                  Speed
+                  {t('comparison.speed')}
                   <input
                     type="range"
                     min={150}
@@ -413,7 +436,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                     onChange={(event) => updateAdvancedSettings({ showLabels: event.target.checked })}
                     className="accent-blue-500"
                   />
-                  Labels
+                  {t('comparison.labels')}
                 </label>
               </>
             )}
@@ -421,7 +444,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
             {viewMode === 'loupe' && (
               <>
                 <label className="flex items-center gap-2 text-xs text-gray-300">
-                  Size
+                  {t('comparison.size')}
                   <input
                     type="range"
                     min={160}
@@ -433,7 +456,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                   />
                 </label>
                 <label className="flex items-center gap-2 text-xs text-gray-300">
-                  Zoom
+                  {t('comparison.zoom')}
                   <input
                     type="range"
                     min={1.4}
@@ -498,7 +521,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                   }
                   onRemove={imageCount > 2 ? () => handleRemoveImage(index) : undefined}
                   className={`h-full rounded-xl border border-gray-800 overflow-hidden ${isOddLastGridItem ? 'md:col-span-2' : ''}`}
-                  imageLabel={`Image ${index + 1}`}
+                  imageLabel={t('comparison.imageNumber', { number: index + 1 })}
                 />
                 );
               })}
@@ -512,7 +535,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
           <div className="mx-auto mb-4 grid max-w-7xl grid-cols-1 gap-3 md:grid-cols-[1.1fr_1fr]">
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-100">Visual Delta</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-100">{t('comparison.visualDelta')}</h3>
                 <button
                   type="button"
                   onMouseEnter={() => setHighlightDeltaRegion(true)}
@@ -521,39 +544,39 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                   onBlur={() => setHighlightDeltaRegion(false)}
                   className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-2 py-1 text-xs text-amber-100 hover:bg-amber-400/20"
                   disabled={!visualMetrics.strongestRegion}
-                  title="Highlight the strongest visual-change region"
+                  title={t('comparison.strongestHint')}
                 >
-                  Strongest region
+                  {t('comparison.strongest')}
                 </button>
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div className="rounded border border-gray-700 bg-gray-950/50 p-2">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Changed</div>
+                  <div className="text-xs uppercase tracking-wide text-gray-500">{t('comparison.changed')}</div>
                   <div className="mt-1 font-semibold text-gray-100">{visualMetrics.changedPercent.toFixed(1)}%</div>
                 </div>
                 <div className="rounded border border-gray-700 bg-gray-950/50 p-2">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Avg Delta</div>
+                  <div className="text-xs uppercase tracking-wide text-gray-500">{t('comparison.averageDelta')}</div>
                   <div className="mt-1 font-semibold text-gray-100">{visualMetrics.averageDelta.toFixed(1)}</div>
                 </div>
                 <div className="rounded border border-gray-700 bg-gray-950/50 p-2">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Canvas</div>
+                  <div className="text-xs uppercase tracking-wide text-gray-500">{t('comparison.canvas')}</div>
                   <div className="mt-1 font-semibold text-gray-100">{visualMetrics.width}x{visualMetrics.height}</div>
                 </div>
               </div>
             </div>
 
             <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
-              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-100">Metadata Delta</h3>
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-100">{t('comparison.metadataDelta')}</h3>
               {metadataDifferences.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {metadataDifferences.slice(0, 12).map((field) => (
                     <span key={field} className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-xs text-cyan-100">
-                      {getFieldLabel(field)}
+                      {Object.hasOwn(metadataLabels, field) ? t(metadataLabels[field]) : getFieldLabel(field)}
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">No normalized metadata differences detected.</p>
+                <p className="text-sm text-gray-400">{t('comparison.noMetadataDelta')}</p>
               )}
             </div>
           </div>
@@ -561,9 +584,9 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
 
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4 max-w-7xl mx-auto">
           <div>
-            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Metadata</h3>
+            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">{t('comparison.metadata')}</h3>
             {metadataViewMode === 'diff' && imageCount > 2 && (
-              <p className="mt-1 text-xs text-gray-500">Diff mode highlights differences against Image 1 as the reference.</p>
+              <p className="mt-1 text-xs text-gray-500">{t('comparison.diffReference')}</p>
             )}
           </div>
 
@@ -573,9 +596,9 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
             aria-checked={metadataViewMode === 'diff'}
             onClick={() => setMetadataViewMode((current) => (current === 'diff' ? 'standard' : 'diff'))}
             className="group inline-flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors"
-            title={metadataViewMode === 'diff' ? 'Highlighting differences — click to show standard view' : 'Showing standard view — click to highlight differences'}
+            title={metadataViewMode === 'diff' ? t('comparison.diffOnHint') : t('comparison.diffOffHint')}
           >
-            <span className={metadataViewMode === 'diff' ? 'text-gray-200' : ''}>Diff</span>
+            <span className={metadataViewMode === 'diff' ? 'text-gray-200' : ''}>{t('comparison.diff')}</span>
             <span
               className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
                 metadataViewMode === 'diff' ? 'bg-blue-600' : 'bg-gray-600/70'
@@ -604,7 +627,7 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
                 viewMode={metadataViewMode}
                 otherImageMetadata={otherImageMetadata}
                 className={isOddLastGridItem ? 'md:col-span-2' : ''}
-                compareLabel={index === 0 ? 'Reference' : metadataViewMode === 'diff' ? 'vs Image 1' : undefined}
+                compareLabel={index === 0 ? t('comparison.reference') : metadataViewMode === 'diff' ? t('comparison.vsFirst') : undefined}
                 isHighlighted={activeMetadataIndex === index}
                 registerScrollRef={registerMetadataScrollRef(index)}
                 onContentScroll={(scrollTop) => handleMetadataScroll(index, scrollTop)}
@@ -616,13 +639,13 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
 
       <div className="absolute bottom-4 left-4 text-xs text-gray-500 hidden md:block">
         <p>
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Esc</kbd> Close
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Esc</kbd>{' '}{t('comparison.close')}
           {' '}•{' '}
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">S</kbd> Toggle Sync
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">S</kbd>{' '}{t('comparison.toggleSync')}
           {imageCount === 2 ? (
             <>
               {' '}•{' '}
-              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Space</kbd> Swap
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Space</kbd>{' '}{t('comparison.swap')}
             </>
           ) : null}
         </p>

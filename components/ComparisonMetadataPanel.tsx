@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import { imagePromptText } from '../services/boards/promptMatching';
 import React, { FC, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
@@ -16,6 +17,7 @@ const MetadataField: FC<{
   field?: string;
   actions?: React.ReactNode;
 }> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field, actions }) => {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   // Check if value exists
   const hasValue = value !== undefined && value !== null && value !== '';
@@ -32,7 +34,7 @@ const MetadataField: FC<{
               <AlertTriangle className="w-3 h-3 text-gray-500" />
             </div>
           </div>
-          <p className="text-gray-400 text-sm mt-1 italic">Missing</p>
+          <p className="text-gray-400 text-sm mt-1 italic">{t('comparison.missing')}</p>
         </div>
       );
     }
@@ -105,8 +107,8 @@ const MetadataField: FC<{
           <button
             onClick={handleCopy}
             className={`transition-all duration-200 ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white'}`}
-            title={copied ? 'Copied!' : `Copy ${label}`}
-            aria-label={copied ? 'Copied!' : `Copy ${label}`}
+            title={copied ? t('comparison.copied') : t('comparison.copy', { label })}
+            aria-label={copied ? t('comparison.copied') : t('comparison.copy', { label })}
           >
             {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           </button>
@@ -131,6 +133,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   registerScrollRef,
   onContentScroll,
 }) => {
+  const { t } = useTranslation();
   const embedded = presentation === 'embedded';
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
@@ -142,7 +145,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
         // Show notification
         const notification = document.createElement('div');
         notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-        notification.textContent = `${label} copied to clipboard!`;
+        notification.textContent = t('comparison.copiedField', { label });
         document.body.appendChild(notification);
         setTimeout(() => {
           if (document.body.contains(notification)) {
@@ -168,7 +171,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
         const success = document.execCommand('copy');
         textArea.remove();
         if (success) {
-          alert(`${label} copied to clipboard!`);
+          alert(t('comparison.copiedField', { label }));
           return true;
         }
         return false;
@@ -180,7 +183,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
     }
   };
 
-  if (!metadata && embedded) return <p className="text-sm text-gray-400">No metadata available</p>;
+  if (!metadata && embedded) return <p className="text-sm text-gray-400">{t('comparison.noMetadata')}</p>;
   if (!metadata) {
     return (
       <div className={`p-4 bg-gray-800/50 rounded-lg border ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
@@ -196,7 +199,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
         </button>
         {isExpanded && (
           <div className="p-3">
-            <p className="text-gray-500 text-sm">No metadata available</p>
+            <p className="text-gray-500 text-sm">{t('comparison.noMetadata')}</p>
           </div>
         )}
       </div>
@@ -226,13 +229,13 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           {/* Prompt */}
           {(metadata.prompt || (isDiffMode && otherImageMetadata?.prompt)) && (
             <MetadataField
-              label="Prompt"
+              label={t('libraryGallery.prompt')}
               field="prompt"
               value={imagePromptText(image).positivePrompt}
               actions={promptActions}
               otherValue={otherImageMetadata?.prompt}
               isDiffMode={isDiffMode}
-              onCopy={metadata.prompt ? () => copyToClipboard(metadata.prompt, 'Prompt') : undefined}
+              onCopy={metadata.prompt ? () => copyToClipboard(metadata.prompt, t('libraryGallery.prompt')) : undefined}
               multiline
             />
           )}
@@ -240,12 +243,12 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           {/* Negative Prompt */}
           {(metadata.negativePrompt || (isDiffMode && otherImageMetadata?.negativePrompt)) && (
             <MetadataField
-              label="Negative Prompt"
+              label={t('libraryGallery.negativePrompt')}
               field="negativePrompt"
               value={metadata.negativePrompt}
               otherValue={otherImageMetadata?.negativePrompt}
               isDiffMode={isDiffMode}
-              onCopy={metadata.negativePrompt ? () => copyToClipboard(metadata.negativePrompt, 'Negative Prompt') : undefined}
+              onCopy={metadata.negativePrompt ? () => copyToClipboard(metadata.negativePrompt, t('libraryGallery.negativePrompt')) : undefined}
               multiline
             />
           )}
@@ -254,78 +257,78 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           <div className={embedded ? "grid grid-cols-1 gap-2" : "grid grid-cols-2 gap-2"}>
             {(metadata.model || (isDiffMode && otherImageMetadata?.model)) && (
               <MetadataField
-                label="Model"
+                label={t('libraryGallery.model')}
                 field="model"
                 value={metadata.model}
                 otherValue={otherImageMetadata?.model}
                 isDiffMode={isDiffMode}
-                onCopy={metadata.model ? () => copyToClipboard(metadata.model, 'Model') : undefined}
+                onCopy={metadata.model ? () => copyToClipboard(metadata.model, t('libraryGallery.model')) : undefined}
               />
             )}
 
             {((metadata.seed !== undefined && metadata.seed !== null) || (isDiffMode && otherImageMetadata?.seed !== undefined)) && (
               <MetadataField
-                label="Seed"
+                label={t('libraryGallery.seed')}
                 field="seed"
                 value={metadata.seed}
                 otherValue={otherImageMetadata?.seed}
                 isDiffMode={isDiffMode}
-                onCopy={metadata.seed !== undefined ? () => copyToClipboard(String(metadata.seed), 'Seed') : undefined}
+                onCopy={metadata.seed !== undefined ? () => copyToClipboard(String(metadata.seed), t('libraryGallery.seed')) : undefined}
               />
             )}
 
             {(metadata.steps || (isDiffMode && otherImageMetadata?.steps)) && (
               <MetadataField
-                label="Steps"
+                label={t('libraryGallery.steps')}
                 field="steps"
                 value={metadata.steps}
                 otherValue={otherImageMetadata?.steps}
                 isDiffMode={isDiffMode}
-                onCopy={metadata.steps ? () => copyToClipboard(String(metadata.steps), 'Steps') : undefined}
+                onCopy={metadata.steps ? () => copyToClipboard(String(metadata.steps), t('libraryGallery.steps')) : undefined}
               />
             )}
 
             {(metadata.cfg_scale || (isDiffMode && otherImageMetadata?.cfg_scale)) && (
               <MetadataField
-                label="CFG Scale"
+                label={t('comparison.cfgScale')}
                 field="cfg_scale"
                 value={metadata.cfg_scale}
                 otherValue={otherImageMetadata?.cfg_scale}
                 isDiffMode={isDiffMode}
-                onCopy={metadata.cfg_scale ? () => copyToClipboard(String(metadata.cfg_scale), 'CFG Scale') : undefined}
+                onCopy={metadata.cfg_scale ? () => copyToClipboard(String(metadata.cfg_scale), t('comparison.cfgScale')) : undefined}
               />
             )}
 
             {(metadata.clip_skip || (isDiffMode && otherImageMetadata?.clip_skip)) && (
               <MetadataField
-                label="Clip Skip"
+                label={t('comparison.clipSkip')}
                 field="clip_skip"
                 value={metadata.clip_skip}
                 otherValue={otherImageMetadata?.clip_skip}
                 isDiffMode={isDiffMode}
-                onCopy={metadata.clip_skip ? () => copyToClipboard(String(metadata.clip_skip), 'Clip Skip') : undefined}
+                onCopy={metadata.clip_skip ? () => copyToClipboard(String(metadata.clip_skip), t('comparison.clipSkip')) : undefined}
               />
             )}
 
             {((metadata.sampler || metadata.scheduler) || (isDiffMode && (otherImageMetadata?.sampler || otherImageMetadata?.scheduler))) && (
               <MetadataField
-                label="Sampler"
+                label={t('librarySearch.sampler')}
                 field="sampler"
                 value={metadata.sampler || metadata.scheduler}
                 otherValue={otherImageMetadata?.sampler || otherImageMetadata?.scheduler}
                 isDiffMode={isDiffMode}
-                onCopy={(metadata.sampler || metadata.scheduler) ? () => copyToClipboard(metadata.sampler || metadata.scheduler, 'Sampler') : undefined}
+                onCopy={(metadata.sampler || metadata.scheduler) ? () => copyToClipboard(metadata.sampler || metadata.scheduler, t('librarySearch.sampler')) : undefined}
               />
             )}
 
             {((metadata.width && metadata.height) || (isDiffMode && otherImageMetadata?.width && otherImageMetadata?.height)) && (
               <MetadataField
-                label="Dimensions"
+                label={t('librarySearch.dimensions')}
                 field="dimensions"
                 value={metadata.width && metadata.height ? `${metadata.width}x${metadata.height}` : undefined}
                 otherValue={otherImageMetadata?.width && otherImageMetadata?.height ? `${otherImageMetadata.width}x${otherImageMetadata.height}` : undefined}
                 isDiffMode={isDiffMode}
-                onCopy={(metadata.width && metadata.height) ? () => copyToClipboard(`${metadata.width}x${metadata.height}`, 'Dimensions') : undefined}
+                onCopy={(metadata.width && metadata.height) ? () => copyToClipboard(`${metadata.width}x${metadata.height}`, t('librarySearch.dimensions')) : undefined}
               />
             )}
           </div>
@@ -333,12 +336,12 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           {/* LoRAs if present */}
           {((metadata.loras && metadata.loras.length > 0) || (isDiffMode && otherImageMetadata?.loras && otherImageMetadata.loras.length > 0)) && (
             <MetadataField
-              label="LoRAs"
+              label={t('comparison.loras')}
               field="loras"
               value={metadata.loras}
               otherValue={otherImageMetadata?.loras}
               isDiffMode={isDiffMode}
-              onCopy={metadata.loras && metadata.loras.length > 0 ? () => copyToClipboard(formatFieldValue('loras', metadata.loras), 'LoRAs') : undefined}
+              onCopy={metadata.loras && metadata.loras.length > 0 ? () => copyToClipboard(formatFieldValue('loras', metadata.loras), t('comparison.loras')) : undefined}
               multiline
             />
           )}
@@ -346,7 +349,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           {/* Generator if present */}
           {(metadata.generator || (isDiffMode && otherImageMetadata?.generator)) && (
             <MetadataField
-              label="Generator"
+              label={t('comparison.generator')}
               field="generator"
               value={metadata.generator}
               otherValue={otherImageMetadata?.generator}

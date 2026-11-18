@@ -14,5 +14,21 @@
   "libraryGallery": {
     "paths": ["components/GridToolbar.tsx", "components/ImageGrid.tsx", "components/ImageSizeSlider.tsx", "components/ImageTable.tsx", "components/RatingStars.tsx", "components/contextMenu/RelatedImagesMenu.tsx"],
     "literalExceptions": ["CFG"]
+  },
+  "comparisonPane": {
+    "paths": ["components/ComparisonPane.tsx", "components/DetachedComparisonApp.tsx"],
+    "literalExceptions": []
+  },
+  "comparison": {
+    "paths": ["components/ComparisonSurface.tsx", "components/ComparisonOverlayView.tsx", "components/ComparisonMetadataPanel.tsx"],
+    "literalExceptions": ["A", "B", "Esc", "S", "Space", "ms", "x"]
+  },
+  "batchExport": {
+    "paths": ["components/BatchExportModal.tsx"],
+    "literalExceptions": ["ZIP"]
+  },
+  "imageViewer": {
+    "paths": ["components/DetachedImageModalApp.tsx"],
+    "literalExceptions": []
   }
 }
