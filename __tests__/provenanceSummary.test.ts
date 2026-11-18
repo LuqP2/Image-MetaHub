@@ -47,6 +47,13 @@ describe('Provenance Summary view model', () => {
     }));
   });
 
+  it('preserves generation type values from older or external metadata', () => {
+    const image = createImage('legacy.png', { generationType: 'custom-workflow' as BaseMetadata['generationType'] });
+    expect(buildProvenanceViewModel({ image }).generation).toContainEqual(expect.objectContaining({
+      label: 'Generation type', value: 'custom-workflow',
+    }));
+  });
+
   it('presents representative ComfyUI metadata as embedded generation information', () => {
     const image = createImage('comfy.png', {
       generator: 'ComfyUI',

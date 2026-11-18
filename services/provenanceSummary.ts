@@ -220,7 +220,9 @@ export const buildProvenanceViewModel = ({
   if (metadata) {
     add(t('imageViewer.provenance.generator'), nonBlank(metadata.generator));
     if (metadata.generationType) {
-      add(t('imageViewer.provenance.type'), getGenerationTypeLabel(metadata.generationType, t));
+      add(t('imageViewer.provenance.type'), (['txt2img', 'img2img', 'inpaint', 'outpaint', 'image2model3d'].includes(metadata.generationType)
+        ? getGenerationTypeLabel(metadata.generationType, t)
+        : metadata.generationType));
     }
     add(t('imageViewer.provenance.model'), nonBlank(metadata.model) || nonBlank(metadata.models?.[0]));
     add(t('imageViewer.provenance.positive'), nonBlank(metadata.prompt));
