@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../../i18n/useTranslation';
 import { visibleBoardObjects } from '../../services/boards/stackMembership';
 import { useBoardReferenceSync } from '../../services/boards/referenceSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -11,11 +12,13 @@ import { useResolvedThumbnail } from '../../hooks/useResolvedThumbnail';
 import type { BoardEditorActions } from './BoardEditorContext';
 
 function PreviewImage({ image, blurred }: { image: IndexedImage; blurred: boolean }) {
+  const { t } = useTranslation();
   // Subscribe only to thumbnails already resolved by the library; no generation or disk writes.
   const thumbnail = useResolvedThumbnail(image);
-  return thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(20px)' : undefined }} /> : <span className="board-preview-file">Reference</span>;
+  return thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(20px)' : undefined }} /> : <span className="board-preview-file">{t('canvas.reference')}</span>;
 }
 export default function BoardListPreview({ summary, resolveAsset }: { summary: BoardSummary; resolveAsset?: BoardEditorActions['resolveAsset'] }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [saved, setSaved] = useState<{ document: BoardDocument; revision: number } | null>(null);
@@ -39,12 +42,12 @@ export default function BoardListPreview({ summary, resolveAsset }: { summary: B
   }, [visible, summary.id, summary.revision, summary.updatedAt, summary.error, sessionDocument, canResolve, previewRevision]);
   const document = sessionDocument ?? (saved?.revision === previewRevision ? saved.document : null);
   const preview = useMemo(() => {
-    const images: IndexedImage[] = [], types = new Map<string, number>(), ids = new Set<string>();
+    const images: IndexedImage[] = [], types = new Map<MessageKey, number>(), ids = new Set<string>();
     if (!visible || !document) return { images, types };
     const hidden = getHiddenSensitiveTagSet({ enableSafeMode: enabled, blurSensitiveImages: blur, sensitiveTags: tags });
     for (const original of visibleBoardObjects(document.objects)) {
       const object = original.type === 'stack' ? document.objects.find(object => object.id === original.coverId) ?? original : original;
-      const type = original.type === 'stack' ? 'Stack' : object.type === 'smart-frame' ? 'Smart Frame' : object.type === 'asset' ? 'Reference' : object.type === 'text' ? 'Text' : 'Frame';
+      const type: MessageKey = original.type === 'stack' ? 'canvas.stackCount' : object.type === 'smart-frame' ? 'canvas.smartFrameCount' : object.type === 'asset' ? 'canvas.referenceCount' : object.type === 'text' ? 'canvas.textCount' : 'canvas.frameCount';
       types.set(type, (types.get(type) ?? 0) + 1);
       if (object.type !== 'asset' || images.length >= 4) continue;
       const result = resolveAsset?.(object), image = result?.status === 'resolved' ? result.image : undefined;
@@ -54,6 +57,6 @@ export default function BoardListPreview({ summary, resolveAsset }: { summary: B
   }, [document, resolveAsset, enabled, blur, tags, visible]);
   return <div ref={ref} className="board-list-preview" style={{ gridTemplateColumns: `repeat(${Math.max(1, preview.images.length)}, minmax(0, 1fr))` }} aria-hidden="true">
     {preview.images.length ? preview.images.map(image => <PreviewImage key={image.id} image={image} blurred={Boolean(enabled && blur && image.tags?.some(tag => tags?.some(sensitive => sensitive.trim().toLowerCase() === tag.toLowerCase())))} />)
-      : <div className="board-preview-types">{preview.types.size ? [...preview.types].map(([type, count]) => <span key={type}>{count} {type}{count === 1 ? '' : 's'}</span>) : <span>{summary.objectCount ? 'Visual board' : 'Empty board'}</span>}</div>}
+      : <div className="board-preview-types">{preview.types.size ? [...preview.types].map(([type, count]) => <span key={type}>{t(type, { count })}</span>) : <span>{t(summary.objectCount ? 'canvas.visualBoard' : 'canvas.emptyBoard')}</span>}</div>}
   </div>;
 }

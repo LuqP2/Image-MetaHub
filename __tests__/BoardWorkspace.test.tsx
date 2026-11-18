@@ -1,3 +1,5 @@
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import { useBoardUIStore } from '../store/useBoardUIStore';
 import { useBoardEditor } from '../components/boards/BoardEditorContext';
 import React from 'react';
@@ -25,9 +27,30 @@ vi.mock('../components/boards/BoardCanvas', () => ({ default: ({ boardId, onFitA
   return <div data-testid="board-stage"><button onClick={onFitAll}>Fit all</button><button className="react-flow__node" onClick={() => { const state = useBoardStore.getState(); state.setSelection(boardId, [state.sessions[boardId].document.objects[0].id]); editor.inspectSelection?.(); }}>Select test item</button><button onClick={() => useBoardStore.getState().setSelection(boardId, [])}>Clear test selection</button></div>;
 } }));
 
-beforeEach(() => { useBoardUIStore.setState({ inspectorOpen: true, libraryOpen: true }); mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], openBoardIds: [], activeBoardId: null }); });
+beforeEach(() => { useSettingsStore.getState().resetState(); useBoardUIStore.setState({ inspectorOpen: true, libraryOpen: true }); mock.documents.clear(); mock.exported.mockClear(); useBoardStore.setState({ sessions: {}, summaries: [], openBoardIds: [], activeBoardId: null }); });
 afterEach(async () => { await act(async () => { await useBoardStore.getState().flushAll(); }); cleanup(); vi.unstubAllGlobals(); });
 describe('board workspace flow', () => {
+  it.each(languages)('preserves the document and export action when switching to %s', async (language) => {
+    const name = 'Original board {name} 海';
+    let id = '';
+    await act(async () => { id = await useBoardStore.getState().createBoard(name); });
+    act(() => useBoardStore.getState().executeOperation(id, doc => {
+      const next = addText(doc, { x: 25, y: 50 });
+      return updateObjects(next, [{ id: next.objects.at(-1)!.id, text: 'Original text {text} 海' }]);
+    }));
+    const original = useBoardStore.getState().sessions[id].document;
+    await act(async () => { render(<BoardWorkspace editable />); });
+    act(() => useSettingsStore.setState({ language }));
+    expect((screen.getByLabelText(formatMessage(language, 'canvas.name')) as HTMLInputElement).value).toBe(name);
+    expect(useBoardStore.getState().sessions[id].document).toEqual(original);
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.editor.text'), exact: true }));
+    expect(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.editor.text'), exact: true }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'batchExport.export'), exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.editableBoard'), exact: true }));
+    await waitFor(() => expect(mock.exported).toHaveBeenCalledOnce());
+    expect(mock.exported.mock.calls[0][0]).toMatchObject({ name, objects: original.objects });
+  });
+
   it('commits a frame resize and scaled images as one undo step and saves the resulting geometry', async () => {
     const state = useBoardStore.getState();
     const id = await state.createBoard('Scale references');

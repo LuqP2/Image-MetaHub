@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import BoardExportDialog from './boards/BoardExportDialog';
 import BoardPanelResizeHandle from './boards/BoardPanelResizeHandle';
 import BoardPngExport from './boards/BoardPngExport';
@@ -37,6 +38,7 @@ export default function BoardWorkspace(props: BoardWorkspaceProps) {
 }
 
 function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAsset, assetPanel, assetActions, assetMetadata, assetStatus, selectionActions, libraryLocked, onDropAssets }: BoardWorkspaceProps) {
+  const { t } = useTranslation();
   const closing = useBoardStore(state => state.closing);
   const boardId = useBoardStore(state => state.activeBoardId);
   const summaries = useBoardStore(state => state.summaries);
@@ -65,7 +67,7 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     if (ui.inspectorOpen || !hasSelection) return;
     const dismiss = (event: Event) => {
       const target = event.target;
-      if (!(target instanceof Element) || target.closest('.board-inspector-panel, .react-flow__node, .react-flow__edge, [aria-label="Toggle inspector"]')) return;
+      if (!(target instanceof Element) || target.closest('.board-inspector-panel, .react-flow__node, .react-flow__edge, [data-board-toggle-inspector]')) return;
       dismissInspectorSelection(selectionKey);
     };
     document.addEventListener('pointerdown', dismiss, true);
@@ -116,14 +118,14 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     await useBoardStore.getState().flushBoard(boardId).catch(() => {});
     await exportBoardFile(useBoardStore.getState().sessions[boardId].document);
   });
-  return <section ref={root} data-compact={width < 1500} data-tool-labels={width >= 1100} data-editable={editable} className="board-workspace" data-board-editor="true" data-ui-hidden={ui.uiHidden} tabIndex={0} aria-label="Canvas workspace" onKeyDownCapture={event => { if (event.key === 'Escape') setTool('select'); onKeyDownCapture(event); }} aria-busy={busy}>
+  return <section ref={root} data-compact={width < 1500} data-tool-labels={width >= 1100} data-editable={editable} className="board-workspace" data-board-editor="true" data-ui-hidden={ui.uiHidden} tabIndex={0} aria-label={t('canvas.workspace')} onKeyDownCapture={event => { if (event.key === 'Escape') setTool('select'); onKeyDownCapture(event); }} aria-busy={busy}>
     {(!session || !boardId) && <BoardTabs onError={setError} editable={editable} />}
-    {error && <div role="alert" className="board-error">{error}<button className="board-button" onClick={() => setError(null)}>Dismiss</button></div>}
+    {error && <div role="alert" className="board-error">{error}<button className="board-button" onClick={() => setError(null)}>{t('licensing.dismiss')}</button></div>}
     {session?.saveStatus === 'error' && <div role="alert" className="board-error">{session.saveError}
-      <button className="board-button" onClick={() => run(() => useBoardStore.getState().flushBoard(boardId!))}>Retry</button><button className="board-button" onClick={exportCurrent}>Export</button>
+      <button className="board-button" onClick={() => run(() => useBoardStore.getState().flushBoard(boardId!))}>{t('generationQueue.retry')}</button><button className="board-button" onClick={exportCurrent}>{t('batchExport.export')}</button>
       {session.saveErrorCode === 'BOARD_REVISION_CONFLICT' && <>
-        <button className="board-button" onClick={() => run(() => useBoardStore.getState().reloadBoard(boardId!))}>Reload saved version</button>
-        <button className="board-button" onClick={() => run(() => useBoardStore.getState().saveAsNewBoard(boardId!))}>Save as new board</button>
+        <button className="board-button" onClick={() => run(() => useBoardStore.getState().reloadBoard(boardId!))}>{t('canvas.reload')}</button>
+        <button className="board-button" onClick={() => run(() => useBoardStore.getState().saveAsNewBoard(boardId!))}>{t('canvas.saveNew')}</button>
       </>}
     </div>}
     {!session || !boardId ? <BoardList resolveAsset={resolveAsset} summaries={summaries} editable={editable}
