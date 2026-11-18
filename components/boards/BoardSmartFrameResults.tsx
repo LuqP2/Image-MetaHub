@@ -3,10 +3,10 @@ import { FixedSizeGrid } from 'react-window';
 import { useBoardQueryActions } from './BoardQueryContext';
 import BoardResultThumbnail from './BoardResultThumbnail';
 
-export default function BoardSmartFrameResults({ imageIds, frameId }: { imageIds: string[]; frameId: string }) {
+export default function BoardSmartFrameResults({ imageIds, frameId, emptyMessage = 'No images in this group.' }: { imageIds: string[]; frameId: string; emptyMessage?: string }) {
   const actions = useBoardQueryActions();
   return <div data-board-results="true" className="board-smart-results nodrag nopan nowheel" onKeyDown={event => event.stopPropagation()}>
-    {!imageIds.length && <p className="board-empty-results">No images in this group.</p>}
+    {!imageIds.length && <p className="board-empty-results">{emptyMessage}</p>}
     <BoardLocalSizer>{({ width, height }) => {
       if (width <= 0 || height <= 0) return null;
       const columns = Math.max(1, Math.floor(width / 120));

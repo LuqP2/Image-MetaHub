@@ -52,3 +52,23 @@ describe('Smart Frame rendering', () => {
     expect(useImageStore.getState().searchQuery).toBe(before);
   });
 });
+
+
+it('keeps Filters prominent on an empty library frame and removes the hint after refinement', () => {
+  const document = createSmartFrame(createBoardDocument());
+  const frame = document.objects[0];
+  if (frame.type !== 'smart-frame') throw new Error('fixture');
+  useBoardStore.getState().adoptBoard(document);
+  useBoardQueryStore.getState().publish(document.id, { [frame.id]: { frameId: frame.id, status: 'ready', imageIds: [], totalCount: 0, unavailableReferences: 0, datasetRevision: 1, queryRevision: 1 } });
+  const wrapper = ({ children }: { children: React.ReactNode }) => <BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {} }}>{children}</BoardEditorContext.Provider>;
+  const view = render(<BoardSmartFrameNode {...({ data: { object: frame }, selected: false } as React.ComponentProps<typeof BoardSmartFrameNode>)} />, { wrapper });
+  const filters = screen.getByRole('button', { name: 'Filters for Smart Frame' });
+  expect(filters.classList.contains('board-filter-primary')).toBe(true);
+  expect(screen.getByText('New matching images appear automatically. Use Filters to narrow the results.')).toBeTruthy();
+  expect(screen.getByText('No images match this frame.')).toBeTruthy();
+  const changed = { ...frame, criteria: normalizeLibraryQueryCriteria({ searchQuery: 'forest' }) };
+  view.rerender(<BoardSmartFrameNode {...({ data: { object: changed }, selected: false } as React.ComponentProps<typeof BoardSmartFrameNode>)} />);
+  expect(screen.queryByText('New matching images appear automatically. Use Filters to narrow the results.')).toBeNull();
+  expect(filters.classList.contains('board-filter-primary')).toBe(false);
+  expect(filters.textContent).toBe('Filters (1)');
+});
