@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import React, { useEffect, useId, useState } from 'react';
 import { X, Plus, Trash2, Save, Copy, Clipboard, RefreshCw } from 'lucide-react';
 import { ShadowMetadata, ShadowResource } from '../types';
 import { applyShadowMetadataUpdates } from '../utils/editableMetadata';
@@ -6,10 +7,21 @@ import { copyTextToClipboard } from '../utils/imageUtils';
 
 const EDITABLE_METADATA_SCHEMA = 'imagemetahub/editable-metadata';
 const EDITABLE_METADATA_VERSION = 1;
-const FIELD_HELP_TEXT =
-  'These overrides stay local to Image MetaHub and are meant to mirror normalized metadata fields.';
 
 type StatusTone = 'success' | 'error' | 'info';
+
+type EditorStatus = {
+  tone: StatusTone;
+  key: MessageKey;
+  values?: Record<string, number>;
+  detail?: unknown;
+};
+
+class MetadataInputError extends Error {
+  constructor(readonly key: MessageKey) {
+    super(key);
+  }
+}
 
 const STATUS_STYLES: Record<StatusTone, string> = {
   success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
@@ -333,7 +345,7 @@ const parseEditableMetadataInput = (
       : rawValue;
 
   if (!isRecord(value)) {
-    throw new Error('Expected a JSON object.');
+    throw new MetadataInputError('metadataEditor.expectedObject');
   }
 
   if (value.schema === EDITABLE_METADATA_SCHEMA && isRecord(value.metadata)) {
@@ -361,10 +373,12 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
   onCopyEditableMetadata,
   onPasteEditableMetadata,
 }) => {
+  const { t } = useTranslation();
+  const fieldId = useId();
   const [draft, setDraft] = useState<MetadataEditorDraft>(() => coerceMetadataDraft(null, imageId));
   const [tagsText, setTagsText] = useState('');
   const [jsonEditorText, setJsonEditorText] = useState('');
-  const [status, setStatus] = useState<{ tone: StatusTone; text: string } | null>(null);
+  const [status, setStatus] = useState<EditorStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [isPasting, setIsPasting] = useState(false);
@@ -408,7 +422,8 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
       console.error('Failed to save metadata:', error);
       setStatus({
         tone: 'error',
-        text: error instanceof Error ? error.message : 'Failed to save metadata.',
+        key: 'metadataEditor.saveFailed',
+        detail: error,
       });
     } finally {
       setIsSaving(false);
@@ -448,7 +463,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
     setJsonEditorText(serialized);
     setStatus({
       tone: 'info',
-      text: 'Editable JSON refreshed from the current form fields.',
+      key: 'metadataEditor.refreshed',
     });
   };
 
@@ -460,15 +475,13 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
       setJsonEditorText(serializeEditableMetadata(nextDraft, formatTags(nextDraft.tags)));
       setStatus({
         tone: 'success',
-        text: 'Editable metadata JSON applied to the form.',
+        key: 'metadataEditor.jsonApplied',
       });
     } catch (error) {
       setStatus({
         tone: 'error',
-        text:
-          error instanceof Error
-            ? `Could not apply editable metadata JSON: ${error.message}`
-            : 'Could not apply editable metadata JSON.',
+        key: 'metadataEditor.applyFailed',
+        detail: error,
       });
     }
   };
@@ -486,24 +499,22 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
       } else if (navigator.clipboard && window.isSecureContext) {
         const result = await copyTextToClipboard(serialized);
         if (!result.success) {
-          throw new Error(result.error || 'Unknown error occurred');
+          throw result.error ? new Error(result.error) : new MetadataInputError('metadataEditor.unknownError');
         }
       } else {
-        throw new Error('Clipboard access is not available in this context.');
+        throw new MetadataInputError('metadataEditor.clipboardUnavailable');
       }
 
       setJsonEditorText(serialized);
       setStatus({
         tone: 'success',
-        text: 'Editable metadata copied. You can edit the JSON and paste it back later.',
+        key: 'metadataEditor.copied',
       });
     } catch (error) {
       setStatus({
         tone: 'error',
-        text:
-          error instanceof Error
-            ? `Could not copy editable metadata: ${error.message}`
-            : 'Could not copy editable metadata.',
+        key: 'metadataEditor.copyFailed',
+        detail: error,
       });
     } finally {
       setIsCopying(false);
@@ -522,7 +533,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
           : null;
 
       if (!rawPastedValue) {
-        throw new Error('Clipboard did not return editable metadata.');
+        throw new MetadataInputError('metadataEditor.clipboardEmpty');
       }
 
       const { draft: pastedDraft, source } = parseEditableMetadataInput(rawPastedValue, imageId);
@@ -531,18 +542,13 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
       setJsonEditorText(serializeEditableMetadata(pastedDraft, formatTags(pastedDraft.tags)));
       setStatus({
         tone: 'success',
-        text:
-          source === 'wrapped'
-            ? 'Editable metadata pasted from the portable Image MetaHub format.'
-            : 'Editable metadata pasted from plain JSON and applied to the form.',
+        key: source === 'wrapped' ? 'metadataEditor.pastedPortable' : 'metadataEditor.pastedJson',
       });
     } catch (error) {
       setStatus({
         tone: 'error',
-        text:
-          error instanceof Error
-            ? `Could not paste editable metadata: ${error.message}`
-            : 'Could not paste editable metadata.',
+        key: 'metadataEditor.pasteFailed',
+        detail: error,
       });
     } finally {
       setIsPasting(false);
@@ -562,20 +568,24 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
       await onApplyToSelected(nextMetadata);
       setStatus({
         tone: 'success',
-        text: `Applied editable metadata to ${selectedImageCount} selected image${selectedImageCount === 1 ? '' : 's'}.`,
+        key: 'metadataEditor.selectionApplied',
+        values: { count: selectedImageCount },
       });
     } catch (error) {
       setStatus({
         tone: 'error',
-        text:
-          error instanceof Error
-            ? `Could not apply metadata to selection: ${error.message}`
-            : 'Could not apply metadata to selection.',
+        key: 'metadataEditor.selectionFailed',
+        detail: error,
       });
     } finally {
       setIsSaving(false);
     }
   };
+
+  const statusDetail = status?.detail instanceof MetadataInputError
+    ? t(status.detail.key)
+    : status?.detail instanceof Error ? status.detail.message : undefined;
+  const statusMessage = status ? t(status.key, status.values) : undefined;
 
   return (
     <div
@@ -586,18 +596,18 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
         <div className="flex items-center justify-between p-4 border-b border-gray-800">
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <span className="text-blue-400">Edit Metadata</span>
+              <span className="text-blue-400">{t('metadataEditor.title')}</span>
               <span className="text-xs font-normal text-gray-500 bg-gray-800 px-2 py-1 rounded">
-                Overrides only
+                {t('metadataEditor.overrides')}
               </span>
             </h2>
-            <p className="text-xs text-gray-500">{FIELD_HELP_TEXT}</p>
+            <p className="text-xs text-gray-500">{t('metadataEditor.help')}</p>
           </div>
 
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
-            aria-label="Close metadata editor"
+            aria-label={t('metadataEditor.close')}
           >
             <X size={24} />
           </button>
@@ -606,27 +616,29 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
           <section className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">
-              Prompts
+              {t('metadataEditor.prompts')}
             </h3>
 
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Prompt</label>
+                <label htmlFor={fieldId + '-prompt'} className="text-sm font-medium text-gray-400">{t('libraryGallery.prompt')}</label>
                 <textarea
+                  id={fieldId + '-prompt'}
                   value={typeof draft.prompt === 'string' ? draft.prompt : ''}
                   onChange={(event) => updateField('prompt', event.target.value)}
                   className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm min-h-[120px]"
-                  placeholder="Enter positive prompt..."
+                  placeholder={t('metadataEditor.positivePlaceholder')}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Negative Prompt</label>
+                <label htmlFor={fieldId + '-negativePrompt'} className="text-sm font-medium text-gray-400">{t('libraryGallery.negativePrompt')}</label>
                 <textarea
+                  id={fieldId + '-negativePrompt'}
                   value={typeof draft.negativePrompt === 'string' ? draft.negativePrompt : ''}
                   onChange={(event) => updateField('negativePrompt', event.target.value)}
                   className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-red-200/80 focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none text-sm min-h-[100px]"
-                  placeholder="Enter negative prompt..."
+                  placeholder={t('metadataEditor.negativePlaceholder')}
                 />
               </div>
             </div>
@@ -634,24 +646,26 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
 
           <section className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">
-              Generation
+              {t('librarySearch.generation')}
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               <div className="space-y-2 xl:col-span-2">
-                <label className="text-sm font-medium text-gray-400">Primary Model</label>
+                <label htmlFor={fieldId + '-model'} className="text-sm font-medium text-gray-400">{t('metadataEditor.primaryModel')}</label>
                 <input
+                  id={fieldId + '-model'}
                   type="text"
                   value={typeof draft.model === 'string' ? draft.model : ''}
                   onChange={(event) => updateField('model', event.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="e.g. juggernautXL_v9"
+                  placeholder={t('metadataEditor.modelExample', { model: 'juggernautXL_v9' })}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Seed</label>
+                <label htmlFor={fieldId + '-seed'} className="text-sm font-medium text-gray-400">{t('libraryGallery.seed')}</label>
                 <input
+                  id={fieldId + '-seed'}
                   type="number"
                   value={draft.seed ?? ''}
                   onChange={(event) => updateNumericField('seed', event.target.value)}
@@ -661,8 +675,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Steps</label>
+                <label htmlFor={fieldId + '-steps'} className="text-sm font-medium text-gray-400">{t('libraryGallery.steps')}</label>
                 <input
+                  id={fieldId + '-steps'}
                   type="number"
                   value={draft.steps ?? ''}
                   onChange={(event) => updateNumericField('steps', event.target.value)}
@@ -672,8 +687,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">CFG Scale</label>
+                <label htmlFor={fieldId + '-cfgScale'} className="text-sm font-medium text-gray-400">{t('comparison.cfgScale')}</label>
                 <input
+                  id={fieldId + '-cfgScale'}
                   type="number"
                   value={draft.cfg_scale ?? ''}
                   onChange={(event) => updateNumericField('cfg_scale', event.target.value)}
@@ -684,8 +700,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Clip Skip</label>
+                <label htmlFor={fieldId + '-clipSkip'} className="text-sm font-medium text-gray-400">{t('comparison.clipSkip')}</label>
                 <input
+                  id={fieldId + '-clipSkip'}
                   type="number"
                   value={draft.clip_skip ?? ''}
                   onChange={(event) => updateNumericField('clip_skip', event.target.value)}
@@ -695,8 +712,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Sampler</label>
+                <label htmlFor={fieldId + '-sampler'} className="text-sm font-medium text-gray-400">{t('librarySearch.sampler')}</label>
                 <input
+                  id={fieldId + '-sampler'}
                   type="text"
                   value={typeof draft.sampler === 'string' ? draft.sampler : ''}
                   onChange={(event) => updateField('sampler', event.target.value)}
@@ -706,8 +724,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Scheduler</label>
+                <label htmlFor={fieldId + '-scheduler'} className="text-sm font-medium text-gray-400">{t('librarySearch.scheduler')}</label>
                 <input
+                  id={fieldId + '-scheduler'}
                   type="text"
                   value={typeof draft.scheduler === 'string' ? draft.scheduler : ''}
                   onChange={(event) => updateField('scheduler', event.target.value)}
@@ -717,8 +736,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Generator</label>
+                <label htmlFor={fieldId + '-generator'} className="text-sm font-medium text-gray-400">{t('comparison.generator')}</label>
                 <input
+                  id={fieldId + '-generator'}
                   type="text"
                   value={typeof draft.generator === 'string' ? draft.generator : ''}
                   onChange={(event) => updateField('generator', event.target.value)}
@@ -728,24 +748,26 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Version</label>
+                <label htmlFor={fieldId + '-version'} className="text-sm font-medium text-gray-400">{t('comparison.version')}</label>
                 <input
+                  id={fieldId + '-version'}
                   type="text"
                   value={typeof draft.version === 'string' ? draft.version : ''}
                   onChange={(event) => updateField('version', event.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Generator or model version"
+                  placeholder={t('metadataEditor.versionPlaceholder')}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Module</label>
+                <label htmlFor={fieldId + '-module'} className="text-sm font-medium text-gray-400">{t('comparison.module')}</label>
                 <input
+                  id={fieldId + '-module'}
                   type="text"
                   value={typeof draft.module === 'string' ? draft.module : ''}
                   onChange={(event) => updateField('module', event.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Optional module or preset"
+                  placeholder={t('metadataEditor.modulePlaceholder')}
                 />
               </div>
             </div>
@@ -753,13 +775,14 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
 
           <section className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">
-              Dimensions & Media
+              {t('metadataEditor.dimensionsMedia')}
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Width</label>
+                <label htmlFor={fieldId + '-width'} className="text-sm font-medium text-gray-400">{t('comparison.width')}</label>
                 <input
+                  id={fieldId + '-width'}
                   type="number"
                   value={draft.width ?? ''}
                   onChange={(event) => updateNumericField('width', event.target.value)}
@@ -769,8 +792,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Height</label>
+                <label htmlFor={fieldId + '-height'} className="text-sm font-medium text-gray-400">{t('comparison.height')}</label>
                 <input
+                  id={fieldId + '-height'}
                   type="number"
                   value={draft.height ?? ''}
                   onChange={(event) => updateNumericField('height', event.target.value)}
@@ -780,13 +804,14 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Duration (sec)</label>
+                <label htmlFor={fieldId + '-duration'} className="text-sm font-medium text-gray-400">{t('metadataEditor.duration')}</label>
                 <input
+                  id={fieldId + '-duration'}
                   type="number"
                   value={draft.duration ?? ''}
                   onChange={(event) => updateNumericField('duration', event.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="For video metadata"
+                  placeholder={t('metadataEditor.durationPlaceholder')}
                   step="0.1"
                 />
               </div>
@@ -796,9 +821,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-gray-800 pb-2">
               <div>
-                <h3 className="text-lg font-semibold text-gray-300">Resources</h3>
+                <h3 className="text-lg font-semibold text-gray-300">{t('metadataEditor.resources')}</h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  The first model resource remains the compatibility fallback for current viewers.
+                  {t('metadataEditor.fallbackModel')}
                 </p>
               </div>
 
@@ -806,14 +831,14 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                 onClick={addResource}
                 className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 px-3 py-1.5 rounded transition-colors"
               >
-                <Plus size={14} /> Add Resource
+                <Plus size={14} />{' '}{t('metadataEditor.addResource')}
               </button>
             </div>
 
             <div className="space-y-3">
               {sanitizeResources(draft.resources).length === 0 && (
                 <div className="text-center py-6 text-gray-500 text-sm italic">
-                  No models, LoRAs, or embeddings added yet.
+                  {t('metadataEditor.noResources')}
                 </div>
               )}
 
@@ -824,15 +849,16 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                 >
                   <div className="w-32 flex-shrink-0">
                     <select
+                      aria-label={t('metadataEditor.resourceType')}
                       value={resource.type}
                       onChange={(event) =>
                         updateResource(resource.id, 'type', event.target.value as ShadowResource['type'])
                       }
                       className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-300 outline-none focus:border-blue-500"
                     >
-                      <option value="model">Model</option>
+                      <option value="model">{t('libraryGallery.model')}</option>
                       <option value="lora">LoRA</option>
-                      <option value="embedding">Embedding</option>
+                      <option value="embedding">{t('metadataEditor.embedding')}</option>
                     </select>
                   </div>
 
@@ -842,7 +868,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                       value={resource.name}
                       onChange={(event) => updateResource(resource.id, 'name', event.target.value)}
                       className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500"
-                      placeholder="Resource name"
+                      placeholder={t('metadataEditor.resourceName')}
                     />
                   </div>
 
@@ -853,14 +879,14 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                       onChange={(event) => updateResource(resource.id, 'weight', normalizeOptionalNumber(event.target.value))}
                       className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500 text-center"
                       step="0.1"
-                      placeholder="Weight"
+                      placeholder={t('metadataEditor.weight')}
                     />
                   </div>
 
                   <button
                     onClick={() => removeResource(resource.id)}
                     className="text-gray-500 hover:text-red-400 p-1.5 transition-colors opacity-0 group-hover:opacity-100"
-                    title="Remove resource"
+                    title={t('metadataEditor.removeResource')}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -871,27 +897,29 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
 
           <section className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">
-              Tags & Notes
+              {t('metadataEditor.tagsNotes')}
             </h3>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Tags</label>
+                <label htmlFor={fieldId + '-tags'} className="text-sm font-medium text-gray-400">{t('comparison.tags')}</label>
                 <textarea
+                  id={fieldId + '-tags'}
                   value={tagsText}
                   onChange={(event) => setTagsText(event.target.value)}
                   className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm min-h-[72px]"
-                  placeholder="Comma or line separated tags"
+                  placeholder={t('metadataEditor.tagsPlaceholder')}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-400">Notes</label>
+                <label htmlFor={fieldId + '-notes'} className="text-sm font-medium text-gray-400">{t('comparison.notes')}</label>
                 <textarea
+                  id={fieldId + '-notes'}
                   value={typeof draft.notes === 'string' ? draft.notes : ''}
                   onChange={(event) => updateField('notes', event.target.value)}
                   className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm min-h-[140px] font-mono"
-                  placeholder="Workflow notes, generation context, or anything else you want to keep locally..."
+                  placeholder={t('metadataEditor.notesPlaceholder')}
                 />
               </div>
             </div>
@@ -900,9 +928,9 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-gray-800 pb-2">
               <div>
-                <h3 className="text-lg font-semibold text-gray-300">Editable JSON</h3>
+                <h3 className="text-lg font-semibold text-gray-300">{t('metadataEditor.jsonTitle')}</h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  Copy this block, tweak it elsewhere, then paste it back to replace the form.
+                  {t('metadataEditor.jsonHelp')}
                 </p>
               </div>
 
@@ -911,7 +939,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                   onClick={handleSyncJsonFromForm}
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-200 bg-gray-800 hover:bg-gray-700 transition-colors"
                 >
-                  <RefreshCw size={14} /> Refresh JSON
+                  <RefreshCw size={14} />{' '}{t('metadataEditor.refreshJson')}
                 </button>
 
                 <button
@@ -919,7 +947,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                   disabled={isCopying}
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 hover:text-gray-950 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Copy size={14} /> {isCopying ? 'Copying...' : 'Copy JSON'}
+                  <Copy size={14} /> {isCopying ? t('metadataEditor.copying') : t('metadataEditor.copyJson')}
                 </button>
 
                 <button
@@ -927,12 +955,13 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                   disabled={isPasting}
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-200 bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Clipboard size={14} /> {isPasting ? 'Pasting...' : 'Paste JSON'}
+                  <Clipboard size={14} /> {isPasting ? t('metadataEditor.pasting') : t('metadataEditor.pasteJson')}
                 </button>
               </div>
             </div>
 
             <textarea
+              aria-label={t('metadataEditor.jsonTitle')}
               value={jsonEditorText}
               onChange={(event) => setJsonEditorText(event.target.value)}
               className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none text-sm min-h-[280px] font-mono"
@@ -944,7 +973,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                 onClick={handleApplyJsonText}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 transition-colors"
               >
-                <Clipboard size={15} /> Apply JSON To Form
+                <Clipboard size={15} />{' '}{t('metadataEditor.applyJson')}
               </button>
             </div>
           </section>
@@ -954,8 +983,8 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="min-h-[40px]">
               {status && (
-                <div className={`inline-flex items-start gap-2 px-3 py-2 rounded-lg border text-sm ${STATUS_STYLES[status.tone]}`}>
-                  <span>{status.text}</span>
+                <div role="status" className={`inline-flex items-start gap-2 px-3 py-2 rounded-lg border text-sm ${STATUS_STYLES[status.tone]}`}>
+                  <span>{statusMessage && statusDetail ? t('metadataEditor.errorDetails', { summary: statusMessage, detail: statusDetail }) : statusMessage}</span>
                 </div>
               )}
             </div>
@@ -966,7 +995,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                   onClick={onExportEditedCopy}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-blue-200 hover:text-white hover:bg-blue-600/20 transition-colors"
                 >
-                  Export Edited Copy...
+                  {t('metadataEditor.exportCopy')}
                 </button>
               )}
 
@@ -976,7 +1005,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                   disabled={isSaving}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-gray-200 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Apply To Selected ({selectedImageCount})
+                  {t('metadataEditor.applySelection', { count: selectedImageCount })}
                 </button>
               )}
 
@@ -984,7 +1013,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                 onClick={onClose}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
               >
-                Cancel
+                {t('batchExport.cancel')}
               </button>
 
               <button
@@ -993,10 +1022,10 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
                 className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? (
-                  'Saving...'
+                  t('metadataEditor.saving')
                 ) : (
                   <>
-                    <Save size={16} /> Save Changes
+                    <Save size={16} />{' '}{t('metadataEditor.save')}
                   </>
                 )}
               </button>

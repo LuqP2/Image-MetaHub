@@ -5043,8 +5043,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={() => setIsMetadataEditorOpen(true)}
                   whileTap={{ scale: 0.95 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
-                  title="Edit Metadata (Shadow)"
-                  aria-label="Edit Metadata (Shadow)"
+                  title={t('imageViewer.editShadowMetadata')}
+                  aria-label={t('imageViewer.editShadowMetadata')}
                 >
                   <Pencil size={14} />
                 </motion.button>
@@ -5052,8 +5052,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={openBatchExport}
                   whileTap={{ scale: 0.95 }}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
-                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
-                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
+                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? t('libraryGallery.proFeature') : t('imageViewer.openExport')}
+                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? t('libraryGallery.proFeature') : t('imageViewer.openExport')}
                 >
                   <Download size={14} />
                 </motion.button>
@@ -5450,10 +5450,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={exportImage}
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-                title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : undefined}
+                title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? t('libraryGallery.proFeature') : undefined}
               >
                 <Download className="w-4 h-4" />
-                Export...
+                {t('imageViewer.export')}
               </button>
             </>
           )}
