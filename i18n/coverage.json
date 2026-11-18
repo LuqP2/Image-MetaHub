@@ -28,8 +28,8 @@
     "literalExceptions": ["ZIP"]
   },
   "imageViewer": {
-    "paths": ["components/DetachedImageModalApp.tsx"],
-    "literalExceptions": []
+    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx"],
+    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x"]
   },
   "metadataEditor": {
     "paths": ["components/MetadataEditorModal.tsx"],
