@@ -1,3 +1,6 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
+import { formatMessage } from '../i18n/messages.mjs';
+import { useSettingsStore } from '../store/useSettingsStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette, RotateCcw, Sun } from 'lucide-react';
 import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
@@ -317,6 +320,9 @@ export const embedMetadataInGlb = (buffer: ArrayBuffer, metadata: Record<string,
 
 const modelBaseName = (name: string) => name.replace(/\.[^.]+$/, '') || 'model';
 
+const translateModel = (key: MessageKey, values?: Record<string, string | number>) =>
+  formatMessage(useSettingsStore.getState().language, key, values);
+
 const Model3DViewer: React.FC<Model3DViewerProps> = ({
   image,
   externalCamera,
@@ -330,6 +336,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   onSnapshot,
   onError,
 }) => {
+  const { t } = useTranslation();
   const externalCameraRef = useRef(externalCamera);
   externalCameraRef.current = externalCamera;
   const onCameraChangeRef = useRef(onCameraChange);
@@ -532,7 +539,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
             if (trustedLocalResourceUrls.has(url)) return url;
             const resolved = resolveModel3DResourceUrl(directoryPath, relativeModelPath, sourceUrl, url);
             if (!resolved) {
-              throw new Error(`Blocked external or unsafe 3D resource: ${url}`);
+              throw new Error(translateModel('imageViewer.model3d.blockedResource', { url: url }));
             }
             return resolved;
           });
@@ -547,7 +554,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         } else if (extension === 'obj') {
           const loader = new OBJLoader(manager);
           const response = await fetch(sourceUrl);
-          if (!response.ok) throw new Error(`Could not load OBJ (${response.status})`);
+          if (!response.ok) throw new Error(translateModel('imageViewer.model3d.loadObjFailed', { status: response.status }));
           const objText = await response.text();
           if (window.electronAPI && directoryPath) {
             const declaredLibraries = extractObjMaterialLibraries(objText);
@@ -588,7 +595,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           geometry.computeVertexNormals();
           model = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0xb8bcc6, roughness: 0.75, metalness: 0.05 }));
         } else {
-          throw new Error(`Unsupported 3D format: ${extension || 'unknown'}`);
+          throw new Error(translateModel('imageViewer.model3d.unsupported', { format: extension || 'unknown' }));
         }
         model.animations = animations;
         if (disposed) {
@@ -674,7 +681,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         if (pendingRenderer) disposeRenderer(pendingRenderer);
         if (!disposed) {
           setLoading(false);
-          const message = loadError instanceof Error ? loadError.message : 'Unable to load this 3D model.';
+          const message = loadError instanceof Error ? loadError.message : translateModel('imageViewer.model3d.loadFailed');
           setError(message);
           onErrorRef.current?.(message);
         }
@@ -751,7 +758,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     if (window.electronAPI?.showSaveDialog && window.electronAPI?.writeModel3DExport) {
       const extensionName = filename.split('.').pop() || '';
       const result = await window.electronAPI.showSaveDialog({
-        title: 'Export 3D Model',
+        title: translateModel('imageViewer.model3d.exportDialog'),
         defaultPath: filename,
         filters: [{ name: extensionName.toUpperCase(), extensions: [extensionName] }],
       });
@@ -761,7 +768,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         modelData: new Uint8Array(await blob.arrayBuffer()),
         sidecarData: includeSidecar ? new Uint8Array(await sidecar.arrayBuffer()) : undefined,
       });
-      if (!writeResult.success) throw new Error(writeResult.error || 'Could not write exported 3D model.');
+      if (!writeResult.success) throw new Error(writeResult.error || translateModel('imageViewer.model3d.writeFailed'));
     } else {
       downloadBlob(blob, filename);
       if (includeSidecar) downloadBlob(sidecar, `${filename}.imagemetahub.json`);
@@ -798,7 +805,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         await saveExport(new Blob([copyBytes(bytes)], { type: 'application/octet-stream' }), `${base}.fbx`, exportMetadata);
       }
     } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : '3D export failed.');
+      setError(exportError instanceof Error ? exportError.message : translateModel('imageViewer.model3d.exportFailed'));
     } finally {
       applyMaterialMode(preferencesRef.current.materialMode);
       setExporting(false);
@@ -816,42 +823,42 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     <div className={`flex h-full ${minimumHeightClass} w-full flex-col overflow-hidden bg-black ${className}`} data-no-window-drag="true">
       {showControls && !loading && (
         <div className={`z-30 flex shrink-0 gap-1.5 border-b border-gray-800 bg-gray-950/95 px-2 py-2 ${compact ? 'overflow-x-auto' : 'flex-wrap justify-center'} ${modalControls ? 'lg:px-6' : ''}`}>
-          <button type="button" className={controlButton} onClick={() => updatePreference('showGrid', !preferences.showGrid)} title="Toggle grid">
-            <Grid3X3 size={14} /> Grid
+          <button type="button" className={controlButton} onClick={() => updatePreference('showGrid', !preferences.showGrid)} title={t('imageViewer.model3d.toggleGrid')}>
+            <Grid3X3 size={14} /> {t('imageViewer.model3d.grid')}
           </button>
-          <label className={controlButton} title="Background color">
+          <label className={controlButton} title={t('imageViewer.model3d.backgroundColor')}>
             <Palette size={14} />
-            <input type="color" value={preferences.backgroundColor} onChange={(event) => updatePreference('backgroundColor', event.target.value)} className="h-5 w-6 border-0 bg-transparent p-0" />
+            <input type="color" aria-label={t('imageViewer.model3d.backgroundColor')} value={preferences.backgroundColor} onChange={(event) => updatePreference('backgroundColor', event.target.value)} className="h-5 w-6 border-0 bg-transparent p-0" />
           </label>
-          <label className={controlButton} title="Upload temporary background image">
-            <ImageIcon size={14} /> Background
-            <input type="file" accept="image/*" className="hidden" onChange={(event) => void setBackgroundImage(event.target.files?.[0] || null)} />
+          <label className={controlButton} title={t('imageViewer.model3d.uploadBackground')}>
+            <ImageIcon size={14} /> {t('imageViewer.model3d.background')}
+            <input type="file" aria-label={t('imageViewer.model3d.uploadBackground')} accept="image/*" className="hidden" onChange={(event) => void setBackgroundImage(event.target.files?.[0] || null)} />
           </label>
-          <label className={controlButton} title="Material mode">
+          <label className={controlButton} title={t('imageViewer.model3d.materialMode')}>
             <Box size={14} />
-            <select value={preferences.materialMode} onChange={(event) => updatePreference('materialMode', event.target.value as MaterialMode)} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">
-              <option value="original" className="bg-gray-950 text-gray-100">Original</option>
-              <option value="normal" className="bg-gray-950 text-gray-100">Normal</option>
-              <option value="wireframe" className="bg-gray-950 text-gray-100">Wireframe</option>
+            <select aria-label={t('imageViewer.model3d.materialMode')} value={preferences.materialMode} onChange={(event) => updatePreference('materialMode', event.target.value as MaterialMode)} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">
+              <option value="original" className="bg-gray-950 text-gray-100">{t('imageViewer.model3d.original')}</option>
+              <option value="normal" className="bg-gray-950 text-gray-100">{t('imageViewer.model3d.normal')}</option>
+              <option value="wireframe" className="bg-gray-950 text-gray-100">{t('imageViewer.model3d.wireframe')}</option>
             </select>
           </label>
-          <button type="button" className={controlButton} onClick={() => updatePreference('cameraType', preferences.cameraType === 'perspective' ? 'orthographic' : 'perspective')} title="Switch camera">
-            <Camera size={14} /> {preferences.cameraType === 'perspective' ? 'Perspective' : 'Orthographic'}
+          <button type="button" className={controlButton} onClick={() => updatePreference('cameraType', preferences.cameraType === 'perspective' ? 'orthographic' : 'perspective')} title={t('imageViewer.model3d.switchCamera')}>
+            <Camera size={14} /> {preferences.cameraType === 'perspective' ? t('imageViewer.model3d.perspective') : t('imageViewer.model3d.orthographic')}
           </button>
           {preferences.cameraType === 'perspective' && (
-            <label className={controlButton} title={`FOV ${preferences.fov}°`}>
-              FOV <input type="range" min="15" max="90" step="1" value={preferences.fov} onChange={(event) => updatePreference('fov', Number(event.target.value))} className="w-20" />
+            <label className={controlButton} title={t('imageViewer.model3d.fov', { value: preferences.fov })}>
+              FOV <input type="range" aria-label={t('imageViewer.model3d.fov', { value: preferences.fov })} min="15" max="90" step="1" value={preferences.fov} onChange={(event) => updatePreference('fov', Number(event.target.value))} className="w-20" />
             </label>
           )}
-          <label className={controlButton} title={`Light intensity ${preferences.lightIntensity.toFixed(1)}`}>
-            <Sun size={14} /><input type="range" min="0" max="8" step="0.1" value={preferences.lightIntensity} onChange={(event) => updatePreference('lightIntensity', Number(event.target.value))} className="w-20" />
+          <label className={controlButton} title={t('imageViewer.model3d.light', { value: preferences.lightIntensity.toFixed(1) })}>
+            <Sun size={14} /><input type="range" aria-label={t('imageViewer.model3d.light', { value: preferences.lightIntensity.toFixed(1) })} min="0" max="8" step="0.1" value={preferences.lightIntensity} onChange={(event) => updatePreference('lightIntensity', Number(event.target.value))} className="w-20" />
           </label>
-          <button type="button" className={controlButton} onClick={fitCamera} title="Fit model"><Maximize2 size={14} /> Fit</button>
-          <button type="button" className={controlButton} onClick={fitCamera} title="Reset camera"><RotateCcw size={14} /></button>
-          <label className={controlButton} title="OBJ/STL may not preserve materials, textures, or animations">
+          <button type="button" className={controlButton} onClick={fitCamera} title={t('imageViewer.model3d.fitModel')}><Maximize2 size={14} /> {t('settings.viewer.fit')}</button>
+          <button type="button" className={controlButton} onClick={fitCamera} aria-label={t('imageViewer.model3d.resetCamera')} title={t('imageViewer.model3d.resetCamera')}><RotateCcw size={14} /></button>
+          <label className={controlButton} title={t('imageViewer.model3d.formatWarning')}>
             <Download size={14} />
-            <select disabled={exporting} defaultValue="" onChange={(event) => { const value = event.target.value as 'glb' | 'obj' | 'stl' | 'fbx'; if (value) void exportModel(value); event.target.value = ''; }} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">
-              <option value="" className="bg-gray-950 text-gray-100">{exporting ? 'Exporting…' : 'Export'}</option>
+            <select aria-label={t('imageViewer.model3d.exportDialog')} disabled={exporting} defaultValue="" onChange={(event) => { const value = event.target.value as 'glb' | 'obj' | 'stl' | 'fbx'; if (value) void exportModel(value); event.target.value = ''; }} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">
+              <option value="" className="bg-gray-950 text-gray-100">{exporting ? t('imageViewer.model3d.exporting') : t('batchExport.export')}</option>
               <option value="glb" className="bg-gray-950 text-gray-100">GLB</option>
               <option value="obj" className="bg-gray-950 text-gray-100">OBJ</option>
               <option value="stl" className="bg-gray-950 text-gray-100">STL</option>
@@ -862,7 +869,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
       )}
       <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-black">
       <canvas ref={canvasRef} className="block h-full w-full" />
-      {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">Loading 3D model…</div>}
+      {loading && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-sm text-gray-300">{t('imageViewer.model3d.loading')}</div>}
       {error && <div role="alert" data-model3d-error="true" className="absolute inset-x-4 top-4 z-30 max-h-[calc(100%-2rem)] overflow-auto rounded-lg border border-red-500/40 bg-red-950/90 p-3 text-sm text-red-100">{error}</div>}
       {!loading && (sourceImage || sourceReferenceName) && (
         sourceImage && onOpenSourceImage ? (
@@ -870,23 +877,23 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
             type="button"
             onClick={() => onOpenSourceImage(sourceImage)}
             className="absolute bottom-9 left-1/2 z-30 max-w-[70%] -translate-x-1/2 truncate rounded-md border border-blue-400/30 bg-black/75 px-2.5 py-1 text-xs text-blue-200 backdrop-blur-sm hover:bg-blue-950/90"
-            title={`Open source image: ${sourceImage.name}`}
+            title={t('imageViewer.lineage.openSource', { name: sourceImage.name })}
           >
-            Generated from: {sourceImage.name}
+            {t('imageViewer.model3d.generatedFrom', { name: sourceImage.name })}
           </button>
         ) : (
           <div
             className="pointer-events-none absolute bottom-9 left-1/2 z-30 max-w-[70%] -translate-x-1/2 truncate rounded-md border border-blue-400/20 bg-black/70 px-2.5 py-1 text-xs text-blue-200 backdrop-blur-sm"
             title={sourceImage?.name || sourceReferenceName || undefined}
           >
-            Generated from: {sourceImage?.name || sourceReferenceName}
+            {t('imageViewer.model3d.generatedFrom', { name: sourceImage?.name || sourceReferenceName || '' })}
           </div>
         )
       )}
       <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-gray-300">X <span className="text-red-400">●</span> Y <span className="text-green-400">●</span> Z <span className="text-blue-400">●</span></div>
       {showControls && !compact && (
         <div className="pointer-events-none absolute bottom-2 right-2 max-w-[55%] rounded bg-black/60 px-2 py-1 text-right text-[10px] text-gray-400">
-          GLB recommended. OBJ/STL can lose materials, textures, and animations; STL stores geometry only.
+          {t('imageViewer.model3d.recommendation')}
         </div>
       )}
       </div>
