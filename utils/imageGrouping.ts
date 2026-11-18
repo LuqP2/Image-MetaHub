@@ -326,7 +326,7 @@ const groupByCluster = (images: IndexedImage[], options: ImageGroupingOptions): 
   const clusterByImageId = options.clusterByImageId ?? new Map();
   const result = groupByEntity(images, (image) => {
     const cluster = clusterByImageId.get(image.id);
-    return cluster ? { key: cluster.id, label: cluster.label } : { key: '__none__', label: 'No cluster' };
+    return cluster ? { key: cluster.id, label: cluster.label } : { key: '__none__', label: formatMessage('en', 'librarySessions.noCluster') };
   }, 'cluster');
   const ungrouped = result.groups.find(group => group.id === 'cluster-__none__');
   if (ungrouped) ungrouped.label = (options.translate ?? ((key) => formatMessage('en', key)))('librarySessions.noCluster');

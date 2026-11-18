@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey, type Translate } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, RefreshCw, CircleX, CircleStop, ArchiveX, Play } from 'lucide-react';
 import { useGenerationQueueStore, GenerationQueueItem } from '../store/useGenerationQueueStore';
@@ -28,23 +29,23 @@ const statusStyles: Record<string, string> = {
   canceled: 'text-gray-400',
 };
 
-const statusLabel: Record<string, string> = {
-  waiting: 'Waiting',
-  processing: 'Processing',
-  done: 'Done',
-  failed: 'Failed',
-  canceled: 'Canceled',
+const statusLabel: Record<GenerationQueueItem['status'], MessageKey> = {
+  waiting: 'generationQueue.waiting',
+  processing: 'generationQueue.processing',
+  done: 'generationQueue.done',
+  failed: 'generationQueue.failed',
+  canceled: 'generationQueue.canceled',
 };
 
-const formatPromptPreview = (prompt?: string) => {
-  if (!prompt) return 'No prompt';
+const formatPromptPreview = (prompt: string | undefined, t: Translate) => {
+  if (!prompt) return t('generationQueue.noPrompt');
   const trimmed = prompt.trim();
   if (trimmed.length <= 120) return trimmed;
   return `${trimmed.slice(0, 120)}...`;
 };
 
-const formatTime = (timestamp: number) =>
-  new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const formatTime = (timestamp: number, language: string) =>
+  new Date(timestamp).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
 
 const PREVIEW_HEIGHT_STORAGE_KEY = 'imh:queuePreviewHeight';
 const PREVIEW_HEIGHT_DEFAULT = 96; // matches the previous fixed h-24
@@ -70,6 +71,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   onOpenGeneratedOutputs,
   onOpenGeneratedOutputImage,
 }) => {
+  const { t, language } = useTranslation();
   const items = useGenerationQueueStore((state) => state.items);
   const hasFinishedItems = items.some(item => ['done', 'failed', 'canceled'].includes(item.status));
   const removeJob = useGenerationQueueStore((state) => state.removeJob);
@@ -119,7 +121,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
   }, [previewHeight]);
 
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
-  const [runFeedback, setRunFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [runFeedback, setRunFeedback] = useState<{ type: 'success' | 'error'; messageKey?: MessageKey; message?: string } | null>(null);
 
   useEffect(() => {
     if (!runFeedback) {
@@ -138,14 +140,14 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
     try {
       const result = await window.electronAPI?.comfyUIViewRunWorkflow?.();
       if (result?.success) {
-        setRunFeedback({ type: 'success', message: 'Workflow queued in ComfyUI.' });
+        setRunFeedback({ type: 'success', messageKey: 'generationQueue.queued' });
       } else {
-        setRunFeedback({ type: 'error', message: result?.error || 'Could not run the ComfyUI workflow.' });
+        setRunFeedback({ type: 'error', message: result?.error, messageKey: 'generationQueue.runFailed' });
       }
     } catch (error) {
       setRunFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Could not run the ComfyUI workflow.',
+        message: error instanceof Error ? error.message : undefined, messageKey: 'generationQueue.runFailed',
       });
     } finally {
       setIsRunningWorkflow(false);
@@ -184,13 +186,13 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
 
   const handleRetry = async (item: GenerationQueueItem) => {
     if (!item.imageId) {
-      alert('This queue item cannot be retried because it was not started from an Image MetaHub image.');
+      alert(t('generationQueue.retryUnavailable'));
       return;
     }
 
     const image = findImage(item.imageId);
     if (!image) {
-      alert('Image no longer available for retry.');
+      alert(t('generationQueue.imageUnavailable'));
       return;
     }
 
@@ -220,7 +222,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
 
     if (item.provider === 'comfyui' && item.origin === 'comfyui-external') {
       if (!comfyUIServerUrl || !item.providerJobId) {
-        setJobStatus(item.id, 'failed', { error: 'Cannot cancel ComfyUI job without a prompt id.', previewImageUrl: null });
+        setJobStatus(item.id, 'failed', { error: t('generationQueue.cancelNoId'), previewImageUrl: null });
         return;
       }
 
@@ -231,7 +233,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
           : await client.interrupt();
 
         if (!result.success) {
-          setJobStatus(item.id, item.status, { error: result.error || 'Failed to cancel ComfyUI job.' });
+          setJobStatus(item.id, item.status, { error: result.error || t('generationQueue.cancelFailed') });
           return;
         }
 
@@ -249,7 +251,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
       try {
         const result = await client.deleteQueueItems([item.providerJobId]);
         if (!result.success) {
-          setJobStatus(item.id, item.status, { error: result.error || 'Failed to cancel ComfyUI job.' });
+          setJobStatus(item.id, item.status, { error: result.error || t('generationQueue.cancelFailed') });
           return;
         }
       } catch (error) {
@@ -334,19 +336,19 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
     >
       <div
         role="separator"
-        aria-label="Resize queue sidebar"
+        aria-label={t('generationQueue.resize')}
         aria-orientation="vertical"
         onPointerDown={onResizeStart}
         className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
-        title="Drag to resize queue sidebar"
+        title={t('generationQueue.resizeHelp')}
       >
         <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
       </div>
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div>
-          <h2 className="text-lg font-semibold text-gray-200">Queue</h2>
+          <h2 className="text-lg font-semibold text-gray-200">{t('generationQueue.title')}</h2>
           <p className="text-xs text-gray-500">
-            {items.length} items · {statusCounts.processing || 0} processing · {statusCounts.waiting || 0} waiting
+            {t('generationQueue.counts', { count: items.length, processing: statusCounts.processing || 0, waiting: statusCounts.waiting || 0 })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -354,19 +356,19 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
             <button
               onClick={handleRunWorkflow}
               disabled={isRunningWorkflow}
-              title="Run current ComfyUI workflow"
-              aria-label="Run current ComfyUI workflow"
+              title={t('generationQueue.runHelp')}
+              aria-label={t('generationQueue.runHelp')}
               className="flex items-center gap-1.5 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Play className="h-3.5 w-3.5" />
-              Run
+              {t('generationQueue.run')}
             </button>
           )}
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-50 transition-colors"
-            title="Close queue"
-            aria-label="Close queue"
+            title={t('generationQueue.close')}
+            aria-label={t('generationQueue.close')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -378,13 +380,13 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
             runFeedback.type === 'success' ? 'text-green-300 bg-green-900/20' : 'text-red-300 bg-red-900/20'
           }`}
         >
-          {runFeedback.message}
+          {runFeedback.message || (runFeedback.messageKey ? t(runFeedback.messageKey) : '')}
         </div>
       )}
 
       <div className="p-4 border-b border-gray-700 space-y-3">
         <div className="flex items-center justify-between text-xs text-gray-400">
-          <span>Overall progress</span>
+          <span>{t('generationQueue.overall')}</span>
           <span>{Math.round(overallProgress * 100)}%</span>
         </div>
         <div className="h-1.5 rounded-full bg-gray-700/60 overflow-hidden">
@@ -397,10 +399,10 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
           <button
             onClick={() => clearByStatus(['done', 'failed', 'canceled'])}
             disabled={!hasFinishedItems}
-            title={!hasFinishedItems ? 'No finished items to clear' : 'Clear all finished items'}
+            title={!hasFinishedItems ? t('generationQueue.noneFinished') : t('generationQueue.clearAllFinished')}
             className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Clear finished
+            {t('generationQueue.clearFinished')}
           </button>
         </div>
       </div>
@@ -408,7 +410,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {items.length === 0 ? (
           <div className="text-sm text-gray-500 text-center py-8">
-            No generations queued yet.
+            {t('generationQueue.empty')}
           </div>
         ) : (
           items.map((item) => {
@@ -431,22 +433,22 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-semibold ${statusStyles[item.status]}`}>
-                      {statusLabel[item.status]}
+                      {t(statusLabel[item.status])}
                     </span>
                     <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                      {item.provider === 'a1111' ? 'A1111' : item.origin === 'comfyui-external' ? 'ComfyUI External' : 'ComfyUI'}
+                      {item.provider === 'a1111' ? 'A1111' : item.origin === 'comfyui-external' ? t('generationQueue.external') : 'ComfyUI'}
                     </span>
                   </div>
                   <p className="text-sm font-semibold text-gray-200 break-all">{item.imageName}</p>
-                  <p className="text-xs text-gray-500">{formatTime(item.createdAt)}</p>
+                  <p className="text-xs text-gray-500">{formatTime(item.createdAt, language)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {(item.status === 'processing' || item.status === 'waiting') && (
                     <button
                       onClick={(event) => handleCancel(item, event)}
                       className="text-gray-400 hover:text-red-300 transition-colors"
-                      title={item.status === 'waiting' ? 'Cancel queued job' : 'Stop generation'}
-                      aria-label={item.status === 'waiting' ? 'Cancel queued job' : 'Stop generation'}
+                      title={item.status === 'waiting' ? t('generationQueue.cancelQueued') : t('generationQueue.stop')}
+                      aria-label={item.status === 'waiting' ? t('generationQueue.cancelQueued') : t('generationQueue.stop')}
                     >
                       {item.status === 'waiting' ? <CircleX size={16} /> : <CircleStop size={16} />}
                     </button>
@@ -455,8 +457,8 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                     <button
                       onClick={(event) => handleRetryClick(item, event)}
                       className="text-gray-400 hover:text-blue-300 transition-colors"
-                      title="Retry"
-                      aria-label="Retry generation"
+                      title={t('generationQueue.retry')}
+                      aria-label={t('generationQueue.retryGeneration')}
                     >
                       <RefreshCw size={16} />
                     </button>
@@ -464,8 +466,8 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                   <button
                     onClick={(event) => handleRemove(item, event)}
                     className="text-gray-400 hover:text-gray-200 transition-colors"
-                    title="Remove from queue"
-                    aria-label="Remove from queue"
+                    title={t('generationQueue.remove')}
+                    aria-label={t('generationQueue.remove')}
                   >
                     <ArchiveX size={16} />
                   </button>
@@ -479,18 +481,18 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                 >
                   <img
                     src={item.previewImageUrl}
-                    alt="Live preview"
+                    alt={t('generationQueue.live')}
                     className="h-full w-full object-contain"
                   />
                   <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-100">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                    Live preview
+                    {t('generationQueue.live')}
                   </span>
                   <div
                     onPointerDown={handlePreviewResizeStart}
                     onClick={(event) => event.stopPropagation()}
                     className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center bg-gradient-to-t from-black/70 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
-                    title="Drag to resize preview"
+                    title={t('generationQueue.resizePreview')}
                     role="separator"
                     aria-orientation="horizontal"
                   >
@@ -508,11 +510,11 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                         onOpenGeneratedOutputImage(item);
                       }
                     : undefined}
-                  title={canOpenResult ? 'Double-click to open image' : undefined}
+                  title={canOpenResult ? t('generationQueue.openImage') : undefined}
                 >
                   <img
                     src={firstOutput.url}
-                    alt={firstOutput.name || 'Generated output'}
+                    alt={firstOutput.name || t('generationQueue.output')}
                     className="h-full w-full object-cover"
                     loading="lazy"
                   />
@@ -525,7 +527,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                     onPointerDown={handlePreviewResizeStart}
                     onClick={(event) => event.stopPropagation()}
                     className="absolute inset-x-0 bottom-0 flex h-3 cursor-ns-resize items-center justify-center bg-gradient-to-t from-black/70 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
-                    title="Drag to resize preview"
+                    title={t('generationQueue.resizePreview')}
                     role="separator"
                     aria-orientation="horizontal"
                   >
@@ -535,7 +537,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
               ) : null}
 
               <p className="text-xs text-gray-400 break-words">
-                {formatPromptPreview(item.prompt)}
+                {formatPromptPreview(item.prompt, t)}
               </p>
 
               {item.status === 'processing' && (
@@ -544,12 +546,12 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                     <span>{Math.round(item.progress * 100)}%</span>
                     {displayCurrentImage && (
                       <span>
-                        Image {displayCurrentImage}/{item.totalImages}
+                        {t('generationQueue.imageProgress', { current: displayCurrentImage, total: item.totalImages })}
                       </span>
                     )}
                     {item.totalSteps ? (
                       <span>
-                        Step {item.currentStep || 0}/{item.totalSteps}
+                        {t('generationQueue.stepProgress', { current: item.currentStep || 0, total: item.totalSteps })}
                       </span>
                     ) : null}
                   </div>
@@ -561,7 +563,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
                   </div>
                   {item.currentNode && (
                     <div className="text-[11px] text-gray-500 truncate">
-                      Current node: {item.currentNode}
+                      {t('generationQueue.currentNode', { node: item.currentNode })}
                     </div>
                   )}
                 </div>

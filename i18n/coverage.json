@@ -42,5 +42,13 @@
   "libraryTags": {
     "paths": ["components/TagsAndFavorites.tsx", "components/TriStateToggle.tsx"],
     "literalExceptions": []
+  },
+  "librarySessions": {
+    "paths": ["utils/imageGrouping.ts"],
+    "literalExceptions": []
+  },
+  "generationQueue": {
+    "paths": ["components/GenerationQueueSidebar.tsx"],
+    "literalExceptions": ["A1111", "ComfyUI"]
   }
 }
