@@ -28,8 +28,8 @@
     "literalExceptions": ["ZIP"]
   },
   "imageViewer": {
-    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx"],
-    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x"]
+    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx", "components/ImagePreviewSidebar.tsx", "components/ImageLineageSection.tsx", "components/TextureMapsSection.tsx"],
+    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x", "VAE", "FPS", "MetaHub Save Node", "ComfyUI", "A1111", "PyTorch:", "Python:", "IMH"]
   },
   "metadataEditor": {
     "paths": ["components/MetadataEditorModal.tsx"],

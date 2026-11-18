@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { type BaseMetadata, type IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
@@ -7,7 +8,6 @@ import {
   getGenerationTypeLabel,
 } from '../utils/imageLineage';
 import {
-  getLineageStatusMessage,
   type ResolvedLineageEntry,
 } from '../services/lineageRegistry';
 import { resolveMediaType } from '../utils/mediaTypes.js';
@@ -33,8 +33,9 @@ const isModel3D = (image: IndexedImage): boolean =>
 const LineagePreviewCard: React.FC<{
   image: IndexedImage;
   label: string;
+  openLabel: string;
   onOpenImage: (image: IndexedImage) => void;
-}> = ({ image, label, onOpenImage }) => {
+}> = ({ image, label, openLabel, onOpenImage }) => {
   const thumbnail = useResolvedThumbnail(image);
   const thumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const normalizedMetadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
@@ -49,7 +50,7 @@ const LineagePreviewCard: React.FC<{
       type="button"
       onClick={() => onOpenImage(image)}
       className="group flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700/60 dark:bg-gray-900/50 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/10"
-      title={`Open ${label.toLowerCase()}: ${image.name}`}
+      title={openLabel}
     >
       {thumbnailUrl ? (
         <img
@@ -84,6 +85,7 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
   metadata,
   onOpenImage,
 }) => {
+  const { t } = useTranslation();
   const resolvedLineage = useImageStore(
     React.useCallback(
       (state): ResolvedLineageEntry | null => state.getResolvedLineage(image.id),
@@ -129,18 +131,20 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
     resolvedLineage?.lineage.workflowSourceImage?.absolutePath ||
     null;
   const derivedSectionLabel = derivedImages.every(isModel3D)
-    ? 'Derived 3D Models'
+    ? t('imageViewer.lineage.derivedModels')
     : derivedImages.some(isModel3D)
-      ? 'Derived Media'
-      : 'Derived Images';
+      ? t('imageViewer.lineage.derivedMedia')
+      : t('imageViewer.lineage.derivedImages');
 
   return (
     <div className="space-y-3 rounded-lg border border-blue-200/70 bg-blue-50/60 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Lineage</div>
+        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{t('imageViewer.lineage.title')}</div>
         {resolvedLineage && (
           <span className={badgeClassName}>
-            {getGenerationTypeLabel(resolvedLineage.generationType)}
+            {resolvedLineage.generationType === 'image2model3d'
+              ? t('imageViewer.preview.imageTo3d')
+              : getGenerationTypeLabel(resolvedLineage.generationType)}
           </span>
         )}
       </div>
@@ -150,27 +154,27 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
           <div className="flex flex-wrap gap-2">
             {resolvedLineage.lineage.denoiseStrength != null && (
               <div className={detailClassName}>
-                Denoise: {resolvedLineage.lineage.denoiseStrength}
+                {t('imageViewer.lineage.denoise', { value: resolvedLineage.lineage.denoiseStrength })}
               </div>
             )}
             {resolvedLineage.lineage.maskBlur != null && (
               <div className={detailClassName}>
-                Mask blur: {resolvedLineage.lineage.maskBlur}
+                {t('imageViewer.lineage.maskBlur', { value: resolvedLineage.lineage.maskBlur })}
               </div>
             )}
             {resolvedLineage.lineage.maskedContent && (
               <div className={detailClassName}>
-                Masked content: {resolvedLineage.lineage.maskedContent}
+                {t('imageViewer.lineage.maskedContent', { value: resolvedLineage.lineage.maskedContent })}
               </div>
             )}
             {resolvedLineage.lineage.resizeMode && (
               <div className={detailClassName}>
-                Resize mode: {resolvedLineage.lineage.resizeMode}
+                {t('imageViewer.lineage.resizeMode', { value: resolvedLineage.lineage.resizeMode })}
               </div>
             )}
             {workflowSourceName && (
               <div className={detailClassName}>
-                Workflow asset: {workflowSourceName}
+                {t('imageViewer.lineage.workflowAsset', { name: workflowSourceName })}
               </div>
             )}
           </div>
@@ -178,15 +182,16 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
           {sourceImage ? (
             <LineagePreviewCard
               image={sourceImage}
-              label="Source Image"
+              label={t('imageViewer.lineage.sourceImage')}
+              openLabel={t('imageViewer.lineage.openSource', { name: sourceImage.name })}
               onOpenImage={onOpenImage}
             />
           ) : (
             <div className="rounded-md border border-dashed border-gray-300 bg-white/70 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-300">
-              {getLineageStatusMessage(resolvedLineage)}
+              {t(`imageViewer.lineage.${resolvedLineage.sourceStatus}`)}
               {sourceReferenceName && (
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Reference: {sourceReferenceName}
+                  {t('imageViewer.lineage.reference', { name: sourceReferenceName })}
                 </div>
               )}
             </div>
@@ -204,7 +209,8 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
               <LineagePreviewCard
                 key={derivedImage.id}
                 image={derivedImage}
-                label={isModel3D(derivedImage) ? 'Derived 3D Model' : 'Derived Image'}
+                label={isModel3D(derivedImage) ? t('imageViewer.lineage.derivedModel') : t('imageViewer.lineage.derivedImage')}
+                openLabel={t(isModel3D(derivedImage) ? 'imageViewer.lineage.openDerivedModel' : 'imageViewer.lineage.openDerivedImage', { name: derivedImage.name })}
                 onOpenImage={onOpenImage}
               />
             ))}

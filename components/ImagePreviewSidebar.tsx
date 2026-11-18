@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useMemo, useRef, useState, FC } from 'react';
 import { motion } from 'framer-motion';
 import { AlertTriangle, Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search, Pencil, Download, Eye, EyeOff, ExternalLink, Bookmark } from 'lucide-react';
@@ -40,12 +41,12 @@ import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata, type RawMetadataH
 import { useMediaDiagnostics } from '../hooks/useMediaDiagnostics';
 import { usePromptBookmark } from '../hooks/useSavePrompt';
 
-const formatLoRA = (lora: string | LoRAInfo): string => {
+const formatLoRA = (lora: string | LoRAInfo, unknownLabel: string): string => {
   if (typeof lora === 'string') {
     return lora;
   }
 
-  const name = lora.name || lora.model_name || 'Unknown LoRA';
+  const name = lora.name || lora.model_name || unknownLabel;
   const weight = lora.weight ?? lora.model_weight;
 
   if (weight !== undefined && weight !== null) {
@@ -99,6 +100,7 @@ const formatDurationSeconds = (seconds: number): string => {
 };
 
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; labelAction?: React.ReactNode; onCopy?: (value: string) => void | Promise<void | boolean> }> = ({ label, value, isPrompt = false, labelAction, onCopy }) => {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -128,8 +130,8 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
             <button
               onClick={handleCopy}
               className={`rounded-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${copied ? 'opacity-100 text-green-400' : 'opacity-0 text-gray-400 group-hover:opacity-100 hover:text-gray-100 focus-visible:opacity-100'}`}
-              title={copied ? 'Copied!' : `Copy ${label}`}
-              aria-label={copied ? 'Copied!' : `Copy ${label}`}
+              title={copied ? t('comparison.copied') : t('comparison.copy', { label })}
+              aria-label={copied ? t('comparison.copied') : t('comparison.copy', { label })}
             >
                 {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </button>
@@ -164,6 +166,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   onResizeStart,
   onOpenTextureMap,
 }) => {
+  const { t } = useTranslation();
   const {
     previewImage,
     setPreviewImage,
@@ -235,8 +238,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     : undefined;
   const showA1111Actions = !isVideo && !isAudio && !isModel3D && a1111Enabled;
   const showComfyUIActions = !isVideo && !isAudio && !isModel3D && comfyUIEnabled;
-  const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
-  const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
+  const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? t('imageViewer.preview.generate') : t('imageViewer.preview.generateWith', { provider: 'A1111' });
+  const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? t('imageViewer.preview.generate') : t('imageViewer.preview.generateWith', { provider: 'ComfyUI' });
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const videoDiagnostics = useMediaDiagnostics({
     mediaKind: 'video',
@@ -387,9 +390,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     if (!externalMediaPath) return;
     const result = await window.electronAPI?.openPath?.(externalMediaPath);
     if (!result?.success) {
-      setOpenExternalMediaError(result?.error || 'Failed to open media externally.');
+      setOpenExternalMediaError(result?.error || t('imageViewer.preview.externalFailed'));
     }
-  }, [externalMediaPath]);
+  }, [externalMediaPath, t]);
 
   const generationImage: IndexedImage = activeImage && effectiveMetadata
     ? {
@@ -412,6 +415,14 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   if (!activeImage) {
     return null;
   }
+  const generationTypeLabel = (type: NonNullable<BaseMetadata['generationType']>) => {
+    switch (type) {
+      case 'image2model3d': return t('imageViewer.preview.imageTo3d');
+      case 'inpaint': return t('imageViewer.editor.inpaint');
+      case 'outpaint': return t('imageViewer.editor.outpaint');
+      default: return getGenerationTypeLabel(type);
+    }
+  };
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
   const exportScopeImages = (() => {
     if (!activeImage) return [];
@@ -539,22 +550,22 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     >
       <div
         role="separator"
-        aria-label="Resize preview sidebar"
+        aria-label={t('imageViewer.preview.resize')}
         aria-orientation="vertical"
         onPointerDown={onResizeStart}
         className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
-        title="Drag to resize preview sidebar"
+        title={t('imageViewer.preview.resizeHint')}
       >
         <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
       </div>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-700 p-4">
-        <h2 className="text-lg font-semibold text-gray-200">Image Preview</h2>
+        <h2 className="text-lg font-semibold text-gray-200">{t('imageViewer.preview.title')}</h2>
         <button
           onClick={() => setPreviewImage(null)}
           className="text-gray-400 hover:text-gray-50 transition-colors"
-          title="Close preview"
-          aria-label="Close preview"
+          title={t('imageViewer.preview.close')}
+          aria-label={t('imageViewer.preview.close')}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
@@ -599,8 +610,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   <AlertTriangle className="h-8 w-8" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-100">Audio playback failed in Electron</p>
-                  <p className="mt-1 max-w-md text-xs text-gray-400">The macOS audio service failed while initializing playback.</p>
+                  <p className="text-sm font-medium text-gray-100">{t('imageViewer.preview.audioFailed')}</p>
+                  <p className="mt-1 max-w-md text-xs text-gray-400">{t('imageViewer.preview.audioServiceFailed')}</p>
                 </div>
                 <button
                   type="button"
@@ -609,7 +620,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  Open Externally
+                  {t('imageViewer.preview.openExternal')}
                 </button>
                 {openExternalMediaError && <p className="max-w-md text-xs text-red-300">{openExternalMediaError}</p>}
               </div>
@@ -637,7 +648,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             {hasVerifiedTelemetry(activeImage) && (
               <span
                 className="inline-flex items-center gap-1 rounded-full border border-green-300 bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:border-green-500/30 dark:bg-green-500/20 dark:text-green-400"
-                title="MetaHub Save Node - Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+                title={t('imageViewer.preview.telemetry')}
               >
                 <CheckCircle size={12} className="flex-shrink-0" />
                 <span className="whitespace-nowrap">MetaHub Save Node</span>
@@ -646,10 +657,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             {getAvifCarrierConflicts(activeImage.metadata).length > 0 && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30"
-                title="This AVIF contains conflicting prompt or workflow copies. Image MetaHub is using the standalone standard XMP value."
+                title={t('imageViewer.preview.metadataConflictHint')}
               >
                 <AlertTriangle size={12} className="flex-shrink-0" />
-                <span className="whitespace-nowrap">Metadata conflict</span>
+                <span className="whitespace-nowrap">{t('imageViewer.preview.metadataConflict')}</span>
               </span>
             )}
           </div>
@@ -669,8 +680,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     ? 'text-rose-400 hover:text-rose-300'
                     : 'text-gray-500 hover:text-rose-400'
                 }`}
-                title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                aria-label={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                title={activeImage.isFavorite ? t('libraryGallery.removeFromFavorites') : t('libraryGallery.addToFavorites')}
+                aria-label={activeImage.isFavorite ? t('libraryGallery.removeFromFavorites') : t('libraryGallery.addToFavorites')}
               >
                 <Heart className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
               </motion.button>
@@ -690,7 +701,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 availableTags={availableTags}
                 excludedTags={activeImage.tags ?? []}
                 suggestionLimit={tagSuggestionLimit}
-                placeholder="Add tag..."
+                placeholder={t('imageViewer.preview.addTag')}
                 inputClassName="w-full rounded border border-gray-600 bg-gray-700/50 px-2 py-1 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 dropdownClassName="absolute z-10 mt-1 max-h-32 w-full overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 shadow-lg"
                 optionClassName="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
@@ -710,8 +721,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       key={tag}
                       onClick={() => handleRemoveTag(tag)}
                       className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
-                      title={`Remove tag ${tag}`}
-                      aria-label={`Remove tag ${tag}`}
+                      title={t('imageViewer.preview.removeTag', { tag })}
+                      aria-label={t('imageViewer.preview.removeTag', { tag })}
                     >
                       {tag}
                       <X size={12} />
@@ -738,11 +749,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               {activeImage.autoTags && activeImage.autoTags.length > 0 && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                    <p className="text-[10px] uppercase tracking-wider text-purple-300">{t('imageViewer.preview.autoTags')}</p>
                     <button type="button" className="text-xs text-gray-400 hover:text-red-400" onClick={() => {
-                      if (window.confirm('Delete all auto-tags from this image?')) removeAutoTagFromImage(activeImage.id);
+                      if (window.confirm(t('imageViewer.preview.deleteAutoTags'))) removeAutoTagFromImage(activeImage.id);
                     }}>
-                      Clear All
+                      {t('librarySearch.clearAll')}
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -751,8 +762,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                         <button
                           onClick={() => handlePromoteAutoTag(tag)}
                           className="px-2 py-0.5 text-purple-300 hover:bg-blue-600/30 hover:text-blue-200 transition-all"
-                          title={`Promote ${tag} to manual tag`}
-                          aria-label={`Promote ${tag} to manual tag`}
+                          title={t('imageViewer.preview.promoteTag', { tag })}
+                          aria-label={t('imageViewer.preview.promoteTag', { tag })}
                         >
                           <ArrowUp size={12} />
                         </button>
@@ -760,8 +771,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                         <button
                           onClick={() => handleRemoveAutoTag(tag)}
                           className="px-2 py-0.5 text-purple-300 hover:bg-red-600/30 hover:text-red-200 transition-all"
-                          title={`Remove auto-tag ${tag}`}
-                          aria-label={`Remove auto-tag ${tag}`}
+                          title={t('imageViewer.preview.removeAutoTag', { tag })}
+                          aria-label={t('imageViewer.preview.removeAutoTag', { tag })}
                         >
                           <X size={12} />
                         </button>
@@ -778,10 +789,10 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           <>
             <div className="flex items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-600 pb-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-200">Metadata</h3>
+                <h3 className="text-base font-semibold text-gray-200">{t('comparison.metadata')}</h3>
                 {shadowMetadata && (
                   <span className="text-[10px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">
-                    EDITED
+                    {t('imageViewer.preview.edited')}
                   </span>
                 )}
               </div>
@@ -791,8 +802,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     onClick={() => setShowOriginal((current) => !current)}
                     whileTap={{ scale: 0.95 }}
                     className={`rounded-md p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-100'}`}
-                    title={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
-                    aria-label={showOriginal ? 'Show edited metadata' : 'Show original metadata'}
+                    title={showOriginal ? t('imageViewer.preview.showEdited') : t('imageViewer.preview.showOriginal')}
+                    aria-label={showOriginal ? t('imageViewer.preview.showEdited') : t('imageViewer.preview.showOriginal')}
                   >
                     {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
                   </motion.button>
@@ -801,8 +812,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   onClick={() => setIsMetadataEditorOpen(true)}
                   whileTap={{ scale: 0.95 }}
                   className="rounded-md bg-gray-800 p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  title="Edit metadata overrides"
-                  aria-label="Edit metadata overrides"
+                  title={t('imageViewer.preview.editOverrides')}
+                  aria-label={t('imageViewer.preview.editOverrides')}
                 >
                   <Pencil size={14} />
                 </motion.button>
@@ -810,8 +821,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   onClick={openBatchExport}
                   whileTap={{ scale: 0.95 }}
                   className="rounded-md bg-gray-800 p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
-                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature' : 'Open export flow'}
+                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? t('libraryGallery.proFeature') : t('imageViewer.openExport')}
+                  aria-label={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? t('libraryGallery.proFeature') : t('imageViewer.openExport')}
                 >
                   <Download size={14} />
                 </motion.button>
@@ -819,7 +830,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             </div>
             <div className="space-y-3">
               {isModel3D && (
-                <h3 className="border-b border-gray-700 pb-2 text-xs font-semibold uppercase tracking-wider text-violet-300">3D Generation</h3>
+                <h3 className="border-b border-gray-700 pb-2 text-xs font-semibold uppercase tracking-wider text-violet-300">{t('imageViewer.preview.generation3d')}</h3>
               )}
               <ImageLineageSection
                 image={activeImage}
@@ -829,9 +840,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   setSelectedImage(targetImage);
                 }}
               />
-              <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
+              <MetadataItem label={t('imageViewer.preview.format')} value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem
-                label="Prompt"
+                label={t('libraryGallery.prompt')}
                 value={effectiveMetadata?.prompt}
                 isPrompt
                 onCopy={(v) => copyToClipboard(v, "Prompt")}
@@ -850,84 +861,84 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                         });
                         if (message) setSuccess(message);
                       } catch (cause) {
-                        setError(cause instanceof Error ? cause.message : 'Could not update prompt bookmark.');
+                        setError(cause instanceof Error ? cause.message : t('imageViewer.preview.bookmarkFailed'));
                       }
                     }}
                     className="inline-flex rounded p-0.5 text-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
-                    title={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
-                    aria-label={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
+                    title={isPromptSaved ? t('imageViewer.preview.removePrompt') : t('imageViewer.preview.savePrompt')}
+                    aria-label={isPromptSaved ? t('imageViewer.preview.removePrompt') : t('imageViewer.preview.savePrompt')}
                     aria-pressed={isPromptSaved}
                   >
                     <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} />
                   </button>
                 }
               />
-              <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
-              <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+              <MetadataItem label={t('libraryGallery.negativePrompt')} value={effectiveMetadata?.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
+              <MetadataItem label={t('libraryGallery.model')} value={effectiveMetadata?.model} onCopy={(v) => copyToClipboard(v, "Model")} />
               {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
                 <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
               )}
 
               <div className="grid grid-cols-2 gap-2 text-sm">
-                  <MetadataItem label="Generation Type" value={nMeta.generationType ? getGenerationTypeLabel(nMeta.generationType) : undefined} />
-                  <MetadataItem label="Steps" value={effectiveMetadata?.steps} />
-                  <MetadataItem label="CFG Scale" value={effectiveMetadata?.cfg_scale ?? effectiveMetadata?.cfgScale} />
-                  <MetadataItem label="Seed" value={effectiveMetadata?.seed} />
-                  <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
-                  <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} />
-                  <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} />
+                  <MetadataItem label={t('imageViewer.preview.generationType')} value={nMeta.generationType ? generationTypeLabel(nMeta.generationType) : undefined} />
+                  <MetadataItem label={t('libraryGallery.steps')} value={effectiveMetadata?.steps} />
+                  <MetadataItem label={t('comparison.cfgScale')} value={effectiveMetadata?.cfg_scale ?? effectiveMetadata?.cfgScale} />
+                  <MetadataItem label={t('libraryGallery.seed')} value={effectiveMetadata?.seed} />
+                  <MetadataItem label={t('librarySearch.dimensions')} value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
+                  <MetadataItem label={t('librarySearch.sampler')} value={effectiveMetadata?.sampler} />
+                  <MetadataItem label={t('librarySearch.scheduler')} value={effectiveMetadata?.scheduler} />
                   {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
-                    <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                    <MetadataItem label={t('imageViewer.preview.denoise')} value={(nMeta as any).denoise} />
                   )}
               </div>
               {nMeta.model_3d && (
                 <div className="grid grid-cols-2 gap-2 border-t border-gray-700/50 pt-3 text-sm">
-                  <MetadataItem label="3D Format" value={nMeta.model_3d.format?.toUpperCase()} />
-                  <MetadataItem label="Vertices" value={nMeta.model_3d.vertexCount} />
-                  <MetadataItem label="Faces" value={nMeta.model_3d.faceCount} />
-                  <MetadataItem label="Materials" value={nMeta.model_3d.materialCount} />
-                  <MetadataItem label="Textures" value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? 'Yes' : 'No')} />
-                  <MetadataItem label="Source Node" value={nMeta.model_3d.sourceNodeClass} />
+                  <MetadataItem label={t('imageViewer.preview.format3d')} value={nMeta.model_3d.format?.toUpperCase()} />
+                  <MetadataItem label={t('imageViewer.preview.vertices')} value={nMeta.model_3d.vertexCount} />
+                  <MetadataItem label={t('imageViewer.preview.faces')} value={nMeta.model_3d.faceCount} />
+                  <MetadataItem label={t('imageViewer.preview.materials')} value={nMeta.model_3d.materialCount} />
+                  <MetadataItem label={t('imageViewer.preview.textures')} value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? t('imageViewer.preview.yes') : t('imageViewer.preview.no'))} />
+                  <MetadataItem label={t('imageViewer.preview.sourceNode')} value={nMeta.model_3d.sourceNodeClass} />
                 </div>
               )}
               {videoInfo && (
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <MetadataItem label="Frames" value={videoInfo.frame_count} />
+                  <MetadataItem label={t('imageViewer.preview.frames')} value={videoInfo.frame_count} />
                   <MetadataItem label="FPS" value={videoInfo.frame_rate != null ? Number(videoInfo.frame_rate).toFixed(2) : undefined} />
                   {effectiveDuration != null && (
-                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
+                    <MetadataItem label={t('imageViewer.preview.duration')} value={formatDurationSeconds(Number(effectiveDuration))} />
                   )}
-                  <MetadataItem label="Video Codec" value={videoInfo.codec} />
-                  <MetadataItem label="Video Format" value={videoInfo.format} />
+                  <MetadataItem label={t('imageViewer.preview.videoCodec')} value={videoInfo.codec} />
+                  <MetadataItem label={t('imageViewer.preview.videoFormat')} value={videoInfo.format} />
                 </div>
               )}
               {audioInfo && (
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   {effectiveDuration != null && (
-                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
+                    <MetadataItem label={t('imageViewer.preview.duration')} value={formatDurationSeconds(Number(effectiveDuration))} />
                   )}
-                  <MetadataItem label="Audio Codec" value={audioInfo.codec} />
-                  <MetadataItem label="Audio Format" value={audioInfo.format} />
-                  <MetadataItem label="Sample Rate" value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
-                  <MetadataItem label="Channels" value={audioInfo.channels} />
-                  <MetadataItem label="Bit Rate" value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
+                  <MetadataItem label={t('imageViewer.preview.audioCodec')} value={audioInfo.codec} />
+                  <MetadataItem label={t('imageViewer.preview.audioFormat')} value={audioInfo.format} />
+                  <MetadataItem label={t('imageViewer.preview.sampleRate')} value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
+                  <MetadataItem label={t('imageViewer.preview.channels')} value={audioInfo.channels} />
+                  <MetadataItem label={t('imageViewer.preview.bitRate')} value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
                 </div>
               )}
               {motionModel?.name && (
-                <MetadataItem label="Motion Model" value={motionModel.name} />
+                <MetadataItem label={t('imageViewer.preview.motionModel')} value={motionModel.name} />
               )}
               {motionModel?.hash && (
-                <MetadataItem label="Motion Model Hash" value={motionModel.hash} />
+                <MetadataItem label={t('imageViewer.preview.motionHash')} value={motionModel.hash} />
               )}
               {(nMeta as any)?._metahub_pro?.project_name && (
-                <MetadataItem label="Project" value={(nMeta as any)._metahub_pro.project_name} />
+                <MetadataItem label={t('imageViewer.preview.project')} value={(nMeta as any)._metahub_pro.project_name} />
               )}
             </div>
 
             {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
                <>
-                  <h3 className="text-base font-semibold text-gray-200 pt-2 border-b border-gray-200 dark:border-gray-600 pb-2">LoRAs</h3>
-                  <MetadataItem label="LoRAs" value={effectiveMetadata.loras.map(formatLoRA).join(', ')} />
+                  <h3 className="text-base font-semibold text-gray-200 pt-2 border-b border-gray-200 dark:border-gray-600 pb-2">{t('comparison.loras')}</h3>
+                  <MetadataItem label={t('comparison.loras')} value={effectiveMetadata.loras.map((lora) => formatLoRA(lora, t('imageViewer.preview.unknownLoRA'))).join(', ')} />
                </>
             )}
 
@@ -935,7 +946,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             {notesValue && (
               <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
                 <p className="font-semibold text-purple-300 text-xs uppercase tracking-wider mb-2">
-                  {shadowMetadata?.notes ? 'Notes (Edited)' : 'Notes (MetaHub Save Node)'}
+                  {shadowMetadata?.notes ? t('imageViewer.preview.notesEdited') : t('imageViewer.preview.notesSaveNode')}
                 </p>
                 <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{notesValue}</pre>
               </div>
@@ -950,7 +961,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 >
                   <span className="font-semibold flex items-center gap-2">
                     <Zap size={16} className="text-yellow-400" />
-                    Performance
+                    {t('imageViewer.preview.performance')}
                   </span>
                   {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
@@ -961,28 +972,28 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       {nMeta._analytics.generation_time_ms != null && nMeta._analytics.generation_time_ms > 0 && (
                         <MetadataItem
-                          label="Generation Time"
+                          label={t('imageViewer.preview.generationTime')}
                           value={formatGenerationTime(nMeta._analytics.generation_time_ms)}
                         />
                       )}
                       {nMeta._analytics.vram_peak_mb != null && (
                         <MetadataItem
-                          label="VRAM Peak"
+                          label={t('imageViewer.preview.vramPeak')}
                           value={formatVRAM(nMeta._analytics.vram_peak_mb, nMeta._analytics.gpu_device)}
                         />
                       )}
                     </div>
 
                     {nMeta._analytics.gpu_device && (
-                      <MetadataItem label="GPU Device" value={nMeta._analytics.gpu_device} />
+                      <MetadataItem label={t('imageViewer.preview.gpuDevice')} value={nMeta._analytics.gpu_device} />
                     )}
 
                     {/* Tier 2: VERY USEFUL */}
                     <div className="grid grid-cols-2 gap-2">
                       {nMeta._analytics.steps_per_second != null && (
                         <MetadataItem
-                          label="Speed"
-                          value={`${nMeta._analytics.steps_per_second.toFixed(2)} steps/s`}
+                          label={t('librarySearch.speed')}
+                          value={t('imageViewer.preview.stepsPerSecond', { speed: nMeta._analytics.steps_per_second.toFixed(2) })}
                         />
                       )}
                       {nMeta._analytics.comfyui_version && (
@@ -1023,7 +1034,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Generating...</span>
+                    <span>{t('imageViewer.preview.generating')}</span>
                   </>
                 ) : (
                   <>
@@ -1052,12 +1063,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Copying...</span>
+                    <span>{t('metadataEditor.copying')}</span>
                   </>
                 ) : (
                   <>
                     <Clipboard className="w-3 h-3" />
-                    <span>Copy Parameters</span>
+                    <span>{t('imageViewer.preview.copyParameters')}</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -1124,7 +1135,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Generating...</span>
+                    <span>{t('imageViewer.preview.generating')}</span>
                   </>
                 ) : (
                   <>
@@ -1153,12 +1164,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Copying...</span>
+                    <span>{t('metadataEditor.copying')}</span>
                   </>
                 ) : (
                   <>
                     <Clipboard className="w-3 h-3" />
-                    <span>Copy Workflow JSON</span>
+                    <span>{t('imageViewer.preview.copyWorkflow')}</span>
                     {!canUseComfyUI && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -1218,7 +1229,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
             <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold text-gray-200">Generation Parameters</h3>
+                <h3 className="text-base font-semibold text-gray-200">{t('imageViewer.preview.generationParams')}</h3>
                 <button
                   onClick={() => {
                     const nextShowRawMetadata = !showRawMetadata;
@@ -1229,13 +1240,13 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   }}
                   className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline"
                 >
-                  {showRawMetadata ? 'Show Parsed' : 'Show JSON'}
+                  {showRawMetadata ? t('imageViewer.preview.showParsed') : t('imageViewer.preview.showJson')}
                 </button>
               </div>
               {showRawMetadata && (
                 <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
                   {isHydratingRawMetadata
-                    ? 'Loading full raw metadata...'
+                    ? t('imageViewer.preview.loadingRaw')
                     : JSON.stringify(rawMetadataImage?.metadata ?? activeImage.metadata, null, 2)}
                 </pre>
               )}
@@ -1244,11 +1255,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           </>
         ) : activeImage.enrichmentState === 'catalog' ? (
           <div role="status" className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
-            Indexing metadata…
+            {t('imageViewer.preview.indexing')}
           </div>
         ) : (
           <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
-              No normalized metadata available.
+              {t('imageViewer.preview.noNormalized')}
           </div>
         )}
 
@@ -1318,20 +1329,20 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
           {selectedBlockTextRef.current && <button
             onClick={() => { blockExtraction.open(selectedBlockTextRef.current || '', activeImage ? buildSavedPromptSource(activeImage, activeImageDirectoryPath) : null); hideContextMenu(); }}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
-          ><Bookmark className="w-4 h-4" />Save Selection as Block</button>}
+          ><Bookmark className="w-4 h-4" />{t('imageViewer.preview.saveBlock')}</button>}
           <button
             onClick={copySelection}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Copy className="w-4 h-4" />
-            Copy
+            {t('settings.native.copy')}
           </button>
           <button
             onClick={searchSelection}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Search className="w-4 h-4" />
-            Search Selection
+            {t('imageViewer.preview.searchSelection')}
           </button>
         </div>
       )}

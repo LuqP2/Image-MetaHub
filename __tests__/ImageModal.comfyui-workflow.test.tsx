@@ -1,11 +1,12 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageModal from '../components/ImageModal';
 import ImagePreviewSidebar from '../components/ImagePreviewSidebar';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import type { IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import * as imageUtils from '../utils/imageUtils';
 
 vi.mock('../hooks/useCopyToA1111', () => ({
@@ -122,6 +123,7 @@ const createImage = (): IndexedImage => ({
 describe('ImageModal ComfyUI workflow action', () => {
   beforeEach(() => {
     useImageStore.getState().resetState();
+    useSettingsStore.setState({ language: 'en' });
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -130,7 +132,34 @@ describe('ImageModal ComfyUI workflow action', () => {
 
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
+    useSettingsStore.setState({ language: 'en' });
     vi.restoreAllMocks();
+  });
+
+  it('localizes the preview sidebar and copies the original prompt', async () => {
+    const prompt = 'a quiet forest {draft} 海';
+    const tag = 'reference {tag}';
+    const model = 'FixtureModel_v9.safetensors';
+    const image = createImage();
+    image.name = 'fixture {image} 海.png';
+    image.metadata.normalizedMetadata = { ...image.metadata.normalizedMetadata, prompt, model };
+    image.tags = [tag];
+    const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    useImageStore.setState({ images: [image], filteredImages: [image], previewImage: image });
+
+    render(
+      <ImagePreviewSidebar width={400} isResizing={false} onResizeStart={vi.fn()} onOpenTextureMap={vi.fn()} />,
+    );
+    expect(screen.getByRole('heading', { name: 'Image Preview' })).toBeTruthy();
+    act(() => useSettingsStore.setState({ language: 'pt-BR' }));
+    expect(screen.getByRole('button', { name: `Remover tag ${tag}` })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: image.name })).toBeTruthy();
+    expect(screen.getByText(model)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar: Prompt' }));
+    await waitFor(() => expect(clipboard).toHaveBeenCalledWith(prompt));
+    act(() => useSettingsStore.setState({ language: 'es' }));
+    expect(screen.getByRole('button', { name: 'Cerrar vista previa' })).toBeTruthy();
+    expect(screen.getByText(prompt)).toBeTruthy();
   });
 
   it('exposes one-click workflow loading for ComfyUI', async () => {
