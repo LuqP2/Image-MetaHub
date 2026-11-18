@@ -1,6 +1,8 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import TagsAndFavorites from '../components/TagsAndFavorites';
 import { useImageStore } from '../store/useImageStore';
 
@@ -78,8 +80,27 @@ const openContextMenuForTag = (tagName: string) => {
 };
 
 describe('TagsAndFavorites manual tag browser', () => {
+  it.each(languages)('localizes confirmations in %s and preserves the original tag', async (language) => {
+    const tag = 'fixture {tag} 海';
+    const { clearTag } = seedSidebarState({
+      availableTags: [{ name: tag, count: 1 }],
+      images: [{ id: 'fixture', tags: [tag] }],
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<TagsAndFavorites />);
+    openContextMenuForTag(tag);
+    act(() => useSettingsStore.setState({ language }));
+    expect(screen.getByText(tag)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(formatMessage(language, 'libraryTags.clearFromImages')) }));
+    });
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(formatMessage(language, 'libraryTags.clearConfirm', { tag }));
+    expect(clearTag).toHaveBeenCalledExactlyOnceWith(tag);
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    useSettingsStore.getState().resetState();
   });
 
   afterEach(() => {
@@ -165,7 +186,7 @@ describe('TagsAndFavorites manual tag browser', () => {
     });
 
     render(<TagsAndFavorites />);
-    fireEvent.click(screen.getByLabelText('Tag match mode: any'));
+    fireEvent.click(screen.getByLabelText('Tag match mode: Any'));
 
     expect(setSelectedTagsMatchMode).toHaveBeenCalledWith('all');
   });

@@ -112,7 +112,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   clusterByImageId,
   jumpToGroupRequest = null,
 }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const directories = useImageStore((state) => state.directories);
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
@@ -516,8 +516,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
     [images, sortField, sortDirection, applySorting]
   );
   const groupedRows = useMemo<ImageGroupRenderItem[]>(
-    () => groupImages(sortedImages, groupBy, { sortOrder: groupSortOrder, clusterByImageId }).items,
-    [groupBy, groupSortOrder, sortedImages, clusterByImageId]
+    () => groupImages(sortedImages, groupBy, { sortOrder: groupSortOrder, clusterByImageId, language, translate: t }).items,
+    [groupBy, groupSortOrder, sortedImages, clusterByImageId, language, t]
   );
   const enableRowThumbnails = sortedImages.length <= 5000;
 

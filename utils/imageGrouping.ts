@@ -1,3 +1,5 @@
+import type { Translate } from '../i18n/useTranslation';
+import { formatMessage } from '../i18n/messages.mjs';
 import type { IndexedImage } from '../types';
 import { formatLocalDateKey } from './dateFilterUtils';
 
@@ -8,6 +10,8 @@ export type ImageGroupingSortOrder = 'asc' | 'desc' | 'date-asc' | 'date-desc' |
 
 export interface ImageGroupingOptions {
   sortOrder?: ImageGroupingSortOrder;
+  language?: string;
+  translate?: Translate;
   /** Maps imageId → { id, label } of the cluster it belongs to (for groupBy 'cluster'). */
   clusterByImageId?: Map<string, { id: string; label: string }>;
 }
@@ -41,15 +45,15 @@ export const SESSION_GAP_MS = 45 * 60 * 1000;
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
-const formatDateLabel = (timestamp: number): string =>
-  new Date(timestamp).toLocaleDateString(undefined, {
+const formatDateLabel = (timestamp: number, language?: string): string =>
+  new Date(timestamp).toLocaleDateString(language, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
 
-const formatTimeLabel = (timestamp: number): string =>
-  new Date(timestamp).toLocaleTimeString(undefined, {
+const formatTimeLabel = (timestamp: number, language?: string): string =>
+  new Date(timestamp).toLocaleTimeString(language, {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -134,7 +138,7 @@ const flattenGroups = (
   return { groups, items };
 };
 
-const groupByDate = (images: IndexedImage[]): GroupedImagesResult => {
+const groupByDate = (images: IndexedImage[], options: ImageGroupingOptions): GroupedImagesResult => {
   const entries = new Map<string, IndexedImage[]>();
   const date = new Date();
 
@@ -154,7 +158,7 @@ const groupByDate = (images: IndexedImage[]): GroupedImagesResult => {
   const groupedEntries: Array<{ group: ImageGroup; images: IndexedImage[] }> = [];
   for (const [key, groupImages] of entries.entries()) {
     groupedEntries.push({
-      group: makeGroup(`date-${key}`, formatDateLabel(groupImages[0].lastModified), groupImages, undefined, {
+      group: makeGroup(`date-${key}`, formatDateLabel(groupImages[0].lastModified, options.language), groupImages, undefined, {
         dateKey: key,
         startTime: groupImages[0].lastModified,
         endTime: groupImages[groupImages.length - 1].lastModified,
@@ -237,8 +241,8 @@ const groupBySession = (images: IndexedImage[], options: ImageGroupingOptions = 
     const start = chronologicalStart.lastModified;
     const end = chronologicalEnd.lastModified;
     const dominantModel = getDominantModel(session);
-    const label = `${formatDateLabel(start)} ${formatTimeLabel(start)}-${formatTimeLabel(end)}`;
-    const subtitle = dominantModel ? `Dominant model: ${dominantModel}` : undefined;
+    const label = `${formatDateLabel(start, options.language)} ${formatTimeLabel(start, options.language)}-${formatTimeLabel(end, options.language)}`;
+    const subtitle = dominantModel ? (options.translate ?? ((key, values) => formatMessage('en', key, values)))('librarySessions.dominantModel', { model: dominantModel }) : undefined;
     const orderedSessionImages = sessionDirection === 'desc'
       ? [...session].reverse()
       : session;
@@ -306,18 +310,27 @@ const groupByEntity = (
   return flattenGroups(groupedEntries);
 };
 
-const groupByModel = (images: IndexedImage[]): GroupedImagesResult =>
-  groupByEntity(images, (image) => {
+const groupByModel = (images: IndexedImage[], options: ImageGroupingOptions): GroupedImagesResult => {
+  const result = groupByEntity(images, (image) => {
     const key = getModelGroupKey(image);
     return { key, label: key };
   }, 'model');
+  const unknownGroup = result.groups.find(group => group.id === 'model-Unknown model');
+  if (unknownGroup && !images.some(image => image.models?.some(model => model.trim() === 'Unknown model'))) {
+    unknownGroup.label = (options.translate ?? ((key) => formatMessage('en', key)))('librarySessions.unknownModel');
+  }
+  return result;
+};
 
 const groupByCluster = (images: IndexedImage[], options: ImageGroupingOptions): GroupedImagesResult => {
   const clusterByImageId = options.clusterByImageId ?? new Map();
-  return groupByEntity(images, (image) => {
+  const result = groupByEntity(images, (image) => {
     const cluster = clusterByImageId.get(image.id);
     return cluster ? { key: cluster.id, label: cluster.label } : { key: '__none__', label: 'No cluster' };
   }, 'cluster');
+  const ungrouped = result.groups.find(group => group.id === 'cluster-__none__');
+  if (ungrouped) ungrouped.label = (options.translate ?? ((key) => formatMessage('en', key)))('librarySessions.noCluster');
+  return result;
 };
 
 export const groupImages = (
@@ -333,7 +346,7 @@ export const groupImages = (
   }
 
   if (groupBy === 'date') {
-    return groupByDate(images);
+    return groupByDate(images, options);
   }
 
   if (groupBy === 'name') {
@@ -341,7 +354,7 @@ export const groupImages = (
   }
 
   if (groupBy === 'model') {
-    return groupByModel(images);
+    return groupByModel(images, options);
   }
 
   if (groupBy === 'cluster') {

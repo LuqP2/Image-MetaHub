@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, X } from 'lucide-react';
+import type { Translate } from '../i18n/useTranslation';
 import { InclusionFilterMode } from '../types';
 
 export const getNextFilterMode = (mode: InclusionFilterMode): InclusionFilterMode => {
@@ -8,10 +9,10 @@ export const getNextFilterMode = (mode: InclusionFilterMode): InclusionFilterMod
   return 'neutral';
 };
 
-export const getFilterModeLabel = (mode: InclusionFilterMode): string => {
-  if (mode === 'include') return 'Include';
-  if (mode === 'exclude') return 'Exclude';
-  return 'Off';
+export const getFilterModeLabel = (mode: InclusionFilterMode, t?: Translate): string => {
+  if (mode === 'include') return t ? t('librarySearch.include') : 'Include';
+  if (mode === 'exclude') return t ? t('librarySearch.exclude') : 'Exclude';
+  return t ? t('settings.library.off') : 'Off';
 };
 
 interface TriStateToggleProps {

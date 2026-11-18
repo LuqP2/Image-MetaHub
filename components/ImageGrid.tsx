@@ -1106,7 +1106,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   scrollResetKey,
   hasRightSidebar = false,
 }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
@@ -1118,8 +1118,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const effectiveGroupBy = !isStackingEnabled ? groupBy : 'none';
   const groupedImages = useMemo(
-    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder, clusterByImageId }),
-    [effectiveGroupBy, groupSortOrder, images, clusterByImageId]
+    () => groupImages(images, effectiveGroupBy, { sortOrder: groupSortOrder, clusterByImageId, language, translate: t }),
+    [effectiveGroupBy, groupSortOrder, images, clusterByImageId, language, t]
   );
   const itemsToRender: GridRenderItem[] = useMemo(() => {
     if (isStackingEnabled) {

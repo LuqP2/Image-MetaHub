@@ -38,5 +38,9 @@
   "shell": {
     "paths": ["components/Header.tsx", "components/Sidebar.tsx"],
     "literalExceptions": ["ComfyUI", "Image MetaHub", "Image MetaHub Pro", "v0.23.1"]
+  },
+  "libraryTags": {
+    "paths": ["components/TagsAndFavorites.tsx", "components/TriStateToggle.tsx"],
+    "literalExceptions": []
   }
 }
