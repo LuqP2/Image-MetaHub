@@ -544,6 +544,7 @@ const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
 );
 
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; labelAction?: React.ReactNode; onCopy?: (value: string) => void | Promise<void | boolean>; renderValue?: (displayValue: string) => React.ReactNode }> = ({ label, value, isPrompt = false, labelAction, onCopy, renderValue }) => {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -574,8 +575,8 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
               onClick={handleCopy}
               whileTap={{ scale: 0.85 }}
               className={`transition-all duration-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded-sm ${copied ? 'opacity-100 text-green-400' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-400 hover:text-white'}`}
-              title={copied ? 'Copied!' : `Copy ${label}`}
-              aria-label={copied ? 'Copied!' : `Copy ${label}`}
+              title={copied ? t('comparison.copied') : t('comparison.copy', { label })}
+              aria-label={copied ? t('comparison.copied') : t('comparison.copy', { label })}
             >
                 {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </motion.button>
@@ -2640,7 +2641,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         if (!result.success) {
           throw new Error(result.error || 'Failed to index the saved image.');
         }
-        setSuccess(result.savedImageName ? `Saved edited image as ${result.savedImageName}.` : 'Saved edited image.');
+        setSuccess(result.savedImageName ? t('imageViewer.navigation.savedAs', { name: result.savedImageName }) : t('imageViewer.navigation.saved'));
         return;
       }
 
@@ -2656,9 +2657,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
           addImages,
           mergeImages,
         });
-        setSuccess(savedImage ? `Saved edited image as ${savedImage.name}.` : 'Saved edited image.');
+        setSuccess(savedImage ? t('imageViewer.navigation.savedAs', { name: savedImage.name }) : t('imageViewer.navigation.saved'));
       } else {
-        setSuccess('Saved edited image.');
+        setSuccess(t('imageViewer.navigation.saved'));
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to save edited image.');
@@ -2682,6 +2683,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setError,
     setSuccess,
     showProModal,
+    t,
     writeEditedImage,
   ]);
 
@@ -2705,7 +2707,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
-    const confirmed = window.confirm('Overwrite the original image with these edits? This cannot be undone.');
+    const confirmed = window.confirm(t('imageViewer.navigation.overwriteConfirm'));
     if (!confirmed) {
       return;
     }
@@ -2773,6 +2775,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageThumbnail,
     setSuccess,
     showProModal,
+    t,
     writeEditedImage,
   ]);
 
@@ -3142,7 +3145,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const { skipDeleteConfirmation } = useSettingsStore.getState();
-    if (skipDeleteConfirmation || window.confirm('Move this image to the Recycle Bin?')) {
+    if (skipDeleteConfirmation || window.confirm(t('imageViewer.navigation.deleteConfirm'))) {
       const idToDelete = image.id;
       const imageToDelete = image;
       const sourceDirectory = directories.find((directory) => directory.id === imageToDelete.directoryId);
@@ -3173,7 +3176,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`Failed to delete file: ${result.error}`);
       }
     }
-  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, onRequestDelete, totalImages]);
+  }, [currentIndex, directories, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, onRequestDelete, t, totalImages]);
 
   // Navigation the user asked for explicitly: it ends any repeat-all/shuffle chain, so the item we
   // land on obeys the auto-play setting again.
@@ -3598,7 +3601,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         ref={modalShellRef}
         role="dialog"
         aria-modal={isFullViewportModal ? 'true' : 'false'}
-        aria-label={`Image viewer: ${image.name}`}
+        aria-label={t('imageViewer.navigation.dialog', { name: image.name })}
         className={`${
           isFullViewportModal || isNativeWindow
             ? 'fixed inset-0 z-[9999] h-screen w-screen rounded-none bg-black'
@@ -3660,12 +3663,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       }
                     }}
                     className="min-w-0 flex-1 rounded-lg border border-gray-600 bg-gray-900 px-2 py-1 text-sm font-semibold text-white outline-none transition-colors focus:border-blue-500"
-                    aria-label="Rename image"
+                    aria-label={t('imageViewer.navigation.renameImage')}
                   />
                   <button
                     onClick={() => void confirmRename()}
                     className="rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-green-500"
-                    title="Save rename"
+                    title={t('imageViewer.navigation.saveRename')}
                   >
                     Save
                   </button>
@@ -3675,7 +3678,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
                     }}
                     className="rounded-lg bg-gray-700 px-2.5 py-1 text-xs font-medium text-gray-100 transition-colors hover:bg-gray-600"
-                    title="Cancel rename"
+                    title={t('imageViewer.navigation.cancelRename')}
                   >
                     Cancel
                   </button>
@@ -3700,10 +3703,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {getAvifCarrierConflicts(liveImage.metadata).length > 0 && (
                   <span
                     className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-300"
-                    title="This AVIF contains conflicting prompt or workflow copies. Image MetaHub is using the standalone standard XMP value."
+                    title={t('imageViewer.preview.metadataConflictHint')}
                   >
                     <AlertTriangle className="h-3 w-3" />
-                    Metadata conflict
+                    {t('imageViewer.preview.metadataConflict')}
                   </span>
                 )}
                 <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500" title={createdAtLabel}>
@@ -3723,8 +3726,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-600 hover:bg-gray-700 hover:text-white'
                   }`}
                   aria-pressed={isAlwaysOnTop}
-                  aria-label={isAlwaysOnTop ? 'Disable always on top' : 'Enable always on top'}
-                  title={isAlwaysOnTop ? 'Stop keeping this window on top' : 'Keep this window on top'}
+                  aria-label={isAlwaysOnTop ? t('imageViewer.navigation.disableAlwaysOnTop') : t('imageViewer.navigation.enableAlwaysOnTop')}
+                  title={isAlwaysOnTop ? t('imageViewer.navigation.stopOnTop') : t('imageViewer.navigation.keepOnTop')}
                 >
                   <Pin className={`h-3.5 w-3.5 ${isAlwaysOnTop ? 'fill-current' : ''}`} />
                 </motion.button>
@@ -3735,8 +3738,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onPointerDown={(event) => event.stopPropagation()}
                 disabled={isIndexing}
                 className="rounded-lg border border-red-300 bg-red-100 p-1.5 text-red-700 transition-colors hover:border-red-400 hover:bg-red-200 hover:text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:border-red-500/50 dark:hover:bg-red-500/15 dark:hover:text-red-300"
-                title={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
-                aria-label={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
+                title={isIndexing ? t('imageViewer.navigation.deleteIndexing') : t('imageViewer.navigation.deleteImage')}
+                aria-label={isIndexing ? t('imageViewer.navigation.deleteIndexing') : t('imageViewer.navigation.deleteImage')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </motion.button>
@@ -3746,8 +3749,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 onPointerDown={(event) => event.stopPropagation()}
                 disabled={isIndexing}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
-                title={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
-                aria-label={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
+                title={isIndexing ? t('imageViewer.navigation.renameIndexing') : t('imageViewer.navigation.renameImage')}
+                aria-label={isIndexing ? t('imageViewer.navigation.renameIndexing') : t('imageViewer.navigation.renameImage')}
               >
                 <Pencil className="w-3.5 h-3.5" />
               </motion.button>
@@ -3758,7 +3761,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     whileTap={{ scale: 0.9 }}
                     onPointerDown={(event) => event.stopPropagation()}
                     className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title="Minimize window"
+                    title={t('imageViewer.navigation.minimize')}
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </motion.button>
@@ -3767,7 +3770,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     whileTap={{ scale: 0.9 }}
                     onPointerDown={(event) => event.stopPropagation()}
                     className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
+                    title={isWindowMaximized ? t('imageViewer.navigation.restore') : t('imageViewer.navigation.maximize')}
                   >
                     {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                   </motion.button>
@@ -3776,8 +3779,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     whileTap={{ scale: 0.9 }}
                     onPointerDown={(event) => event.stopPropagation()}
                     className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    aria-label="Close image"
-                    title="Close (Esc)"
+                    aria-label={t('imageViewer.navigation.closeImage')}
+                    title={t('imageViewer.navigation.closeEscape')}
                   >
                     <X className="w-3.5 h-3.5" />
                   </motion.button>
@@ -3810,8 +3813,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         >
           {isExr ? (
             <div className="absolute inset-x-0 bottom-0 top-20"><ExrViewer key={liveImage.id} image={liveImage} directoryPath={directoryPath} navigation={<>
-              {onNavigatePrevious && <button type="button" aria-label="Previous image" title="Previous image" disabled={currentIndex <= 0 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('previous'); }} className="absolute inset-y-0 left-0 z-20 flex w-12 items-center justify-start text-white disabled:opacity-25"><ChevronLeft className="h-9 w-9 rounded-full bg-black/50" /></button>}
-              {onNavigateNext && <button type="button" aria-label="Next image" title="Next image" disabled={currentIndex < 0 || currentIndex >= totalImages - 1 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('next'); }} className="absolute inset-y-0 right-0 z-20 flex w-12 items-center justify-end text-white disabled:opacity-25"><ChevronRight className="h-9 w-9 rounded-full bg-black/50" /></button>}
+              {onNavigatePrevious && <button type="button" aria-label={t('imageViewer.navigation.previous')} title={t('imageViewer.navigation.previous')} disabled={currentIndex <= 0 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('previous'); }} className="absolute inset-y-0 left-0 z-20 flex w-12 items-center justify-start text-white disabled:opacity-25"><ChevronLeft className="h-9 w-9 rounded-full bg-black/50" /></button>}
+              {onNavigateNext && <button type="button" aria-label={t('imageViewer.navigation.next')} title={t('imageViewer.navigation.next')} disabled={currentIndex < 0 || currentIndex >= totalImages - 1 || totalImages <= 1} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); navigateManually('next'); }} className="absolute inset-y-0 right-0 z-20 flex w-12 items-center justify-end text-white disabled:opacity-25"><ChevronRight className="h-9 w-9 rounded-full bg-black/50" /></button>}
             </>} /></div>
           ) : isModel3D ? (
             <div data-no-window-drag="true" className="flex h-full min-h-0 w-full min-w-0 flex-col">
@@ -3929,7 +3932,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     transition: isDragging || viewerZoomMode !== 'manual' ? 'none' : 'transform 0.1s ease-out',
                     opacity: viewerZoomMode === 'actual' && !displayedImageNaturalSize ? 0 : 1,
                   }}
-                  title={hasImageEditChanges && editedPreviewUrl ? 'Hold to compare with the original image' : undefined}
+                  title={hasImageEditChanges && editedPreviewUrl ? t('imageViewer.navigation.holdCompare') : undefined}
                   draggable={canDragExternally && zoom === 1}
                 />
                 {showCropOverlay && cropOverlayStyle && (
@@ -3941,7 +3944,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     onPointerMove={handleCropDragMove}
                     onPointerUp={handleCropDragEnd}
                     onPointerCancel={handleCropDragEnd}
-                    title="Drag to move crop"
+                    title={t('imageViewer.navigation.moveCrop')}
                   >
                     <div className="absolute left-1/3 top-0 h-full w-px bg-cyan-200/45" />
                     <div className="absolute left-2/3 top-0 h-full w-px bg-cyan-200/45" />
@@ -3971,8 +3974,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 navigateManually('previous');
               }}
               className="absolute inset-y-0 left-0 z-20 flex w-16 items-center justify-start pl-2 text-white transition-opacity duration-150 hover:bg-gradient-to-r hover:from-white/15 hover:to-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-default disabled:opacity-25 sm:w-20 lg:w-24"
-              aria-label="Previous image"
-              title="Previous image"
+              aria-label={t('imageViewer.navigation.previous')}
+              title={t('imageViewer.navigation.previous')}
             >
               <ChevronLeft className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
             </button>
@@ -3988,8 +3991,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 navigateManually('next');
               }}
               className="absolute inset-y-0 right-0 z-20 flex w-16 items-center justify-end pr-2 text-white transition-opacity duration-150 hover:bg-gradient-to-l hover:from-white/15 hover:to-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-default disabled:opacity-25 sm:w-20 lg:w-24"
-              aria-label="Next image"
-              title="Next image"
+              aria-label={t('imageViewer.navigation.next')}
+              title={t('imageViewer.navigation.next')}
             >
               <ChevronRight className="h-9 w-9 rounded-full border border-white/20 bg-black/50 p-1" aria-hidden="true" />
             </button>
@@ -4085,15 +4088,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
-                  title={`Exit fullscreen (${toggleFullscreenKeybinding})`}
+                  title={t('imageViewer.navigation.exitFullscreen', { shortcut: toggleFullscreenKeybinding })}
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
                 <button
                     onClick={onClose}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
-                    aria-label="Close image"
-                    title="Close (Esc)"
+                    aria-label={t('imageViewer.navigation.closeImage')}
+                    title={t('imageViewer.navigation.closeEscape')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -4110,7 +4113,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       onOpenImageEditor(liveImage);
                     }}
                     className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                    title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature)' : 'Open Image Editor'}
+                    title={!canUseImageEditor && initialized ? t('imageViewer.navigation.editorPro') : t('imageViewer.navigation.openEditor')}
                   >
                     <ImageIcon className="h-4 w-4" />
                   </button>
@@ -4131,8 +4134,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         ? 'border-cyan-400/40 bg-cyan-500/25'
                         : 'border-white/10 bg-black/35 hover:bg-black/55'
                     }`}
-                    title={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature)' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
-                    aria-label={!canUseImageEditor && initialized ? 'Image adjustments (Pro Feature)' : isAdjustmentPanelOpen ? 'Hide image adjustments' : 'Edit image adjustments'}
+                    title={!canUseImageEditor && initialized ? t('imageViewer.navigation.adjustmentsPro') : isAdjustmentPanelOpen ? t('imageViewer.navigation.hideAdjustments') : t('imageViewer.navigation.editAdjustments')}
+                    aria-label={!canUseImageEditor && initialized ? t('imageViewer.navigation.adjustmentsPro') : isAdjustmentPanelOpen ? t('imageViewer.navigation.hideAdjustments') : t('imageViewer.navigation.editAdjustments')}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </button>
@@ -4140,32 +4143,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
-                  aria-label={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
+                  title={showSidebarOnRight ? t('imageViewer.navigation.detailsBottom') : t('imageViewer.navigation.detailsRight')}
+                  aria-label={showSidebarOnRight ? t('imageViewer.navigation.detailsBottom') : t('imageViewer.navigation.detailsRight')}
                 >
                   {showSidebarOnRight ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
                 <button
                   onClick={() => setIsSidebarCollapsed((current) => !current)}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
-                  aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+                  title={showSidebar ? t('imageViewer.navigation.hideSidebar') : t('imageViewer.navigation.showSidebar')}
+                  aria-label={showSidebar ? t('imageViewer.navigation.hideSidebar') : t('imageViewer.navigation.showSidebar')}
                 >
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
                 <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title={`Fullscreen (${toggleFullscreenKeybinding})`}
-                  aria-label={`Fullscreen (${toggleFullscreenKeybinding})`}
+                  title={t('imageViewer.navigation.fullscreen', { shortcut: toggleFullscreenKeybinding })}
+                  aria-label={t('imageViewer.navigation.fullscreen', { shortcut: toggleFullscreenKeybinding })}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
                 <button
                   onClick={onClose}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  aria-label="Close image"
-                  title="Close (Esc)"
+                  aria-label={t('imageViewer.navigation.closeImage')}
+                  title={t('imageViewer.navigation.closeEscape')}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -4196,7 +4199,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div
               onPointerDown={(event) => handleDetailsSidebarResizeStart(event, 'vertical')}
               className="absolute inset-x-0 top-0 z-50 flex h-3 -translate-y-1/2 cursor-row-resize items-center justify-center touch-none"
-              title="Drag to resize details sidebar"
+              title={t('imageViewer.navigation.resizeSidebar')}
             >
               <div className={`h-1 w-16 rounded-full transition-colors duration-150 ${isResizingSidebar ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
             </div>
@@ -4204,7 +4207,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div
               onPointerDown={(event) => handleDetailsSidebarResizeStart(event, 'horizontal')}
               className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
-              title="Drag to resize details sidebar"
+              title={t('imageViewer.navigation.resizeSidebar')}
             >
               <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizingSidebar ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
             </div>
@@ -4225,7 +4228,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100 dark:hover:border-indigo-400/50 dark:hover:bg-indigo-500/20"
                 >
                   <ImageIcon className="h-4 w-4" />
-                  Open Image Editor
+                  {t('imageViewer.navigation.openEditor')}
                   {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
                 </button>
               )}
@@ -4284,8 +4287,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       ? 'text-rose-400 hover:text-rose-300'
                       : 'text-gray-500 hover:text-rose-400'
                   }`}
-                  title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                  aria-label={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  title={currentIsFavorite ? t('libraryGallery.removeFromFavorites') : t('libraryGallery.addToFavorites')}
+                  aria-label={currentIsFavorite ? t('libraryGallery.removeFromFavorites') : t('libraryGallery.addToFavorites')}
                 >
                   <Heart className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
                 </motion.button>
@@ -4319,7 +4322,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   availableTags={onRequestTagSuggestions ? remoteAvailableTags : availableTags}
                   excludedTags={currentTags}
                   suggestionLimit={tagSuggestionLimit}
-                  placeholder="Add tag..."
+                  placeholder={t('imageViewer.preview.addTag')}
                   inputClassName="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
                   dropdownClassName="absolute z-10 mt-1 max-h-32 w-full overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 shadow-lg"
                   optionClassName="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
@@ -4368,7 +4371,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
                     {currentAutoTags.length > 0 && (
                       <button type="button" className="ml-auto text-xs text-gray-400 hover:text-red-400" onClick={() => {
-                        if (window.confirm('Delete all auto-tags from this image?')) void handleRemoveAutoTag();
+                        if (window.confirm(t('imageViewer.preview.deleteAutoTags'))) void handleRemoveAutoTag();
                       }}>
                         Clear All
                       </button>
@@ -4460,7 +4463,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           {/* MetaHub Save Node Notes - Only if present */}
           {nMeta?.notes && (
             <MetadataItem
-              label="Notes (MetaHub Save Node)"
+              label={t('imageViewer.preview.notesSaveNode')}
               value={nMeta.notes}
               isPrompt
               onCopy={() => copyToClipboard(nMeta.notes || '', 'Notes', true)}
@@ -4477,10 +4480,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onOpenImage={onOpenLineageImage ?? (() => undefined)}
                 />
                 <MetadataItem
-                  label="Prompt"
+                  label={t('libraryGallery.prompt')}
                   value={effectiveMetadata?.prompt}
                   isPrompt
-                  onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt', true)}
+                  onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', t('libraryGallery.prompt'), true)}
                   labelAction={
                     <button
                       type="button"
@@ -4495,19 +4498,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
                           });
                           if (message) setSuccess(message);
                         } catch (cause) {
-                          setError(cause instanceof Error ? cause.message : 'Could not update prompt bookmark.');
+                          setError(cause instanceof Error ? cause.message : t('imageViewer.preview.bookmarkFailed'));
                         }
                       }}
                       className="inline-flex rounded p-0.5 text-accent hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
-                      title={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
-                      aria-label={isPromptSaved ? 'Remove from Prompt Library' : 'Save prompt'}
+                      title={isPromptSaved ? t('imageViewer.preview.removePrompt') : t('imageViewer.preview.savePrompt')}
+                      aria-label={isPromptSaved ? t('imageViewer.preview.removePrompt') : t('imageViewer.preview.savePrompt')}
                       aria-pressed={isPromptSaved}
                     >
                       <Bookmark size={14} fill={isPromptSaved ? 'currentColor' : 'none'} />
                     </button>
                   }
                 />
-                <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt', true)} />
+                <MetadataItem label={t('libraryGallery.negativePrompt')} value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', t('libraryGallery.negativePrompt'), true)} />
                 
                 {/* Shadow Resources List */}
                 {shadowMetadata?.resources && shadowMetadata.resources.length > 0 && (
@@ -4525,11 +4528,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
-                  <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={() => copyToClipboard(String(effectiveMetadata?.seed || ''), 'Seed', true)} />
+                  <MetadataItem label={t('libraryGallery.seed')} value={effectiveMetadata?.seed} onCopy={() => copyToClipboard(String(effectiveMetadata?.seed || ''), t('libraryGallery.seed'), true)} />
                   <MetadataItem
-                    label="Model"
+                    label={t('libraryGallery.model')}
                     value={effectiveMetadata?.model}
-                    onCopy={() => copyToClipboard(effectiveMetadata?.model || '', 'Model', true)}
+                    onCopy={() => copyToClipboard(effectiveMetadata?.model || '', t('libraryGallery.model'), true)}
                     renderValue={checkpointRef
                       ? (value) => <CivitaiResourceLink resource={checkpointRef}>{value}</CivitaiResourceLink>
                       : undefined}
@@ -4550,10 +4553,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {showDetails && (
                   <div className="space-y-3 mt-3">
                     {nMeta.generationType && (
-                      <MetadataItem label="Generation Type" value={getGenerationTypeLabel(nMeta.generationType)} />
+                      <MetadataItem label={t('imageViewer.preview.generationType')} value={getGenerationTypeLabel(nMeta.generationType)} />
                     )}
                     <MetadataItem
-                      label="Model"
+                      label={t('libraryGallery.model')}
                       value={nMeta.model}
                       onCopy={(v) => copyToClipboard(v, "Model", true)}
                       renderValue={checkpointRef
@@ -4561,15 +4564,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         : undefined}
                     />
                     {nMeta.generator && (
-                      <MetadataItem label="Generator" value={nMeta.generator} />
+                      <MetadataItem label={t('comparison.generator')} value={nMeta.generator} />
                     )}
                     {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
                       <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
                     )}
                     {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
                       <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
-                        <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">LoRAs</p>
-                        <ul aria-label="LoRAs" className="mt-2 divide-y divide-gray-700/50">
+                        <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{t('comparison.loras')}</p>
+                        <ul aria-label={t('comparison.loras')} className="mt-2 divide-y divide-gray-700/50">
                           {effectiveMetadata.loras.map((lora, index) => {
                             const { name, weight } = getLoRADisplay(lora);
                             const rawName = typeof lora === 'string' ? lora : (lora.name || lora.model_name || name);
@@ -4592,39 +4595,39 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-2">
-                      <MetadataItem label="Steps" value={effectiveMetadata?.steps} onCopy={(v) => copyToClipboard(v, "Steps", true)} />
-                      <MetadataItem label="CFG Scale" value={effectiveMetadata?.cfg_scale} onCopy={(v) => copyToClipboard(v, "CFG Scale", true)} />
+                      <MetadataItem label={t('libraryGallery.steps')} value={effectiveMetadata?.steps} onCopy={(v) => copyToClipboard(v, "Steps", true)} />
+                      <MetadataItem label={t('comparison.cfgScale')} value={effectiveMetadata?.cfg_scale} onCopy={(v) => copyToClipboard(v, "CFG Scale", true)} />
                       {nMeta.clip_skip && nMeta.clip_skip > 1 && (
-                        <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
+                        <MetadataItem label={t('comparison.clipSkip')} value={nMeta.clip_skip} />
                       )}
-                      <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={(v) => copyToClipboard(v, "Seed", true)} />
-                      <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} onCopy={(v) => copyToClipboard(v, "Sampler", true)} />
-                      <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} onCopy={(v) => copyToClipboard(v, "Scheduler", true)} />
-                      <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} onCopy={(v) => copyToClipboard(v, "Dimensions", true)} />
+                      <MetadataItem label={t('libraryGallery.seed')} value={effectiveMetadata?.seed} onCopy={(v) => copyToClipboard(v, "Seed", true)} />
+                      <MetadataItem label={t('librarySearch.sampler')} value={effectiveMetadata?.sampler} onCopy={(v) => copyToClipboard(v, "Sampler", true)} />
+                      <MetadataItem label={t('librarySearch.scheduler')} value={effectiveMetadata?.scheduler} onCopy={(v) => copyToClipboard(v, "Scheduler", true)} />
+                      <MetadataItem label={t('librarySearch.dimensions')} value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} onCopy={(v) => copyToClipboard(v, "Dimensions", true)} />
                       {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
-                        <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                        <MetadataItem label={t('imageViewer.preview.denoise')} value={(nMeta as any).denoise} />
                       )}
                     </div>
                     {nMeta.model_3d && (
                       <div className="grid grid-cols-2 gap-2 border-t border-gray-700/50 pt-3">
-                        <MetadataItem label="3D Format" value={nMeta.model_3d.format?.toUpperCase()} />
-                        <MetadataItem label="Vertices" value={nMeta.model_3d.vertexCount} />
-                        <MetadataItem label="Faces" value={nMeta.model_3d.faceCount} />
-                        <MetadataItem label="Materials" value={nMeta.model_3d.materialCount} />
-                        <MetadataItem label="Textures" value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? 'Yes' : 'No')} />
-                        <MetadataItem label="Source Node" value={nMeta.model_3d.sourceNodeClass} />
+                        <MetadataItem label={t('imageViewer.preview.format3d')} value={nMeta.model_3d.format?.toUpperCase()} />
+                        <MetadataItem label={t('imageViewer.preview.vertices')} value={nMeta.model_3d.vertexCount} />
+                        <MetadataItem label={t('imageViewer.preview.faces')} value={nMeta.model_3d.faceCount} />
+                        <MetadataItem label={t('imageViewer.preview.materials')} value={nMeta.model_3d.materialCount} />
+                        <MetadataItem label={t('imageViewer.preview.textures')} value={nMeta.model_3d.hasTextures == null ? undefined : (nMeta.model_3d.hasTextures ? t('imageViewer.preview.yes') : t('imageViewer.preview.no'))} />
+                        <MetadataItem label={t('imageViewer.preview.sourceNode')} value={nMeta.model_3d.sourceNodeClass} />
                       </div>
                     )}
                     {videoInfo && (
                       <div className="grid grid-cols-2 gap-2">
-                        <MetadataItem label="Frames" value={videoInfo.frame_count} />
+                        <MetadataItem label={t('imageViewer.preview.frames')} value={videoInfo.frame_count} />
                         <MetadataItem label="FPS" value={videoInfo.frame_rate != null ? Number(videoInfo.frame_rate).toFixed(2) : undefined} />
                         {effectiveDuration != null && (
-                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
+                          <MetadataItem label={t('imageViewer.preview.duration')} value={formatDurationSeconds(Number(effectiveDuration))} />
                         )}
-                        <MetadataItem label="Video Codec" value={videoInfo.codec} />
+                        <MetadataItem label={t('imageViewer.preview.videoCodec')} value={videoInfo.codec} />
                         <MetadataItem 
-                          label="Video Format" 
+                          label={t('imageViewer.preview.videoFormat')}
                           value={(() => {
                             if (!videoInfo.format) return undefined;
                             const formats = videoInfo.format.split(',');
@@ -4638,23 +4641,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {audioInfo && (
                       <div className="grid grid-cols-2 gap-2">
                         {effectiveDuration != null && (
-                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
+                          <MetadataItem label={t('imageViewer.preview.duration')} value={formatDurationSeconds(Number(effectiveDuration))} />
                         )}
-                        <MetadataItem label="Audio Codec" value={audioInfo.codec} />
-                        <MetadataItem label="Audio Format" value={audioInfo.format} />
-                        <MetadataItem label="Sample Rate" value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
-                        <MetadataItem label="Channels" value={audioInfo.channels} />
-                        <MetadataItem label="Bit Rate" value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
+                        <MetadataItem label={t('imageViewer.preview.audioCodec')} value={audioInfo.codec} />
+                        <MetadataItem label={t('imageViewer.preview.audioFormat')} value={audioInfo.format} />
+                        <MetadataItem label={t('imageViewer.preview.sampleRate')} value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
+                        <MetadataItem label={t('imageViewer.preview.channels')} value={audioInfo.channels} />
+                        <MetadataItem label={t('imageViewer.preview.bitRate')} value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
                       </div>
                     )}
                     {motionModel?.name && (
-                      <MetadataItem label="Motion Model" value={motionModel.name} />
+                      <MetadataItem label={t('imageViewer.preview.motionModel')} value={motionModel.name} />
                     )}
                     {motionModel?.hash && (
-                      <MetadataItem label="Motion Model Hash" value={motionModel.hash} />
+                      <MetadataItem label={t('imageViewer.preview.motionHash')} value={motionModel.hash} />
                     )}
                     {(nMeta as any)?._metahub_pro?.project_name && (
-                      <MetadataItem label="Project" value={(nMeta as any)._metahub_pro.project_name} />
+                      <MetadataItem label={t('imageViewer.preview.project')} value={(nMeta as any)._metahub_pro.project_name} />
                     )}
                     {shadowMetadata?.notes && (
                       <div className="col-span-2 pt-2 border-t border-gray-700/50 mt-2">
@@ -4678,7 +4681,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   >
                     <span className="font-semibold flex items-center gap-2">
                       <Zap size={16} className="text-yellow-600 dark:text-yellow-400" />
-                      Performance
+                      {t('imageViewer.preview.performance')}
                     </span>
                     {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </motion.button>
@@ -4689,28 +4692,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <div className="grid grid-cols-2 gap-2">
                         {nMeta._analytics.generation_time_ms != null && nMeta._analytics.generation_time_ms > 0 && (
                           <MetadataItem
-                            label="Generation Time"
+                            label={t('imageViewer.preview.generationTime')}
                             value={formatGenerationTime(nMeta._analytics.generation_time_ms)}
                           />
                         )}
                         {nMeta._analytics.vram_peak_mb != null && (
                           <MetadataItem
-                            label="VRAM Peak"
+                            label={t('imageViewer.preview.vramPeak')}
                             value={formatVRAM(nMeta._analytics.vram_peak_mb, nMeta._analytics.gpu_device)}
                           />
                         )}
                       </div>
 
                       {nMeta._analytics.gpu_device && (
-                        <MetadataItem label="GPU Device" value={nMeta._analytics.gpu_device} />
+                        <MetadataItem label={t('imageViewer.preview.gpuDevice')} value={nMeta._analytics.gpu_device} />
                       )}
 
                       {/* Tier 2: VERY USEFUL */}
                       <div className="grid grid-cols-2 gap-2">
                         {nMeta._analytics.steps_per_second != null && (
                           <MetadataItem
-                            label="Speed"
-                            value={`${nMeta._analytics.steps_per_second.toFixed(2)} steps/s`}
+                            label={t('librarySearch.speed')}
+                            value={t('imageViewer.preview.stepsPerSecond', { speed: nMeta._analytics.steps_per_second.toFixed(2) })}
                           />
                         )}
                         {nMeta._analytics.comfyui_version && (
@@ -4733,11 +4736,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           ) : liveImage.enrichmentState === 'catalog' ? (
             <div role="status" className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
-              Indexing metadata…
+              {t('imageViewer.preview.indexing')}
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
-                No normalized metadata available.
+                {t('imageViewer.preview.noNormalized')}
             </div>
           )}
 
@@ -4752,7 +4755,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="grid grid-cols-2 gap-2 pt-2">
             <motion.button
               onClick={async () => {
-                const success = await copyToClipboard(nMeta?.prompt || '', 'Prompt', true);
+                const success = await copyToClipboard(nMeta?.prompt || '', t('libraryGallery.prompt'), true);
                 if (success) {
                   setCopiedPrompt(true);
                   setTimeout(() => setCopiedPrompt(false), 2000);
@@ -4762,7 +4765,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100"
             >
               {copiedPrompt ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedPrompt ? 'Copied!' : 'Copy Prompt'}
+              {copiedPrompt ? t('comparison.copied') : 'Copy Prompt'}
             </motion.button>
             <motion.button
               onClick={async () => {
@@ -4777,7 +4780,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100"
             >
               {copiedRawMetadata ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedRawMetadata ? 'Copied!' : 'Copy Raw Metadata'}
+              {copiedRawMetadata ? t('comparison.copied') : 'Copy Raw Metadata'}
             </motion.button>
             <motion.button
               onClick={async () => {
@@ -4818,7 +4821,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               whileTap={{ scale: 0.97 }}
               disabled={!canFindSimilar}
               className="order-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+              title={canFindSimilar ? t('libraryGallery.findImagesWithMatchingPromptAndMetadata') : t('libraryGallery.requiresPromptMetadata')}
             >
               <Search className="w-3 h-3" />
                Find by metadata...
@@ -4846,7 +4849,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Generating...</span>
+                    <span>{t('imageViewer.preview.generating')}</span>
                   </>
                 ) : (
                   <>
@@ -4875,12 +4878,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Copying...</span>
+                    <span>{t('metadataEditor.copying')}</span>
                   </>
                 ) : (
                   <>
                     <Clipboard className="w-3 h-3" />
-                    <span>Copy Parameters</span>
+                    <span>{t('imageViewer.preview.copyParameters')}</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -4974,12 +4977,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>Copying...</span>
+                    <span>{t('metadataEditor.copying')}</span>
                   </>
                 ) : (
                   <>
                     <Clipboard className="w-3 h-3" />
-                    <span>Copy Workflow JSON</span>
+                    <span>{t('imageViewer.preview.copyWorkflow')}</span>
                     {!canUseComfyUI && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -5026,7 +5029,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     </motion.button>
                      <motion.button
                       onClick={() => {
-                        if (confirm('Are you sure you want to delete all edited metadata and revert to the original?')) {
+                        if (confirm(t('imageViewer.navigation.revertMetadataConfirm'))) {
                           deleteShadowMetadata();
                         }
                       }}
@@ -5067,14 +5070,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }}
                   className="text-xs text-gray-400 hover:text-white underline"
                 >
-                  {showRawMetadata ? 'Show Parsed' : 'Show JSON'}
+                  {showRawMetadata ? t('imageViewer.preview.showParsed') : t('imageViewer.preview.showJson')}
                 </button>
               </div>
             </div>
             {showRawMetadata && (
               <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
                 {isHydratingRawMetadata
-                  ? 'Loading full raw metadata...'
+                  ? t('imageViewer.preview.loadingRaw')
                   : JSON.stringify(rawMetadataImage.metadata, null, 2)}
               </pre>
             )}
@@ -5146,50 +5149,50 @@ const ImageModal: React.FC<ImageModalProps> = ({
               className="absolute inset-x-5 top-0 h-1.5 cursor-ns-resize bg-transparent"
               onPointerDown={beginWindowResize('top')}
               data-resize-handle="true"
-              title="Resize height"
+              title={t('imageViewer.navigation.resizeHeight')}
             />
             <div
               className="absolute inset-y-5 right-0 w-1.5 cursor-ew-resize bg-transparent"
               onPointerDown={beginWindowResize('right')}
               data-resize-handle="true"
-              title="Resize width"
+              title={t('imageViewer.navigation.resizeWidth')}
             />
             <div
               className="absolute inset-x-5 bottom-0 h-1.5 cursor-ns-resize bg-transparent"
               onPointerDown={beginWindowResize('bottom')}
               data-resize-handle="true"
-              title="Resize height"
+              title={t('imageViewer.navigation.resizeHeight')}
             />
             <div
               className="absolute inset-y-5 left-0 w-1.5 cursor-ew-resize bg-transparent"
               onPointerDown={beginWindowResize('left')}
               data-resize-handle="true"
-              title="Resize width"
+              title={t('imageViewer.navigation.resizeWidth')}
             >
             </div>
             <div
               className="absolute left-0 top-0 h-5 w-5 cursor-nwse-resize"
               onPointerDown={beginWindowResize('top-left')}
               data-resize-handle="true"
-              title="Resize window"
+              title={t('imageViewer.navigation.resizeWindow')}
             />
             <div
               className="absolute right-0 top-0 h-5 w-5 cursor-nesw-resize"
               onPointerDown={beginWindowResize('top-right')}
               data-resize-handle="true"
-              title="Resize window"
+              title={t('imageViewer.navigation.resizeWindow')}
             />
             <div
               className="absolute bottom-0 left-0 h-5 w-5 cursor-nesw-resize"
               onPointerDown={beginWindowResize('bottom-left')}
               data-resize-handle="true"
-              title="Resize window"
+              title={t('imageViewer.navigation.resizeWindow')}
             />
             <div
               className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
               onPointerDown={beginWindowResize('bottom-right')}
               data-resize-handle="true"
-              title="Resize window"
+              title={t('imageViewer.navigation.resizeWindow')}
             />
           </>
         )}
@@ -5278,7 +5281,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {selectedBlockTextRef.current && <button
                 onClick={() => { blockExtraction.open(selectedBlockTextRef.current || '', buildSavedPromptSource(liveImage, directoryPath)); hideContextMenu(); }}
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
-              ><Bookmark className="w-4 h-4" />Save Selection as Block</button>}
+              ><Bookmark className="w-4 h-4" />{t('imageViewer.preview.saveBlock')}</button>}
               <button
                 onClick={copySelection}
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -5291,7 +5294,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
               >
                 <Search className="w-4 h-4" />
-                Search Selection
+                {t('imageViewer.preview.searchSelection')}
               </button>
             </>
           ) : (

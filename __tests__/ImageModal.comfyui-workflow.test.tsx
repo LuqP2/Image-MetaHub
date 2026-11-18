@@ -162,6 +162,31 @@ describe('ImageModal ComfyUI workflow action', () => {
     expect(screen.getByText(prompt)).toBeTruthy();
   });
 
+  it('localizes viewer navigation and keeps the selected filename', async () => {
+    const image = createImage();
+    image.name = 'fixture {image} 海.png';
+    const onNavigateNext = vi.fn();
+    render(
+      <ImageModal
+        image={image}
+        onClose={vi.fn()}
+        directoryPath="C:/synthetic"
+        isActive
+        currentIndex={0}
+        totalImages={2}
+        onNavigateNext={onNavigateNext}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Next image' })).toBeTruthy();
+
+    act(() => useSettingsStore.setState({ language: 'ja' }));
+    expect(screen.getByTitle(image.name)).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: `画像ビューア：${image.name}` })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '画像を閉じる' }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '次の画像' }));
+    expect(onNavigateNext).toHaveBeenCalledTimes(1);
+  });
+
   it('exposes one-click workflow loading for ComfyUI', async () => {
     const onOpenComfyUIWorkflow = vi.fn();
     const image = createImage();
