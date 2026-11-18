@@ -340,7 +340,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       submittingRenameRef.current = false;
       setIsSubmittingRename(false);
     }
-  }, [image, isRenaming, onRenameComplete, renameValue]);
+  }, [image, isRenaming, onRenameComplete, renameValue, t]);
 
   const handleRenameCancel = useCallback(() => {
     if (isSubmittingRename) {
