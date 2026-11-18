@@ -60,7 +60,7 @@
     "literalExceptions": []
   },
   "canvas": {
-    "paths": ["components/CanvasWorkspace.tsx", "components/BoardWorkspace.tsx", "components/boards/BoardList.tsx", "components/boards/BoardTabs.tsx", "components/boards/BoardExportDialog.tsx", "components/boards/BoardPanelResizeHandle.tsx", "components/boards/BoardToolbar.tsx", "components/boards/BoardListPreview.tsx"],
-    "literalExceptions": []
+    "paths": ["components/CanvasWorkspace.tsx", "components/BoardWorkspace.tsx", "components/boards/BoardList.tsx", "components/boards/BoardTabs.tsx", "components/boards/BoardExportDialog.tsx", "components/boards/BoardPanelResizeHandle.tsx", "components/boards/BoardToolbar.tsx", "components/boards/BoardListPreview.tsx", "components/boards/BoardPngExport.tsx", "components/boards/BoardAssetBrowser.tsx", "components/boards/BoardInspector.tsx", "components/boards/BoardPropertyControls.tsx", "components/boards/BoardTextStyles.tsx", "components/boards/BoardSelectionStyles.tsx"],
+    "literalExceptions": ["URL", "px"]
   }
 }

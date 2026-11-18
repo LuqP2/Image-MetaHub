@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../../i18n/useTranslation';
 import { PanelLeftClose } from 'lucide-react';
 import { browserMarqueeIds, BOARD_BROWSER_ROW_HEIGHT } from '../../services/boards/assetSelection';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -17,6 +18,7 @@ import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../../utils/saf
 
 const useBrowserState = create<{ query: string; directoryId: string; mediaType: string; selectedIds: string[] }>(() => ({ query: '', directoryId: '', mediaType: '', selectedIds: [] }));
 function AssetTile({ image, selected, onSelect, editable, draggingIds }: { image: IndexedImage; selected: boolean; onSelect(multiple: boolean): void; editable: boolean; draggingIds: string[] }) {
+  const { t } = useTranslation();
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
   const enableSafeMode = useSettingsStore(state => state.enableSafeMode);
@@ -27,7 +29,7 @@ function AssetTile({ image, selected, onSelect, editable, draggingIds }: { image
     onClick={event => onSelect(event.shiftKey || event.ctrlKey || event.metaKey)} draggable={editable && selected}
     onDragStart={event => { event.dataTransfer.effectAllowed = 'copy'; setInternalImageDragData(event.dataTransfer, image.id, draggingIds.includes(image.id) ? draggingIds : [image.id]); }}
     onDragEnd={clearInternalImageDragData}>
-    {thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(16px)' : undefined }} /> : <span>Preview</span>}
+    {thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(16px)' : undefined }} /> : <span>{t('settings.shortcuts.preview')}</span>}
     <span>{getBoardDisplayName(image.name)}</span>
   </button>;
 }
@@ -49,6 +51,7 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
   open?: boolean; onOpenChange?: (open: boolean) => void;
   onPick?: (image: IndexedImage) => void; onCancelPick?: () => void;
 }) {
+  const { t } = useTranslation();
   const browserRoot = useRef<HTMLElement>(null);
   const state = useBrowserState();
   useEffect(() => {
@@ -130,13 +133,13 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
     if (current.active) { event.preventDefault(); updateMarquee(); }
   };
   if (!open && !onPick) return null;
-  return <aside ref={browserRoot} className="board-browser" aria-label="Canvas library">
-    <div className="board-browser-heading"><strong>{onPick ? 'Choose a replacement' : 'Library'}</strong><button className="board-icon-button" aria-label={onPick ? 'Cancel replacement' : 'Hide library'} title={onPick ? 'Cancel replacement' : 'Hide library'} onClick={() => onPick ? onCancelPick?.() : (onOpenChange ?? useBoardUIStore.getState().setLibraryOpen)(false)}>{onPick ? '×' : <PanelLeftClose size={16}/>}</button></div>
-    <input className="board-input" aria-label="Search canvas library" placeholder="Search library…" value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
-    <div className="board-browser-filters"><select className="board-select" aria-label="Canvas library folder" value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">All folders</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
-    <select className="board-select" aria-label="Canvas library media type" value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">All media</option>{['image', 'video', 'audio', 'model3d'].map(type => <option value={type} key={type}>{type}</option>)}</select></div>
-    <p>{results.length} {results.length === 1 ? 'asset' : 'assets'}</p>
+  return <aside ref={browserRoot} className="board-browser" aria-label={t('canvas.library')}>
+    <div className="board-browser-heading"><strong>{onPick ? t('canvas.chooseReplacement') : t('settings.library.library')}</strong><button className="board-icon-button" aria-label={onPick ? t('canvas.cancelReplacement') : t('canvas.hideLibrary')} title={onPick ? t('canvas.cancelReplacement') : t('canvas.hideLibrary')} onClick={() => onPick ? onCancelPick?.() : (onOpenChange ?? useBoardUIStore.getState().setLibraryOpen)(false)}>{onPick ? '×' : <PanelLeftClose size={16}/>}</button></div>
+    <input className="board-input" aria-label={t('canvas.searchLibrary')} placeholder={t('canvas.searchPlaceholder')} value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
+    <div className="board-browser-filters"><select className="board-select" aria-label={t('canvas.folderFilter')} value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">{t('canvas.allFolders')}</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
+    <select className="board-select" aria-label={t('canvas.mediaFilter')} value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">{t('canvas.allMedia')}</option>{(['image', 'video', 'audio', 'model3d'] as const).map(type => <option value={type} key={type}>{t(({ image: 'canvas.imageMedia', video: 'canvas.videoMedia', audio: 'canvas.audioMedia', model3d: 'canvas.modelMedia' } satisfies Record<string, MessageKey>)[type])}</option>)}</select></div>
+    <p>{t('canvas.assetsCount', { count: results.length })}</p>
     <div ref={viewport} className="board-browser-results" onDragStartCapture={event => { if (gesture.current) event.preventDefault(); }} onPointerDown={beginMarquee} onPointerMove={moveMarquee} onPointerUp={event => { if (gesture.current?.active) { suppressClick.current = true; event.preventDefault(); } stop(); }} onPointerCancel={() => { if (gesture.current?.active) useBrowserState.setState({ selectedIds: gesture.current.original }); stop(); }} onLostPointerCapture={stop} onClickCapture={event => { if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } }}><AutoSizer>{({ width, height }) => <FixedSizeList<RowData> className="scrollbar-thin" width={width} height={height} itemCount={Math.ceil(results.length / 2)} itemSize={BOARD_BROWSER_ROW_HEIGHT} outerRef={scroll} itemData={data}>{BrowserRow}</FixedSizeList>}</AutoSizer>{marquee && <div className="board-browser-marquee" style={marquee} />}</div>
-    {!onPick && <button className="board-button board-button--primary" disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>{selectedIds.length ? `Add to canvas (${selectedIds.length})` : 'Add to canvas'}</button>}
+    {!onPick && <button className="board-button board-button--primary" disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>{selectedIds.length ? t('canvas.addCount', { count: selectedIds.length }) : t('canvas.add')}</button>}
   </aside>;
 }

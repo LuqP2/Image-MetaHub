@@ -36,13 +36,22 @@ describe('board workspace flow', () => {
     await act(async () => { id = await useBoardStore.getState().createBoard(name); });
     act(() => useBoardStore.getState().executeOperation(id, doc => {
       const next = addText(doc, { x: 25, y: 50 });
-      return updateObjects(next, [{ id: next.objects.at(-1)!.id, text: 'Original text {text} 海' }]);
+      return updateObjects(next, [{ id: next.objects.at(-1)!.id, text: 'Original text {text} 海', fontFamily: 'Fixture Font {font}' }]);
     }));
     const original = useBoardStore.getState().sessions[id].document;
+    act(() => useBoardStore.getState().setSelection(id, [original.objects[0].id]));
     await act(async () => { render(<BoardWorkspace editable />); });
     act(() => useSettingsStore.setState({ language }));
     expect((screen.getByLabelText(formatMessage(language, 'canvas.name')) as HTMLInputElement).value).toBe(name);
     expect(useBoardStore.getState().sessions[id].document).toEqual(original);
+    const text = screen.getByRole('textbox', { name: formatMessage(language, 'imageViewer.editor.text'), exact: true });
+    expect((text as HTMLTextAreaElement).value).toBe('Original text {text} 海');
+    expect((screen.getByRole('combobox', { name: formatMessage(language, 'canvas.font') }) as HTMLSelectElement).value).toBe('Fixture Font {font}');
+    fireEvent.change(text, { target: { value: 'Edited user text 海' } });
+    fireEvent.blur(text);
+    expect(useBoardStore.getState().sessions[id].document.objects[0]).toMatchObject({ text: 'Edited user text 海', fontFamily: 'Fixture Font {font}' });
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'settings.native.undo'), exact: true }));
+    expect(useBoardStore.getState().sessions[id].document.objects).toEqual(original.objects);
     fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.editor.text'), exact: true }));
     expect(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.editor.text'), exact: true }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'batchExport.export'), exact: true }));

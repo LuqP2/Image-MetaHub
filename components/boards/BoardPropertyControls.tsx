@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import type { ReactNode } from 'react';
 
 export function BoardPropertyRow({ label, children }: { label: string; children: ReactNode }) {
@@ -9,11 +10,12 @@ export function BoardColorField({ label, value, mixed = false, disabled, onChang
   label: string; value: string; mixed?: boolean; disabled?: boolean;
   onChange(value: string): void; onBlur?(): void; presets?: readonly string[]; onPreset?(value: string): void;
 }) {
+  const { t } = useTranslation();
   return <div className="board-color-control">
     <label className={`board-color-field${mixed ? ' board-color-field--mixed' : ''}`}>
       <input type="color" aria-label={label} disabled={disabled} value={value} onChange={event => onChange(event.target.value)} onBlur={onBlur} />
-      <span aria-hidden="true">{mixed ? 'Mixed' : value.toUpperCase()}</span>
+      <span aria-hidden="true">{mixed ? t('canvas.mixed') : value.toUpperCase()}</span>
     </label>
-    {presets && <div className="board-color-palette" aria-label={`${label} presets`}>{presets.map(color => <button type="button" key={color} disabled={disabled} aria-label={`Color ${color}`} title={color.toUpperCase()} aria-pressed={!mixed && value === color} style={{ backgroundColor: color }} onClick={() => (onPreset ?? onChange)(color)} />)}</div>}
+    {presets && <div className="board-color-palette" aria-label={t('canvas.presets', { label })}>{presets.map(color => <button type="button" key={color} disabled={disabled} aria-label={t('canvas.colorNamed', { color })} title={color.toUpperCase()} aria-pressed={!mixed && value === color} style={{ backgroundColor: color }} onClick={() => (onPreset ?? onChange)(color)} />)}</div>}
   </div>;
 }
