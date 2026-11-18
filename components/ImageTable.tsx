@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import RelatedImagesMenu from './contextMenu/RelatedImagesMenu';
 import type { RelatedImagesMode } from '../utils/relatedImages';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -22,7 +23,7 @@ import {
 } from './contextMenu/ContextMenuPrimitives';
 import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
-import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
+import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses } from './RatingStars';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
@@ -111,6 +112,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   clusterByImageId,
   jumpToGroupRequest = null,
 }) => {
+  const { t } = useTranslation();
   const directories = useImageStore((state) => state.directories);
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
@@ -164,11 +166,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
     hideContextMenu();
     try {
       const result = await savePrompt(target, { directoryPath, readAuthoritativeShadow: true });
-      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+      setSuccess(result.status === 'already-saved' ? t('libraryGallery.alreadySaved') : t('libraryGallery.promptSaved'));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+      setError(cause instanceof Error ? cause.message : t('libraryGallery.couldNotSavePrompt'));
     }
-  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess]);
+  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess, t]);
 
   useEffect(() => {
     if (!contextMenu.visible && isCopySubmenuOpen) {
@@ -547,7 +549,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
               {item.group.subtitle && <div className="truncate text-xs text-gray-500">{item.group.subtitle}</div>}
             </div>
             <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
-              {item.group.count} item{item.group.count === 1 ? '' : 's'}
+              {t('libraryGallery.itemCount', { count: item.group.count })}
             </div>
           </div>
         </div>
@@ -592,24 +594,24 @@ const ImageTable: React.FC<ImageTableProps> = ({
           {/* Fixed Header */}
           <div className="bg-gray-800 border-b border-gray-700" style={{ height: HEADER_HEIGHT }}>
             <div className="grid text-sm" style={{ gridTemplateColumns }}>
-              <div className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Preview</div>
+              <div className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">{t('settings.shortcuts.preview')}</div>
               <button
                 className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors flex items-center gap-1 text-left"
                 onClick={() => handleSort('filename')}
               >
-                <span className="flex items-center gap-1">Filename {getSortIcon('filename')}</span>
+                <span className="flex items-center gap-1">{t('libraryGallery.filename')} {getSortIcon('filename')}</span>
               </button>
               <button
                 className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors flex items-center gap-1 text-left"
                 onClick={() => handleSort('model')}
               >
-                <span className="flex items-center gap-1">Model {getSortIcon('model')}</span>
+                <span className="flex items-center gap-1">{t('libraryGallery.model')} {getSortIcon('model')}</span>
               </button>
               <button
                 className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors flex items-center gap-1 text-left"
                 onClick={() => handleSort('steps')}
               >
-                <span className="flex items-center gap-1">Steps {getSortIcon('steps')}</span>
+                <span className="flex items-center gap-1">{t('libraryGallery.steps')} {getSortIcon('steps')}</span>
               </button>
               <button
                 className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors flex items-center gap-1 text-left"
@@ -621,13 +623,13 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors flex items-center gap-1 text-left"
                 onClick={() => handleSort('size')}
               >
-                <span className="flex items-center gap-1">Size {getSortIcon('size')}</span>
+                <span className="flex items-center gap-1">{t('libraryGallery.size')} {getSortIcon('size')}</span>
               </button>
               <button
                 className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors flex items-center gap-1 text-left"
                 onClick={() => handleSort('seed')}
               >
-                <span className="flex items-center gap-1">Seed {getSortIcon('seed')}</span>
+                <span className="flex items-center gap-1">{t('libraryGallery.seed')} {getSortIcon('seed')}</span>
               </button>
             </div>
           </div>
@@ -674,7 +676,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Copy className="w-4 h-4" />
-            Copy to Clipboard
+            {t('libraryGallery.copyToClipboard')}
           </button>
 
           <button
@@ -682,7 +684,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Bookmark className="w-4 h-4" />
-            Save Prompt
+            {t('libraryGallery.savePrompt')}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -695,7 +697,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
               onClose={hideContextMenu}
             />
           )}
-          {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>Add to Board</button>}
+          {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>{t('libraryGallery.addToBoard')}</button>}
           <div
             className="relative"
             onMouseEnter={() => setIsCollectionSubmenuOpen(true)}
@@ -709,7 +711,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             >
               <Folder className="w-4 h-4" />
-              <span className="flex-1">Collection</span>
+              <span className="flex-1">{t('libraryGallery.collection')}</span>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </button>
 
@@ -724,14 +726,14 @@ const ImageTable: React.FC<ImageTableProps> = ({
                     onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
                     className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   >
-                    <span className="flex-1">Add to Collection</span>
+                    <span className="flex-1">{t('libraryGallery.addToCollection')}</span>
                     <ChevronRight className="h-4 w-4 text-gray-400" />
                   </button>
 
                   {isAddToCollectionSubmenuOpen && (
                     <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                       {collections.length === 0 ? (
-                        <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
+                        <div className="px-4 py-2 text-sm text-gray-500">{t('libraryGallery.noCollectionsYet')}</div>
                       ) : (
                         collections.map((collection) => (
                           <button
@@ -742,7 +744,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                             <span className="truncate">{collection.name}</span>
                             {collection.sourceTag && (
                               <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                                {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                                {collection.autoUpdate !== false ? t('libraryGallery.auto') : t('libraryGallery.linked')}
                               </span>
                             )}
                           </button>
@@ -759,7 +761,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                 >
-                  Create New Collection
+                  {t('libraryGallery.createNewCollection')}
                 </button>
               </div>
             )}
@@ -772,7 +774,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
               >
                 <Folder className="w-4 h-4" />
-                Set as Cover
+                {t('libraryGallery.setAsCover')}
               </button>
 
               <button
@@ -780,7 +782,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 hover:text-amber-100 transition-colors flex items-center gap-2"
               >
                 <Folder className="w-4 h-4" />
-                <span className="flex-1">Remove from Current Collection</span>
+                <span className="flex-1">{t('libraryGallery.removeFromCurrentCollection')}</span>
               </button>
             </>
           )}
@@ -795,7 +797,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             >
               <Copy className="w-4 h-4" />
-              <span className="flex-1">Copy</span>
+              <span className="flex-1">{t('settings.native.copy')}</span>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </button>
 
@@ -806,28 +808,28 @@ const ImageTable: React.FC<ImageTableProps> = ({
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.prompt}
                 >
-                  Prompt
+                  {t('libraryGallery.prompt')}
                 </button>
                 <button
                   onClick={copyNegativePrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.negativePrompt}
                 >
-                  Negative Prompt
+                  {t('libraryGallery.negativePrompt')}
                 </button>
                 <button
                   onClick={copySeed}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.seed}
                 >
-                  Seed
+                  {t('libraryGallery.seed')}
                 </button>
                 <button
                   onClick={copyModel}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.models?.[0]}
                 >
-                  Checkpoint
+                  {t('libraryGallery.checkpoint')}
                 </button>
               </div>
             )}
@@ -836,15 +838,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
           <div className="border-t border-gray-600 my-1"></div>
 
           <div className="px-4 py-2">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">{t('libraryGallery.setRating')}</div>
             <div className="flex flex-wrap gap-1.5">
               {RATING_VALUES.map((value) => (
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
                   className={`rounded-md border px-2 py-1 transition-colors ${getRatingChipClasses(value, false)}`}
-                  title={`Set ${getRatingLabel(value)}`}
-                  aria-label={`Set ${getRatingLabel(value)}`}
+                  title={t('libraryGallery.setRatingValue', { rating: t('librarySearch.starCount', { count: value }) })}
+                  aria-label={t('libraryGallery.setRatingValue', { rating: t('librarySearch.starCount', { count: value }) })}
                 >
                   <RatingValueIcons value={value} size={11} starClassName="fill-current" />
                 </button>
@@ -853,7 +855,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 onClick={() => handleSetRating(null)}
                 className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
               >
-                Clear
+                {t('libraryGallery.clear')}
               </button>
             </div>
           </div>
@@ -866,17 +868,17 @@ const ImageTable: React.FC<ImageTableProps> = ({
               disabled={!contextMenu.image?.metadata}
             >
               <Copy className="w-4 h-4" />
-              Copy Raw Metadata
+              {t('libraryGallery.copyRawMetadata')}
             </button>
 
           <button
             onClick={openFindSimilar}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!canFindSimilar}
-            title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+            title={canFindSimilar ? t('libraryGallery.findImagesWithMatchingPromptAndMetadata') : t('libraryGallery.requiresPromptMetadata')}
           >
             <Search className="w-4 h-4" />
-            Find by metadata...
+            {t('libraryGallery.findByMetadata')}
           </button>
 
           {onFindVisuallySimilar && (
@@ -885,11 +887,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!canFindVisuallySimilar}
               title={canFindVisuallySimilar
-                ? 'Find images that look like this one'
-                : 'Enable Visual Search and download the model in Settings first'}
+                ? t('libraryGallery.findImagesThatLookLikeThisOne')
+                : t('libraryGallery.enableVisualSearchAndDownloadTheModelInSettingsFirst')}
             >
               <Sparkles className="w-4 h-4 text-indigo-400" />
-              Find Similar
+              {t('libraryGallery.findSimilar')}
             </button>
           )}
 
@@ -897,11 +899,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature)' : 'Open this image in the Image Editor workspace'}
+              title={!canUseImageEditor && initialized ? t('libraryGallery.imageEditorPro') : t('libraryGallery.openThisImageInTheImageEditorWorkspace')}
             >
               <ImageIcon className="w-4 h-4" />
-              <span className="flex-1">Edit Image</span>
-              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature)" />}
+              <span className="flex-1">{t('libraryGallery.editImageMenu')}</span>
+              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip={t('libraryGallery.imageEditorPro')} />}
             </button>
           )}
 
@@ -909,11 +911,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
             <button
               onClick={openComfyUIWorkspace}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={canUseComfyUI ? 'Open this image in the ComfyUI workspace context panel' : 'Pro feature'}
+              title={canUseComfyUI ? t('libraryGallery.openThisImageInTheComfyuiWorkspaceContextPanel') : t('libraryGallery.proFeature')}
             >
               <Workflow className="w-4 h-4" />
-              <span className="flex-1">Open ComfyUI Workspace</span>
-              {!canUseComfyUI && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
+              <span className="flex-1">{t('libraryGallery.openComfyuiWorkspace')}</span>
+              {!canUseComfyUI && <ProBadge size="sm" variant="subtle" tooltip={t('libraryGallery.proFeature')} />}
             </button>
           )}
 
@@ -923,7 +925,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             disabled={isReparsing}
           >
             <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
-            {getContextTargetImages().length > 1 ? `Reparse Selected (${getContextTargetImages().length})` : 'Reparse Metadata'}
+            {getContextTargetImages().length > 1 ? t('libraryGallery.reparseSelectionMenu', { count: getContextTargetImages().length }) : t('libraryGallery.reparseMetadataMenu')}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -945,7 +947,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
             return (
               <ContextMenuSubmenu
-                label="File"
+                label={t('settings.native.file')}
                 icon={<Folder className="w-4 h-4" />}
                 isOpen={isFileSubmenuOpen}
                 onOpenChange={setIsFileSubmenuOpen}
@@ -959,7 +961,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                     onClick={item.onClick}
                     icon={item.icon}
                     label={item.label}
-                    title={item.isPro && initialized ? 'Pro feature' : undefined}
+                    title={item.isPro && initialized ? t('libraryGallery.proFeature') : undefined}
                     showProBadge={item.isPro}
                     proBadgeTooltip="Pro feature"
                   />
@@ -973,7 +975,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
       <CollectionFormModal
         isOpen={isCollectionModalOpen}
-        title="Create Collection"
+        title={t('libraryGallery.createCollection')}
         submitLabel="Create Collection"
         initialValues={{
           name: '',
@@ -1022,6 +1024,7 @@ interface ImageTableRowProps {
 }
 
 const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns, enableThumbnail }) => {
+  const { t } = useTranslation();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const thumbnail = useResolvedThumbnail(enableThumbnail ? image : null);
@@ -1106,11 +1109,11 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
         <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {thumbnailsDisabled || !enableThumbnail ? (
             <>
-              <Package className="h-4 w-4 text-gray-500" aria-label="Preview disabled" />
+              <Package className="h-4 w-4 text-gray-500" aria-label={t('libraryGallery.previewDisabled')} />
               <button
                 onClick={handlePreviewClick}
                 className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
-                title="Show details"
+                title={t('libraryGallery.showDetails')}
               >
                 <Info className="h-4 w-4 text-white" />
               </button>
@@ -1130,7 +1133,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
               <button
                 onClick={handlePreviewClick}
                 className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
-                title="Show details"
+                title={t('libraryGallery.showDetails')}
               >
                 <Info className="h-4 w-4 text-white" />
               </button>
@@ -1158,21 +1161,21 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
               <button
                 onClick={handlePreviewClick}
                 className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
-                title="Show details"
+                title={t('libraryGallery.showDetails')}
               >
                 <Info className="h-4 w-4 text-white" />
               </button>
             </>
           ) : (
-            <span className="text-xs text-gray-500">ERR</span>
+            <span className="text-xs text-gray-500">{t('libraryGallery.err')}</span>
           )}
         </div>
       </div>
       <div className="px-3 py-2 text-gray-300 font-medium truncate" title={displayName}>
         {displayName}
       </div>
-      <div className="px-3 py-2 text-gray-400 truncate" title={image.models?.[0] || 'Unknown'}>
-        {image.models?.[0] || <span className="text-gray-600">Unknown</span>}
+      <div className="px-3 py-2 text-gray-400 truncate" title={image.models?.[0] || t('libraryGallery.unknown')}>
+        {image.models?.[0] || <span className="text-gray-600">{t('libraryGallery.unknown')}</span>}
       </div>
       <div className="px-3 py-2 text-center">
         {(() => {

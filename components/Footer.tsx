@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
 import Tooltip from './Tooltip';
@@ -94,6 +95,8 @@ const Footer: React.FC<FooterProps> = ({
   onGroupByChange,
   hidePageSize = false,
 }) => {
+  const { t } = useTranslation();
+  const switchViewLabel = t(viewMode === 'grid' ? 'libraryGallery.switchToListView' : 'libraryGallery.switchToGridView');
   const { canUseA1111 } = useFeatureAccess();
   const semanticModelDownloading = useSemanticStore((s) => s.modelDownloading);
   const semanticModelProgress = useSemanticStore((s) => s.modelProgress);
@@ -159,7 +162,7 @@ const Footer: React.FC<FooterProps> = ({
     onItemsPerPageChange(parseInt(value, 10));
   };
 
-  const folderText = directoryCount === 1 ? 'folder' : 'folders';
+  const folderText = t('libraryGallery.folderCount', { count: directoryCount ?? 0 });
   const showPageControls = totalPages > 1;
   const hasEnrichmentJob = enrichmentProgress && enrichmentProgress.total > 0;
   const hasA1111Job = canUseA1111 && a1111Progress && a1111Progress.isGenerating; // Only show if feature is available
@@ -261,8 +264,8 @@ const Footer: React.FC<FooterProps> = ({
                   className={`border-l px-2 text-gray-400 transition-colors hover:text-white ${
                     windowItem.isActive ? 'border-blue-500/30 hover:bg-blue-500/20' : 'border-gray-700/80 hover:bg-gray-700/80'
                   }`}
-                  aria-label={`Close ${windowItem.title}`}
-                  title="Close window"
+                  aria-label={t('libraryGallery.closeNamedWindow', { label: windowItem.title })}
+                  title={t('libraryGallery.closeWindow')}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -280,15 +283,15 @@ const Footer: React.FC<FooterProps> = ({
         ) : (
           <>
             {filteredCount !== undefined && totalCount !== undefined && (
-              <Token title="Images in current view / Total images">
+              <Token title={t('libraryGallery.imagesInCurrentViewTotalImages')}>
                 <span className="font-semibold text-gray-200">{filteredCount.toLocaleString()}</span>
                 <span className="text-gray-600 mx-1">/</span>
                 <span className="text-gray-400">{totalCount.toLocaleString()}</span>
               </Token>
             )}
             {directoryCount !== undefined && directoryCount > 0 && (
-              <Token title="Number of folders">
-                <span className="font-medium text-gray-200">{directoryCount}</span> <span className="text-gray-400 ml-1">{folderText}</span>
+              <Token title={t('libraryGallery.numberOfFolders')}>
+                <span className="font-medium text-gray-200">{folderText}</span>
               </Token>
             )}
           </>
@@ -366,29 +369,29 @@ const Footer: React.FC<FooterProps> = ({
       <nav className="flex items-center gap-4 text-xs">
         {showSortControls && (
           <div className="flex items-center gap-2">
-            <label htmlFor="footer-sort" className="text-gray-500 hidden md:inline font-medium">Sort:</label>
+            <label htmlFor="footer-sort" className="text-gray-500 hidden md:inline font-medium">{t('libraryGallery.sortLabel')}</label>
             <select
               id="footer-sort"
               value={sortOrder}
               onChange={(event) => onSortOrderChange?.(event.target.value as ImageGroupingSortOrder)}
               className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer"
             >
-              <option value="date-desc">Newest First</option>
-              <option value="date-asc">Oldest First</option>
+              <option value="date-desc">{t('libraryGallery.newestFirst')}</option>
+              <option value="date-asc">{t('libraryGallery.oldestFirst')}</option>
               <option value="asc">A-Z</option>
               <option value="desc">Z-A</option>
-              <option value="random">Random</option>
+              <option value="random">{t('libraryGallery.random')}</option>
               {/* Not user-selectable; shown only so the control reflects an
                   active visual search instead of rendering blank. */}
-              {sortOrder === 'relevance' && <option value="relevance">Relevance</option>}
+              {sortOrder === 'relevance' && <option value="relevance">{t('libraryGallery.relevance')}</option>}
             </select>
             {sortOrder === 'random' && onReshuffle && (
-              <Tooltip label="Reshuffle random order">
+              <Tooltip label={t('libraryGallery.reshuffleRandomOrder')}>
                 <button
                   onClick={onReshuffle}
                   className="p-1.5 text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700 rounded-lg border border-gray-700/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  title="Reshuffle random order"
-                  aria-label="Reshuffle random order"
+                  title={t('libraryGallery.reshuffleRandomOrder')}
+                  aria-label={t('libraryGallery.reshuffleRandomOrder')}
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                 </button>
@@ -396,19 +399,19 @@ const Footer: React.FC<FooterProps> = ({
             )}
             {sortOrder !== 'random' && (
               <>
-                <label htmlFor="footer-group" className="text-gray-500 hidden md:inline font-medium">Group:</label>
+                <label htmlFor="footer-group" className="text-gray-500 hidden md:inline font-medium">{t('libraryGallery.groupLabel')}</label>
                 <select
                   id="footer-group"
                   value={groupBy}
                   onChange={(event) => onGroupByChange?.(event.target.value as ImageGroupByMode)}
                   className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer"
                 >
-                  <option value="none">None</option>
-                  <option value="date">Date</option>
-                  <option value="name">Name</option>
-                  <option value="session">Session</option>
-                  <option value="model">Model</option>
-                  <option value="cluster">Cluster</option>
+                  <option value="none">{t('libraryGallery.none')}</option>
+                  <option value="date">{t('libraryGallery.date')}</option>
+                  <option value="name">{t('libraryGallery.name')}</option>
+                  <option value="session">{t('libraryGallery.session')}</option>
+                  <option value="model">{t('libraryGallery.model')}</option>
+                  <option value="cluster">{t('libraryGallery.cluster')}</option>
                 </select>
               </>
             )}
@@ -417,14 +420,14 @@ const Footer: React.FC<FooterProps> = ({
         )}
         {!hidePageSize && (
           <div className="flex items-center gap-2">
-            <label htmlFor="items-per-page" className="text-gray-500 hidden md:inline font-medium">Show:</label>
+            <label htmlFor="items-per-page" className="text-gray-500 hidden md:inline font-medium">{t('libraryGallery.pageSizeLabel')}</label>
             <select id="items-per-page" value={itemsPerPage} onChange={handleItemsPerPageChange} className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer">
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
               <option value={500}>500</option>
-              <option value={-1}>All</option>
+              <option value={-1}>{t('libraryGallery.all')}</option>
             </select>
           </div>
         )}
@@ -432,13 +435,13 @@ const Footer: React.FC<FooterProps> = ({
           <>
             <div className="w-px h-4 bg-gray-700/50"></div>
             <div className="flex items-center gap-1 bg-gray-800/40 p-1 rounded-lg border border-gray-700/30">
-              <Tooltip label="First page">
-                <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="First page" aria-label="First page">
+              <Tooltip label={t('libraryGallery.firstPage')}>
+                <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={t('libraryGallery.firstPage')} aria-label={t('libraryGallery.firstPage')}>
                   <ChevronsLeft className="w-4 h-4" />
                 </button>
               </Tooltip>
-              <Tooltip label="Previous page">
-                <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Previous page" aria-label="Previous page">
+              <Tooltip label={t('libraryGallery.previousPage')}>
+                <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={t('libraryGallery.previousPage')} aria-label={t('libraryGallery.previousPage')}>
                   <ChevronLeft className="w-4 h-4" />
                 </button>
               </Tooltip>
@@ -472,20 +475,20 @@ const Footer: React.FC<FooterProps> = ({
                   <button
                     onClick={() => setIsEditingPage(true)}
                     className="px-2 py-0.5 text-gray-300 hover:text-white hover:bg-gray-700/50 rounded transition-colors text-xs font-medium"
-                    title="Click to edit page number"
+                    title={t('libraryGallery.clickToEditPageNumber')}
                   >
-                    <span className="text-white font-bold">{currentPage}</span> <span className="text-gray-600">of</span> <span className="text-gray-400">{totalPages}</span>
+                    {t('libraryGallery.pagePageOfTotal', { page: currentPage, total: totalPages })}
                   </button>
                 )}
               </div>
 
-              <Tooltip label="Next page">
-                <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Next page" aria-label="Next page">
+              <Tooltip label={t('libraryGallery.nextPage')}>
+                <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={t('libraryGallery.nextPage')} aria-label={t('libraryGallery.nextPage')}>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </Tooltip>
-              <Tooltip label="Last page">
-                <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Last page" aria-label="Last page">
+              <Tooltip label={t('libraryGallery.lastPage')}>
+                <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={t('libraryGallery.lastPage')} aria-label={t('libraryGallery.lastPage')}>
                   <ChevronsRight className="w-4 h-4" />
                 </button>
               </Tooltip>
@@ -496,8 +499,8 @@ const Footer: React.FC<FooterProps> = ({
       <div className="flex items-center gap-3 border-l border-gray-700/50 pl-3">
         <ImageSizeSlider />
         {viewMode === 'grid' && onLibraryGridLayoutChange && (
-          <Tooltip label="Masonry layout">
-            <button type="button" aria-label="Masonry layout" title="Masonry layout"
+          <Tooltip label={t('libraryGallery.masonryLayout')}>
+            <button type="button" aria-label={t('libraryGallery.masonryLayout')} title={t('libraryGallery.masonryLayout')}
               aria-pressed={libraryGridLayout === 'masonry'}
               onClick={() => onLibraryGridLayoutChange(libraryGridLayout === 'masonry' ? 'uniform' : 'masonry')}
               className={`p-2 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${libraryGridLayout === 'masonry' ? 'bg-blue-500/20 text-blue-300' : 'hover:bg-gray-800 text-gray-400 hover:text-white'}`}>
@@ -505,13 +508,13 @@ const Footer: React.FC<FooterProps> = ({
             </button>
           </Tooltip>
         )}
-        <Tooltip label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
-          <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`} aria-label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
+        <Tooltip label={switchViewLabel}>
+          <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title={switchViewLabel} aria-label={switchViewLabel}>
             {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
         </Tooltip>
         {onToggleQueue && (
-          <Tooltip label="Toggle Queue">
+          <Tooltip label={t('libraryGallery.toggleQueue')}>
             <button
               onClick={onToggleQueue}
               className={`relative p-2 rounded-lg transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
@@ -519,8 +522,8 @@ const Footer: React.FC<FooterProps> = ({
                   ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
                   : 'hover:bg-gray-800 text-gray-400 hover:text-white border-transparent hover:border-gray-700'
               }`}
-              title="Toggle Queue"
-              aria-label="Toggle Queue"
+              title={t('libraryGallery.toggleQueue')}
+              aria-label={t('libraryGallery.toggleQueue')}
             >
               <ListChecks className="h-4 w-4" />
               {queueCount > 0 && (

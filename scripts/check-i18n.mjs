@@ -30,7 +30,7 @@ const files = execFileSync('git', ['ls-files', '-z', '--', '*.tsx', '*.ts', '*.m
 const visibleProperties = /^(?:title|label|description|aria-label|ariaLabel|placeholder|alt|tooltip|aria-description|message)$/;
 for (const file of files) {
   const module = Object.values(coverage).find(({ paths }) => paths.some((path) => path.endsWith('/') ? file.startsWith(path) : file === path));
-  if (!module && !['electron.mjs', 'electron/exrIpc.mjs', 'components/ProPlanSelector.tsx', 'components/Sidebar.tsx', 'hooks/useImageLoader.ts'].includes(file)) continue;
+  if (!module && !['App.tsx', 'electron.mjs', 'electron/exrIpc.mjs', 'components/Footer.tsx', 'components/ProPlanSelector.tsx', 'components/RatingStars.tsx', 'components/Sidebar.tsx', 'hooks/useImageLoader.ts'].includes(file)) continue;
   const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
   const exceptions = new Set(module?.literalExceptions);
   function report(node, error) {

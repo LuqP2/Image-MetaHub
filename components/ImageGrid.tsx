@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import RelatedImagesMenu from './contextMenu/RelatedImagesMenu';
 import type { RelatedImagesMode } from '../utils/relatedImages';
 import { VariableSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
@@ -34,7 +35,7 @@ import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
-import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel } from './RatingStars';
+import { RATING_VALUES, RatingValueIcons, getRatingChipClasses } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
@@ -186,6 +187,7 @@ const getWarmupWindowImageKey = (images: IndexedImage[]): string =>
 const visibleGridThumbnailFlows = new Map<string, string>();
 
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, frameHeight, isComparisonFirst, cardRef, isBlurred }) => {
+  const { t } = useTranslation();
   const [renameValue, setRenameValue] = useState('');
   const [isSubmittingRename, setIsSubmittingRename] = useState(false);
   const thumbnail = useResolvedThumbnail(image);
@@ -316,7 +318,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     try {
       const result = await renameIndexedImage(image, nextValue);
       if (!result.success) {
-        alert(result.error || 'Failed to rename image.');
+        alert(result.error || t('libraryGallery.failedToRenameImage'));
         requestAnimationFrame(() => {
           renameInputRef.current?.focus();
           renameInputRef.current?.select();
@@ -516,8 +518,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               ? 'bg-blue-500 text-gray-950 opacity-100'
               : `bg-black/50 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-blue-500 hover:text-gray-950 ${isFocused ? 'opacity-100' : ''}`
           }`}
-          title={isSelected ? 'Deselect image' : 'Select image'}
-          aria-label={isSelected ? 'Deselect image' : 'Select image'}
+          title={isSelected ? t('libraryGallery.deselectImage') : t('libraryGallery.selectImage')}
+          aria-label={isSelected ? t('libraryGallery.deselectImage') : t('libraryGallery.selectImage')}
         >
           {isSelected ? (
             <CheckSquare className="h-5 w-5" />
@@ -528,15 +530,15 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
         {isComparisonFirst && (
           <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-purple-600 rounded-lg text-white text-xs font-bold shadow-lg">
-            Compare #1
+            {t('libraryGallery.compare1')}
           </div>
         )}
         <motion.button
           onClick={handlePreviewClick}
           whileTap={{ scale: 0.85 }}
           className={`absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white transition-opacity hover:bg-blue-500 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:opacity-100 opacity-0 group-hover:opacity-100 ${isFocused ? 'opacity-100' : ''}`}
-          title="Show details"
-          aria-label="Show details"
+          title={t('libraryGallery.showDetails')}
+          aria-label={t('libraryGallery.showDetails')}
         >
           <Info className="h-4 w-4" />
         </motion.button>
@@ -549,8 +551,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               ? 'bg-rose-500/85 text-white opacity-100 hover:bg-rose-600'
               : `bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-rose-500 ${isFocused ? 'opacity-100' : ''}`
           }`}
-          title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          aria-label={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          title={image.isFavorite ? t('libraryGallery.removeFromFavorites') : t('libraryGallery.addToFavorites')}
+          aria-label={image.isFavorite ? t('libraryGallery.removeFromFavorites') : t('libraryGallery.addToFavorites')}
         >
           <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
         </motion.button>
@@ -562,8 +564,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               ? 'bg-green-600 text-white opacity-100'
               : `bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-green-500 ${isFocused ? 'opacity-100' : ''}`
           }`}
-          title={copied ? 'Copied!' : 'Copy Prompt'}
-          aria-label={copied ? 'Copied!' : 'Copy Prompt'}
+          title={copied ? t('libraryGallery.copied') : t('libraryGallery.copyPrompt')}
+          aria-label={copied ? t('libraryGallery.copied') : t('libraryGallery.copyPrompt')}
           disabled={!image.prompt}
         >
           {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -572,7 +574,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         {thumbnailsDisabled ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-900 text-gray-500">
             <Package className="h-8 w-8" />
-            <span className="text-xs">Preview disabled</span>
+            <span className="text-xs">{t('libraryGallery.previewDisabled')}</span>
           </div>
         ) : isModel3D ? (
           <Model3DThumbnail image={image} directoryPath={directoryPath} />
@@ -582,8 +584,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              <p className="text-xs">{isExrFileName(image.name) ? thumbnail?.thumbnailError || 'EXR preview unavailable' : 'Preview unavailable'}</p>
-              {isExrFileName(image.name) && <button className="mt-2 rounded border border-gray-600 px-2 py-1 text-xs" onClick={event => { event.stopPropagation(); openExrSettings(); }}>EXR settings</button>}
+              <p className="text-xs">{isExrFileName(image.name) ? thumbnail?.thumbnailError || t('libraryGallery.exrPreviewUnavailable') : t('libraryGallery.previewUnavailable')}</p>
+              {isExrFileName(image.name) && <button className="mt-2 rounded border border-gray-600 px-2 py-1 text-xs" onClick={event => { event.stopPropagation(); openExrSettings(); }}>{t('libraryGallery.exrSettings')}</button>}
             </div>
           </div>
         ) : isAudio ? (
@@ -592,7 +594,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               <div className="rounded-full border border-accent/30 bg-accent/10 p-3 text-accent">
                 <Music className="h-7 w-7" />
               </div>
-              <span className="max-w-full truncate text-xs font-medium text-gray-200">Audio</span>
+              <span className="max-w-full truncate text-xs font-medium text-gray-200">{t('libraryGallery.audio')}</span>
               {audioDuration && (
                 <span className="rounded bg-black/30 px-2 py-0.5 font-mono text-[11px] text-gray-300">{audioDuration}</span>
               )}
@@ -670,7 +672,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             <input
               ref={renameInputRef}
               value={renameValue}
-              aria-label={`Rename ${image.name}`}
+              aria-label={t('libraryGallery.renameName', { name: image.name })}
               className="h-8 w-full rounded-md border border-blue-500/70 bg-gray-950 px-2 text-center text-[11px] leading-tight text-white outline-none ring-2 ring-blue-500/30 disabled:cursor-wait disabled:opacity-70"
               disabled={isSubmittingRename}
               onChange={(event) => setRenameValue(event.target.value)}
@@ -775,7 +777,9 @@ type GridRenderItem =
   | { type: 'group-header'; group: ImageGroup }
   | { type: 'group-spacer'; groupId: string; index: number };
 
-const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => (
+const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => {
+  const { t } = useTranslation();
+  return (
   <div
     className="h-full w-full pt-[14px]"
     data-group-id={group.id}
@@ -786,11 +790,12 @@ const GroupHeader: React.FC<{ group: ImageGroup }> = ({ group }) => (
         {group.subtitle && <div className="truncate text-xs text-gray-500">{group.subtitle}</div>}
       </div>
       <div className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-400">
-        {group.count} item{group.count === 1 ? '' : 's'}
+        {t('libraryGallery.itemCount', { count: group.count })}
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const expandGroupedItemsForColumns = (items: GridRenderItem[], columnCount: number): GridRenderItem[] => {
   if (columnCount <= 1) {
@@ -889,6 +894,7 @@ const getVirtualPageTargetIndex = (
 };
 
 const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildComponentProps<CellData>) => {
+  const { t } = useTranslation();
   const {
     items,
     columnCount,
@@ -988,7 +994,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               +{item.count}
             </div>
             <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm z-20 pointer-events-none">
-              Stack
+              {t('libraryGallery.stack')}
             </div>
           </div>
         </div>
@@ -1100,6 +1106,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   scrollResetKey,
   hasRightSidebar = false,
 }) => {
+  const { t } = useTranslation();
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
@@ -1270,11 +1277,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
     try {
       const result = await savePrompt(target, { directoryPath, readAuthoritativeShadow: true });
-      setSuccess(result.status === 'already-saved' ? 'Already saved' : 'Prompt saved');
+      setSuccess(result.status === 'already-saved' ? t('libraryGallery.alreadySaved') : t('libraryGallery.promptSaved'));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save prompt.');
+      setError(cause instanceof Error ? cause.message : t('libraryGallery.couldNotSavePrompt'));
     }
-  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess]);
+  }, [contextMenu.image, directories, hideContextMenu, savePrompt, setError, setSuccess, t]);
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
 
@@ -2514,7 +2521,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Copy className="w-4 h-4" />
-            Copy to Clipboard
+            {t('libraryGallery.copyToClipboard')}
           </button>
 
           <button
@@ -2522,7 +2529,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Bookmark className="w-4 h-4" />
-            Save Prompt
+            {t('libraryGallery.savePrompt')}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -2532,8 +2539,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
             <Tag className="w-4 h-4" />
-            <span className="flex-1">Add/Remove Tags</span>
-            {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
+            <span className="flex-1">{t('libraryGallery.addRemoveTags')}</span>
+            {!canUseBulkTagging && selectedCount > 1 && initialized && <ProBadge size="sm" variant="subtle" tooltip={t('libraryGallery.proFeature')} />}
           </button>
 
           {onFindRelated && contextMenu.image && (
@@ -2544,7 +2551,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               onClose={hideContextMenu}
             />
           )}
-          {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>Add to Board</button>}
+          {onAddToBoard && <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700" onClick={() => { onAddToBoard(getContextTargetImages()); hideContextMenu(); }}>{t('libraryGallery.addToBoard')}</button>}
           <div
             className="relative"
             onMouseEnter={() => setIsCollectionSubmenuOpen(true)}
@@ -2558,7 +2565,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             >
               <Folder className="w-4 h-4" />
-              <span className="flex-1">Collection</span>
+              <span className="flex-1">{t('libraryGallery.collection')}</span>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </button>
 
@@ -2573,14 +2580,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
                     className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   >
-                    <span className="flex-1">Add to Collection</span>
+                    <span className="flex-1">{t('libraryGallery.addToCollection')}</span>
                     <ChevronRight className="h-4 w-4 text-gray-400" />
                   </button>
 
                   {isAddToCollectionSubmenuOpen && (
                     <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                       {collections.length === 0 ? (
-                        <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
+                        <div className="px-4 py-2 text-sm text-gray-500">{t('libraryGallery.noCollectionsYet')}</div>
                       ) : (
                         collections.map((collection) => (
                           <button
@@ -2591,7 +2598,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                             <span className="truncate">{collection.name}</span>
                             {collection.sourceTag && (
                               <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                                {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                                {collection.autoUpdate !== false ? t('libraryGallery.auto') : t('libraryGallery.linked')}
                               </span>
                             )}
                           </button>
@@ -2608,7 +2615,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                 >
-                  Create New Collection
+                  {t('libraryGallery.createNewCollection')}
                 </button>
               </div>
             )}
@@ -2621,7 +2628,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
               >
                 <Folder className="w-4 h-4" />
-                Set as Cover
+                {t('libraryGallery.setAsCover')}
               </button>
 
               <button
@@ -2629,21 +2636,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 hover:text-amber-100 transition-colors flex items-center gap-2"
               >
                 <Folder className="w-4 h-4" />
-                <span className="flex-1">Remove from Current Collection</span>
+                <span className="flex-1">{t('libraryGallery.removeFromCurrentCollection')}</span>
               </button>
             </>
           )}
 
           <div className="px-4 py-2">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">{t('libraryGallery.setRating')}</div>
             <div className="flex flex-wrap gap-1.5">
               {RATING_VALUES.map((value) => (
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
                   className={`rounded-md border px-2 py-1 transition-colors ${getRatingChipClasses(value, false)}`}
-                  title={`Set ${getRatingLabel(value)}`}
-                  aria-label={`Set ${getRatingLabel(value)}`}
+                  title={t('libraryGallery.setRatingValue', { rating: t('librarySearch.starCount', { count: value }) })}
+                  aria-label={t('libraryGallery.setRatingValue', { rating: t('librarySearch.starCount', { count: value }) })}
                 >
                   <RatingValueIcons value={value} size={11} starClassName="fill-current" />
                 </button>
@@ -2652,7 +2659,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 onClick={() => handleSetRating(null)}
                 className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
               >
-                Clear
+                {t('libraryGallery.clear')}
               </button>
             </div>
           </div>
@@ -2662,9 +2669,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           <button
             onClick={handleToggleRejected}
             className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 transition-colors"
-            title={rejectTargetsAreRejected ? 'Remove the rejected tag' : 'Mark as rejected without deleting files'}
+            title={rejectTargetsAreRejected ? t('libraryGallery.removeTheRejectedTag') : t('libraryGallery.markAsRejectedWithoutDeletingFiles')}
           >
-            {rejectTargetsAreRejected ? 'Restore Candidate' : 'Reject Candidate'}{rejectTargetIds.length > 1 ? ` (${rejectTargetIds.length})` : ''}
+            {rejectTargetsAreRejected ? t('libraryGallery.restoreCandidate') : t('libraryGallery.rejectCandidate')}{rejectTargetIds.length > 1 ? ` (${rejectTargetIds.length})` : ''}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -2679,7 +2686,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             >
               <Copy className="w-4 h-4" />
-              <span className="flex-1">Copy</span>
+              <span className="flex-1">{t('settings.native.copy')}</span>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </button>
 
@@ -2690,28 +2697,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
                 >
-                  Prompt
+                  {t('libraryGallery.prompt')}
                 </button>
                 <button
                   onClick={copyNegativePrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
                 >
-                  Negative Prompt
+                  {t('libraryGallery.negativePrompt')}
                 </button>
                 <button
                   onClick={copySeed}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
                 >
-                  Seed
+                  {t('libraryGallery.seed')}
                 </button>
                 <button
                   onClick={copyModel}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                   disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
                 >
-                  Checkpoint
+                  {t('libraryGallery.checkpoint')}
                 </button>
               </div>
             )}
@@ -2723,13 +2730,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <button
               onClick={selectForComparison}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseComparison && initialized ? 'Pro feature' : undefined}
+              title={!canUseComparison && initialized ? t('libraryGallery.proFeature') : undefined}
             >
               <GitCompare className="w-4 h-4" />
               <span className="flex-1">
-                Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
+                {t('libraryGallery.addToCompare')} {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
               </span>
-              {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip="Pro feature" />}
+              {!canUseComparison && <ProBadge size="sm" variant="subtle" tooltip={t('libraryGallery.proFeature')} />}
             </button>
           )}
 
@@ -2737,10 +2744,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             onClick={openFindSimilar}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!canFindSimilar}
-            title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+            title={canFindSimilar ? t('libraryGallery.findImagesWithMatchingPromptAndMetadata') : t('libraryGallery.requiresPromptMetadata')}
           >
             <Search className="w-4 h-4" />
-            <span className="flex-1">Find by metadata...</span>
+            <span className="flex-1">{t('libraryGallery.findByMetadata')}</span>
           </button>
 
           {onFindVisuallySimilar && (
@@ -2749,11 +2756,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!canFindVisuallySimilar}
               title={canFindVisuallySimilar
-                ? 'Find images that look like this one'
-                : 'Enable Visual Search and download the model in Settings first'}
+                ? t('libraryGallery.findImagesThatLookLikeThisOne')
+                : t('libraryGallery.enableVisualSearchAndDownloadTheModelInSettingsFirst')}
             >
               <Sparkles className="w-4 h-4 text-indigo-400" />
-              <span className="flex-1">Find Similar</span>
+              <span className="flex-1">{t('libraryGallery.findSimilar')}</span>
             </button>
           )}
 
@@ -2761,11 +2768,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <button
               onClick={openImageEditor}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-              title={!canUseImageEditor && initialized ? 'Image Editor (Pro Feature)' : 'Open this image in the editor workspace'}
+              title={!canUseImageEditor && initialized ? t('libraryGallery.imageEditorPro') : t('libraryGallery.openThisImageInTheEditorWorkspace')}
             >
               <ImageIcon className="w-4 h-4" />
-              <span className="flex-1">Open in Editor</span>
-              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip="Image Editor (Pro Feature)" />}
+              <span className="flex-1">{t('libraryGallery.openInEditor')}</span>
+              {!canUseImageEditor && initialized && <ProBadge size="sm" variant="subtle" tooltip={t('libraryGallery.imageEditorPro')} />}
             </button>
           )}
 
@@ -2777,7 +2784,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               disabled={!contextMenu.image?.metadata}
             >
               <Copy className="w-4 h-4" />
-              Copy Raw Metadata
+              {t('libraryGallery.copyRawMetadata')}
             </button>
 
           <button
@@ -2786,7 +2793,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             disabled={isReparsing}
           >
             <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
-            {getContextTargetImages().length > 1 ? `Reparse Selected (${getContextTargetImages().length})` : 'Reparse Metadata'}
+            {getContextTargetImages().length > 1 ? t('libraryGallery.reparseSelectionMenu', { count: getContextTargetImages().length }) : t('libraryGallery.reparseMetadataMenu')}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -2808,7 +2815,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
             return (
               <ContextMenuSubmenu
-                label="File"
+                label={t('settings.native.file')}
                 icon={<Folder className="w-4 h-4" />}
                 isOpen={isFileSubmenuOpen}
                 onOpenChange={setIsFileSubmenuOpen}
@@ -2822,7 +2829,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     onClick={item.onClick}
                     icon={item.icon}
                     label={item.label}
-                    title={item.isPro && initialized ? 'Pro feature' : undefined}
+                    title={item.isPro && initialized ? t('libraryGallery.proFeature') : undefined}
                     showProBadge={item.isPro}
                     proBadgeTooltip="Pro feature"
                   />
@@ -2840,7 +2847,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   <ContextMenuButton
                     onClick={openComfyUIWorkspace}
                     icon={<Workflow className="w-4 h-4" />}
-                    label="Open in ComfyUI Workspace"
+                    label={t('libraryGallery.openInComfyuiWorkspace')}
                     showProBadge={!canUseComfyUI}
                     proBadgeTooltip="Pro feature"
                   />
@@ -2862,7 +2869,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               generateMenuItems.push({
                 key: 'copy-a1111',
                 icon: <Clipboard className="w-4 h-4" />,
-                label: 'Copy to A1111',
+                label: t('libraryGallery.copyToA1111'),
                 onClick: copyMetadataToA1111,
                 disabled: !hasPromptMetadata,
                 isPro: !canUseA1111,
@@ -2870,7 +2877,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               generateMenuItems.push({
                 key: 'generate-a1111',
                 icon: <Sparkles className="w-4 h-4" />,
-                label: singleVisibleProvider ? 'Generate' : 'Generate with A1111',
+                label: singleVisibleProvider ? t('libraryGallery.generate') : t('libraryGallery.generateWithA1111'),
                 onClick: openGenerateModal,
                 disabled: !hasPromptMetadata,
                 isPro: !canUseA1111,
@@ -2881,7 +2888,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               generateMenuItems.push({
                 key: 'generate-comfyui',
                 icon: <Sparkles className="w-4 h-4" />,
-                label: singleVisibleProvider ? 'Generate' : 'Generate with ComfyUI',
+                label: singleVisibleProvider ? t('libraryGallery.generate') : t('libraryGallery.generateWithComfyui'),
                 onClick: openComfyUIGenerateModal,
                 disabled: !hasPromptMetadata,
                 isPro: !canUseComfyUI,
@@ -2891,10 +2898,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 generateMenuItems.push({
                   key: 'comfyui-workspace',
                   icon: <Workflow className="w-4 h-4" />,
-                  label: 'Open in ComfyUI Workspace',
+                  label: t('libraryGallery.openInComfyuiWorkspace'),
                   onClick: openComfyUIWorkspace,
                   isPro: !canUseComfyUI,
-                  title: 'Open this image workflow in the ComfyUI workspace',
+                  title: t('libraryGallery.openThisImageWorkflowInTheComfyuiWorkspace'),
                 });
               }
             }
@@ -2914,13 +2921,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     icon={generateMenuItems[0].icon}
                     label={generateMenuItems[0].label}
                     disabled={generateMenuItems[0].disabled}
-                    title={generateMenuItems[0].isPro && initialized ? 'Pro feature' : generateMenuItems[0].title}
+                    title={generateMenuItems[0].isPro && initialized ? t('libraryGallery.proFeature') : generateMenuItems[0].title}
                     showProBadge={generateMenuItems[0].isPro}
                     proBadgeTooltip="Pro feature"
                   />
                 ) : (
                   <ContextMenuSubmenu
-                    label="Generate"
+                    label={t('libraryGallery.generate')}
                     icon={<Sparkles className="w-4 h-4" />}
                     isOpen={isGenerateSubmenuOpen}
                     onOpenChange={setIsGenerateSubmenuOpen}
@@ -2935,7 +2942,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                         icon={item.icon}
                         label={item.label}
                         disabled={item.disabled}
-                        title={item.isPro && initialized ? 'Pro feature' : item.title}
+                        title={item.isPro && initialized ? t('libraryGallery.proFeature') : item.title}
                         showProBadge={item.isPro}
                         proBadgeTooltip="Pro feature"
                       />
@@ -2953,8 +2960,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 onClick={handleDeleteFromContextMenu}
                 icon={<Trash2 className="w-4 h-4" />}
                 label={deleteTargetCount > 1
-                  ? `Delete Selected (${deleteTargetCount})`
-                  : 'Delete'}
+                  ? t('libraryGallery.deleteSelectedCount', { count: deleteTargetCount })
+                  : t('libraryGallery.delete')}
               />
             </>
           )}
@@ -2967,7 +2974,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     <>
       <CollectionFormModal
         isOpen={isCollectionModalOpen}
-        title="Create Collection"
+        title={t('libraryGallery.createCollection')}
         submitLabel="Create Collection"
         initialValues={{
           name: '',
@@ -3164,7 +3171,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
         <div className="flex flex-col h-full w-full">
             <div className="flex-1 flex items-center justify-center h-64 text-gray-500">
-                No images found
+                {t('libraryGallery.noImagesFound')}
             </div>
             {modalsContent}
         </div>
@@ -3509,7 +3516,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                                 +{item.count}
                             </div>
                             <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm z-20 pointer-events-none">
-                                Stack
+                                {t('libraryGallery.stack')}
                             </div>
                         </div>
                     </div>

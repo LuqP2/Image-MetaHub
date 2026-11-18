@@ -3457,7 +3457,7 @@ export default function App() {
     [displayImages, safeImages, safeSelectedImages]
   );
   const slideshowImageCount = slideshowPlaylistPreview.images.length;
-  const slideshowSourceLabel = slideshowPlaylistPreview.source === 'selection' ? 'selected files' : 'current view';
+  const slideshowSourceLabel = slideshowPlaylistPreview.source === 'selection' ? t('libraryGallery.selectedFiles') : t('libraryGallery.currentView');
 
   const handleStartSlideshow = useCallback(() => {
     const playlist = slideshowPlaylistPreview.images;
@@ -4616,12 +4616,12 @@ export default function App() {
                     scopeReturnLabel={
                       activeImageScope
                         ? activeImageScope.type === 'prompt'
-                          ? 'Prompt Library'
+                          ? t('libraryGallery.promptLibrary')
                           : activeImageScope.type === 'cluster'
-                          ? 'Clusters'
+                          ? t('libraryGallery.clusters')
                           : activeImageScope.type === 'model' || activeImageScope.type === 'managedModel'
-                          ? 'Models'
-                          : 'Collections'
+                          ? t('libraryGallery.models')
+                          : t('libraryGallery.collections')
                         : undefined
                     }
                     onOpenAnalytics={() => setIsAnalyticsOpen(true)}
