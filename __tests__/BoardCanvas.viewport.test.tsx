@@ -1,3 +1,4 @@
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import { BoardQueryContext } from '../components/boards/BoardQueryContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useBoardUIStore } from '../store/useBoardUIStore';
@@ -29,6 +30,7 @@ vi.mock('../services/boards/boardService', () => ({ boardService: {
 
 let frames: Map<number, FrameRequestCallback>;
 beforeEach(() => {
+  useSettingsStore.setState({ language: 'en' });
   frames = new Map(); let nextFrame = 0;
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
@@ -51,6 +53,28 @@ function setup() {
 }
 
 describe('Canvas fit-selection request lifecycle', () => {
+  it.each(languages)('preserves independent snapping and background controls in %s', (language) => {
+    useSettingsStore.setState({ canvasSmartGuides: true, canvasSnapToGrid: false });
+    const { id, mount } = setup();
+    mount();
+    const original = useBoardStore.getState().sessions[id].document;
+    act(() => useSettingsStore.setState({ language }));
+    expect(useBoardStore.getState().sessions[id].document).toEqual(original);
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.snapGrid'), exact: true }));
+    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: true, canvasSnapToGrid: true });
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.smartGuides'), exact: true }));
+    expect(useSettingsStore.getState()).toMatchObject({ canvasSmartGuides: false, canvasSnapToGrid: true });
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.boardBackground'), exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.white'), exact: true }));
+    expect(useBoardStore.getState().sessions[id].document.backgroundColor).toBe('#ffffff');
+    const picker = screen.getByLabelText(formatMessage(language, 'canvas.customBackground'));
+    fireEvent.change(picker, { target: { value: '#123456' } });
+    fireEvent.blur(picker);
+    expect(useBoardStore.getState().sessions[id].document.backgroundColor).toBe('#123456');
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.help') }));
+    expect(screen.getByText(formatMessage(language, 'canvas.helpKeepConnect'))).toBeTruthy();
+  });
+
   it('changes board backgrounds from the zoom swatch and pane menu, supports HEX and restores focus on Escape', () => {
     const { id, mount } = setup();
     const { container } = mount();

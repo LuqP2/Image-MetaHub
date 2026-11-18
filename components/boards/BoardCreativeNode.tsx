@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import BoardRichText from './BoardRichText';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { NodeProps } from '@xyflow/react';
@@ -8,6 +9,7 @@ import { boardFontFamily } from '../../services/boards/fontFamily';
 import { boardTextAlignment, boardTextColor } from '../../services/boards/textAppearance';
 
 export default memo(function BoardCreativeNode({ data, selected }: NodeProps<BoardFlowNode>) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const object = data.object;
   const [localEditing, setEditing] = useState(false);
@@ -35,10 +37,10 @@ export default memo(function BoardCreativeNode({ data, selected }: NodeProps<Boa
     <div className={`board-creative-content ${object.type === 'shape' ? `board-shape-text--${object.shape}` : ''}`} style={object.type === 'shape' ? { fontFamily: boardFontFamily(object.fontFamily), color: boardTextColor(object), textAlign: boardTextAlignment(object) } : undefined}>
       <div className="board-creative-label" style={object.type === 'shape' ? { backgroundColor: object.backgroundColor ?? undefined, borderRadius: `${Math.min(object.backgroundRoundness ?? 8, 24)}px` } : undefined}>
       {editing ? <>
-        <textarea ref={textarea} className="board-creative-input nodrag nopan nowheel" autoFocus aria-label={object.type === 'link' ? 'Link title' : 'Note text'} value={object.type === 'link' ? object.title : object.text}
+        <textarea ref={textarea} className="board-creative-input nodrag nopan nowheel" autoFocus aria-label={object.type === 'link' ? t('canvas.linkTitle') : t('canvas.noteText')} value={object.type === 'link' ? object.title : object.text}
           onChange={event => editor.change({ id: object.id, ...(object.type === 'link' ? { title: event.target.value } : { text: event.target.value }) })}
           onBlur={() => finish()} onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape' && !event.nativeEvent.isComposing) finish(true); }} />
-      </> : <div className="board-creative-text"><BoardRichText text={object.type === 'link' ? object.title : object.text || (selected ? 'Double-click to edit' : '')} /></div>}
+      </> : <div className="board-creative-text"><BoardRichText text={object.type === 'link' ? object.title : object.text || (selected ? t('canvas.doubleEdit') : '')} /></div>}
       </div>
       {object.type === 'link' && <a className="nodrag nopan board-link-url" href={object.url} target="_blank" rel="noreferrer" onDoubleClick={event => event.stopPropagation()}>{object.url}</a>}
     </div>

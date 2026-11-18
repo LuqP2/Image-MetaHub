@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import BoardAssetNode from '../components/boards/BoardAssetNode';
 import BoardVideoPreview from '../components/boards/BoardVideoPreview';
 import BoardToolbar from '../components/boards/BoardToolbar';
@@ -27,7 +28,7 @@ let intersect: (entries: { isIntersecting: boolean }[]) => void;
 beforeEach(() => {
   mocks.load.mockReset().mockResolvedValue('imh-media://clip.mp4');
   mocks.thumbnail.mockClear();
-  useSettingsStore.setState({ disableThumbnails: false, enableSafeMode: false, canvasAutoplayVideos: true });
+  useSettingsStore.setState({ language: 'en', disableThumbnails: false, enableSafeMode: false, canvasAutoplayVideos: true });
   useImageStore.setState({ directories: [{ id: 'library', path: 'C:/models' }] as never });
   vi.stubGlobal('IntersectionObserver', class {
     constructor(callback: typeof intersect) { intersect = callback; }
@@ -46,6 +47,25 @@ function mountAsset(mediaType: 'video' | 'model3d', exporting = false) {
 }
 
 describe('Canvas asset media', () => {
+  it.each(languages)('keeps video playback and source state when switching to %s', async (language) => {
+    useSettingsStore.setState({ canvasAutoplayVideos: false });
+    const { container } = render(<BoardVideoPreview image={image} />);
+    act(() => intersect([{ isIntersecting: true }]));
+    await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
+    const video = container.querySelector('video')!;
+    fireEvent.click(screen.getByRole('button', { name: 'Play video', exact: true }));
+    video.currentTime = 7;
+    const playCalls = vi.mocked(video.play).mock.calls.length;
+    act(() => useSettingsStore.setState({ language }));
+    expect(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.media.pauseVideo') })).toBeTruthy();
+    expect(container.querySelector('video')).toBe(video);
+    expect(video.currentTime).toBe(7);
+    expect(video.play).toHaveBeenCalledTimes(playCalls);
+    expect(mocks.load).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.media.unmute') }));
+    expect(screen.getByRole('button', { name: formatMessage(language, 'imageViewer.media.mute') })).toBeTruthy();
+  });
+
   it('toggles autoplay from the toolbar and preserves manual playback when disabled', async () => {
     useSettingsStore.getState().setCanvasAutoplayVideos(false);
     const board = createBoardDocument();
