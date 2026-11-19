@@ -1,6 +1,8 @@
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ModelPromptPickerModal from '../components/ModelPromptPickerModal';
 import type { IndexedImage } from '../types';
 import type { ModelPromptOverlapGroup } from '../services/similarImageSearch';
@@ -22,8 +24,12 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   ...overrides,
 });
 
+afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); });
+
 describe('ModelPromptPickerModal', () => {
-  it('renders overlap rows and forwards the selected group', () => {
+  it.each(languages)('renders overlap rows and forwards the original group in %s', language => {
+    useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
     const onSelect = vi.fn();
     const group: ModelPromptOverlapGroup = {
       normalizedPrompt: 'space cathedral',
@@ -49,8 +55,8 @@ describe('ModelPromptPickerModal', () => {
     );
 
     expect(screen.getByText('Space cathedral with glowing arches')).toBeTruthy();
-    expect(screen.getByText('3 in this checkpoint')).toBeTruthy();
-    expect(screen.getByText('2 alternate checkpoints')).toBeTruthy();
+    expect(screen.getByText(t('modelLibrary.inCheckpoint', { count: 3 }))).toBeTruthy();
+    expect(screen.getByText(t('modelLibrary.alternateCheckpoints', { count: 2 }))).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /space cathedral with glowing arches/i }));
     expect(onSelect).toHaveBeenCalledWith(group);

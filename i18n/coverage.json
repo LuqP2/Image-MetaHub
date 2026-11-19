@@ -268,5 +268,13 @@
       "styles.csv",
       "{{color}}"
     ]
+  },
+  "modelLibrary": {
+    "paths": [
+      "components/ModelPromptPickerModal.tsx",
+      "components/ModelMetadataEditor.tsx",
+      "components/ModelDetailsPanels.tsx"
+    ],
+    "literalExceptions": []
   }
 }
