@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main, 'feat/canvas-*', 'feat/613-detached-compare', 'feat/imh-viewing-editing-i18n']
   push:

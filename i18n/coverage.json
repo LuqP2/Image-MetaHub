@@ -279,12 +279,17 @@
       "components/ModelStoragePanel.tsx",
       "components/ModelManagerPanels.tsx",
       "components/ModelsWorkspace.tsx",
-      "components/ModelStorageTable.tsx"
+      "components/ModelStorageTable.tsx",
+      "components/HuggingFaceModelPanel.tsx",
+      "components/UnifiedModelUpdatesPanel.tsx"
     ],
     "literalExceptions": [
       "Civitai",
       "SHA256",
-      "LoRAs"
+      "LoRAs",
+      "Hugging Face",
+      "owner/repository",
+      "folder/model.safetensors"
     ]
   }
 }
