@@ -14,6 +14,8 @@ export function useBoardAssets(loading: boolean) {
   const references = useMemo(() => objects?.flatMap(object => object.type === 'asset' && object.reference.kind === 'external' ? [object.reference] : []) ?? [], [objects]);
   const key = JSON.stringify(references);
   const [external, setExternal] = useState<Record<string, IndexedImage | null>>({});
+  const [externalRevision, setExternalRevision] = useState(0);
+  const refreshExternalAssets = useCallback(() => setExternalRevision(revision => revision + 1), []);
   useEffect(() => {
     let cancelled = false;
     const refs = JSON.parse(key) as typeof references;
@@ -25,12 +27,12 @@ export function useBoardAssets(loading: boolean) {
       if (!cancelled) setExternal(current => ({ ...current, [reference.locator.imageId]: image }));
     } })();
     return () => { cancelled = true; };
-  }, [key]);
+  }, [key, externalRevision]);
   const lookup = useMemo(() => buildBoardAssetLookup(images, directories), [images, directories]);
   const resolve = useCallback((object: BoardAssetObject) => {
     if (object.reference.kind !== 'external') return resolveBoardAsset(object.reference, lookup, loading);
     const image = external[object.reference.locator.imageId];
     return image ? { status: 'resolved' as const, image } : { status: image === null ? 'missing' as const : 'loading' as const };
   }, [lookup, loading, external]);
-  return { images, directories, resolve };
+  return { images, directories, resolve, refreshExternalAssets };
 }

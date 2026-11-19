@@ -36,7 +36,7 @@ import type { BoardAssetObject } from '../services/boards/types';
 import { findFreeBoardPosition, type BoardPoint } from '../services/boards/layout';
 
 export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onOpenPromptLibrary }: { onOpenPromptLibrary?(id: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
-  const { images, directories, resolve } = useBoardAssets(loading);
+  const { images, directories, resolve, refreshExternalAssets } = useBoardAssets(loading);
   const boardId = useBoardStore(state => state.activeBoardId);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
   const closing = useBoardStore(state => state.closing);
@@ -100,6 +100,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
       const state = useBoardStore.getState();
       if (state.activeBoardId !== destination || !state.sessions[destination] || state.closing || state.sessions[destination].recovering || !editableRef.current) return;
       state.executeOperation(destination, document => updateObjects(document, [{ id: objectId, reference, name: image.name, mediaType: boardMediaType(image) }]));
+      refreshExternalAssets();
     } catch (cause) { setError(String(cause)); }
   };
   const selected = session?.document.objects.filter(object => session.selectedObjectIds.includes(object.id)) ?? [];
