@@ -1,3 +1,4 @@
+import type { MessageKey } from '../i18n/useTranslation';
 import { IndexedImage } from '../types';
 import { DATE_PADDING, formatLocalDateKey, formatLocalMonthKey } from './dateFilterUtils';
 import { getImageAnalytics } from './imageMetadata';
@@ -378,6 +379,7 @@ export function analyzeCreationHabits(images: IndexedImage[]): CreationHabits {
  * Generate automatic insights from data
  */
 export interface AutoInsight {
+  message?: { key: MessageKey; values: Record<string, string | number> };
   icon: string;
   text: string;
   trend?: 'up' | 'down' | 'neutral';
@@ -407,6 +409,7 @@ export function generateInsights(
     insights.push({
       icon: '📊',
       text: `Created ${periodStats.current} images in the ${periodLabel} (${changeText} from previous period)`,
+      message: { key: 'analytics.insightActivity', values: { count: periodStats.current, period: periodLabel, trend: periodStats.variation > 0 ? 'increase' : periodStats.variation < 0 ? 'decrease' : 'same', change: Math.abs(periodStats.variation).toFixed(0) } },
       trend,
     });
   }
@@ -418,6 +421,7 @@ export function generateInsights(
     insights.push({
       icon: '🎨',
       text: `${truncateName(topModel.name, 30)} is your go-to model (${percentage}% of period images)`,
+      message: { key: 'analytics.insightModel', values: { model: truncateName(topModel.name, 30), percent: percentage } },
     });
   }
 
@@ -436,6 +440,7 @@ export function generateInsights(
     insights.push({
       icon: '📐',
       text: `${topResolution} is your most used resolution`,
+      message: { key: 'analytics.insightResolution', values: { resolution: topResolution } },
     });
   }
 
@@ -444,11 +449,13 @@ export function generateInsights(
     insights.push({
       icon: '🗂️',
       text: `Showing ${totalImages.toLocaleString()} of ${images.length.toLocaleString()} total images`,
+      message: { key: 'analytics.insightShowing', values: { shown: totalImages, total: images.length } },
     });
   } else {
     insights.push({
       icon: '🗂️',
       text: `Your library contains ${images.length.toLocaleString()} total images`,
+      message: { key: 'analytics.insightLibrary', values: { total: images.length } },
     });
   }
 

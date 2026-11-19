@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import type { IndexedImage } from '../../types';
@@ -5,6 +6,7 @@ import { mediaSourceCache } from '../../services/mediaSourceCache';
 import { useSettingsStore } from '../../store/useSettingsStore';
 
 export default function BoardVideoPreview({ image, directoryPath, poster }: { image: IndexedImage; directoryPath?: string; poster?: string }) {
+  const { t } = useTranslation();
   const autoplay = useSettingsStore(state => state.canvasAutoplayVideos);
   const root = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -54,11 +56,11 @@ export default function BoardVideoPreview({ image, directoryPath, poster }: { im
   useEffect(() => { if (!visible) setMuted(true); }, [visible]);
 
   return <div ref={root} className="board-video-preview">
-    {failed ? <>{poster && <img src={poster} alt={image.name} draggable={false} />}<span className="board-video-error">Playback unavailable</span></>
+    {failed ? <>{poster && <img src={poster} alt={image.name} draggable={false} />}<span className="board-video-error">{t('canvas.playbackUnavailable')}</span></>
       : <video key={sourceRevision} ref={video} src={source} poster={poster} muted={muted} loop playsInline preload="metadata" aria-label={image.name} onError={() => setFailed(true)} />}
     {!failed && <div className="board-video-controls nodrag nopan" onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}>
-      <button type="button" aria-label={paused ? 'Play video' : 'Pause video'} onClick={event => { event.stopPropagation(); setPaused(value => !value); }}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
-      <button type="button" aria-label={muted ? 'Unmute video' : 'Mute video'} aria-pressed={!muted} onClick={event => { event.stopPropagation(); setMuted(value => !value); }}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+      <button type="button" aria-label={paused ? t('imageViewer.media.playVideo') : t('imageViewer.media.pauseVideo')} onClick={event => { event.stopPropagation(); setPaused(value => !value); }}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
+      <button type="button" aria-label={muted ? t('imageViewer.media.unmute') : t('imageViewer.media.mute')} aria-pressed={!muted} onClick={event => { event.stopPropagation(); setMuted(value => !value); }}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
     </div>}
   </div>;
 }

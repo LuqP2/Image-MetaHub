@@ -1,8 +1,10 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { Handle, Position, NodeResizer, useNodeId, useStore } from '@xyflow/react';
 import { useBoardEditor } from './BoardEditorContext';
 import type { CSSProperties } from 'react';
 
 export default function BoardNodeControls({ selected, frame = false, keepAspectRatio = false, minWidth = 80, minHeight = 60 }: { selected: boolean; frame?: boolean; keepAspectRatio?: boolean; minWidth?: number; minHeight?: number }) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const nodeId = useNodeId();
   const zoom = useStore(state => state.transform?.[2] ?? 1);
@@ -34,7 +36,7 @@ export default function BoardNodeControls({ selected, frame = false, keepAspectR
       onResizeStart={editor.begin} />
     {([['top', Position.Top], ['right', Position.Right], ['bottom', Position.Bottom], ['left', Position.Left]] as const).map(([id, position]) =>
       <Handle key={id} id={id} type="source" position={position} isConnectable={editor.editable}
-        title="Drag to connect, or click then choose a destination" className="board-connection-handle" data-editable={editor.editable && !frame}
+        title={t('canvas.connectHint')} className="board-connection-handle" data-editable={editor.editable && !frame}
         isConnectableStart={editor.editable} isConnectableEnd={editor.editable}
         style={{ '--board-connect-hit': `${9 / zoom}px`, opacity: showHandles ? 1 : undefined, pointerEvents: showHandles || (!frame && editor.editable && connectionState !== '') ? 'auto' : undefined,
           ...(activeHandle === id ? { width: 14, height: 14, boxShadow: '0 0 0 4px rgb(var(--accent) / .25)' } : {}) } as CSSProperties} />)}

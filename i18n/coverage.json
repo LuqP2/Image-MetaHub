@@ -1,42 +1,403 @@
 {
   "settings": {
-    "paths": ["components/SettingsModal.tsx", "components/settings/", "components/HotkeySettings.tsx"],
-    "literalExceptions": ["/s", "1:1", "Aa", "A1111", "Automatic1111", "ComfyUI", "EXR / OpenColorIO", "GB", "MB", "MetaHub Save Node", "XXXX-XXXX-XXXX-XXXX-XXXX", "nsfw, private, hidden"]
+    "paths": [
+      "components/SettingsModal.tsx",
+      "components/settings/",
+      "components/HotkeySettings.tsx"
+    ],
+    "literalExceptions": [
+      "/s",
+      "1:1",
+      "Aa",
+      "A1111",
+      "Automatic1111",
+      "ComfyUI",
+      "EXR / OpenColorIO",
+      "GB",
+      "MB",
+      "MetaHub Save Node",
+      "XXXX-XXXX-XXXX-XXXX-XXXX",
+      "nsfw, private, hidden"
+    ]
   },
   "libraryFolders": {
-    "paths": ["components/DirectoryList.tsx", "components/FolderSelector.tsx"],
+    "paths": [
+      "components/DirectoryList.tsx",
+      "components/FolderSelector.tsx"
+    ],
     "literalExceptions": []
   },
   "librarySearch": {
-    "paths": ["components/SearchBar.tsx", "components/SemanticSearchBar.tsx", "components/AdvancedFilters.tsx", "components/ActiveFilters.tsx", "components/FacetFilterSection.tsx", "components/LibraryFavoriteFilter.tsx", "components/LibraryRatingFilter.tsx"],
-    "literalExceptions": ["CFG", "GPU", "LoRA", "MetaHub", "VRAM"]
+    "paths": [
+      "components/SearchBar.tsx",
+      "components/SemanticSearchBar.tsx",
+      "components/AdvancedFilters.tsx",
+      "components/ActiveFilters.tsx",
+      "components/FacetFilterSection.tsx",
+      "components/LibraryFavoriteFilter.tsx",
+      "components/LibraryRatingFilter.tsx"
+    ],
+    "literalExceptions": [
+      "CFG",
+      "GPU",
+      "LoRA",
+      "MetaHub",
+      "VRAM"
+    ]
   },
   "libraryGallery": {
-    "paths": ["components/GridToolbar.tsx", "components/ImageGrid.tsx", "components/ImageSizeSlider.tsx", "components/ImageTable.tsx", "components/RatingStars.tsx", "components/contextMenu/RelatedImagesMenu.tsx"],
-    "literalExceptions": ["CFG"]
+    "paths": [
+      "components/GridToolbar.tsx",
+      "components/ImageGrid.tsx",
+      "components/ImageSizeSlider.tsx",
+      "components/ImageTable.tsx",
+      "components/RatingStars.tsx",
+      "components/contextMenu/RelatedImagesMenu.tsx",
+      "components/Footer.tsx",
+      "components/contextMenu/ContextMenuPrimitives.tsx"
+    ],
+    "literalExceptions": [
+      "CFG",
+      "A-Z",
+      "Z-A"
+    ]
   },
   "comparisonPane": {
-    "paths": ["components/ComparisonPane.tsx", "components/DetachedComparisonApp.tsx"],
+    "paths": [
+      "components/ComparisonPane.tsx",
+      "components/DetachedComparisonApp.tsx"
+    ],
     "literalExceptions": []
   },
   "comparison": {
-    "paths": ["components/ComparisonSurface.tsx", "components/ComparisonOverlayView.tsx", "components/ComparisonMetadataPanel.tsx"],
-    "literalExceptions": ["A", "B", "Esc", "S", "Space", "ms", "x"]
+    "paths": [
+      "components/ComparisonSurface.tsx",
+      "components/ComparisonOverlayView.tsx",
+      "components/ComparisonMetadataPanel.tsx"
+    ],
+    "literalExceptions": [
+      "A",
+      "B",
+      "Esc",
+      "S",
+      "Space",
+      "ms",
+      "x"
+    ]
   },
   "batchExport": {
-    "paths": ["components/BatchExportModal.tsx"],
-    "literalExceptions": ["ZIP"]
+    "paths": [
+      "components/BatchExportModal.tsx"
+    ],
+    "literalExceptions": [
+      "ZIP"
+    ]
   },
   "imageViewer": {
-    "paths": ["components/DetachedImageModalApp.tsx", "components/ImageEditorWorkspace.tsx", "components/ImagePreviewSidebar.tsx", "components/ImageLineageSection.tsx", "components/TextureMapsSection.tsx", "components/ExrViewer.tsx", "components/Model3DViewer.tsx", "components/AudioPlayer.tsx", "components/ImageModal.tsx", "components/ImageAdjustmentPanel.tsx", "components/FindSimilarModal.tsx", "components/ProvenanceSection.tsx", "components/CollectionFormModal.tsx"],
-    "literalExceptions": ["Arial", "Verdana", "Georgia", "Times", "Courier", "Impact", "x", "VAE", "FPS", "MetaHub Save Node", "ComfyUI", "A1111", "PyTorch:", "Python:", "IMH", "EXR", "EV", "FOV", "GLB", "OBJ", "STL", "FBX", "X", "Y", "Z", "SHA-256"]
+    "paths": [
+      "components/DetachedImageModalApp.tsx",
+      "components/ImageEditorWorkspace.tsx",
+      "components/ImagePreviewSidebar.tsx",
+      "components/ImageLineageSection.tsx",
+      "components/TextureMapsSection.tsx",
+      "components/ExrViewer.tsx",
+      "components/Model3DViewer.tsx",
+      "components/AudioPlayer.tsx",
+      "components/ImageModal.tsx",
+      "components/ImageAdjustmentPanel.tsx",
+      "components/FindSimilarModal.tsx",
+      "components/ProvenanceSection.tsx",
+      "components/CollectionFormModal.tsx",
+      "components/Model3DThumbnail.tsx"
+    ],
+    "literalExceptions": [
+      "Arial",
+      "Verdana",
+      "Georgia",
+      "Times",
+      "Courier",
+      "Impact",
+      "x",
+      "VAE",
+      "FPS",
+      "MetaHub Save Node",
+      "ComfyUI",
+      "A1111",
+      "PyTorch:",
+      "Python:",
+      "IMH",
+      "EXR",
+      "EV",
+      "FOV",
+      "GLB",
+      "OBJ",
+      "STL",
+      "FBX",
+      "X",
+      "Y",
+      "Z",
+      "SHA-256",
+      "3D"
+    ]
   },
   "metadataEditor": {
-    "paths": ["components/MetadataEditorModal.tsx"],
-    "literalExceptions": ["LoRA", "Euler a", "normal", "ComfyUI / A1111 / InvokeAI..."]
+    "paths": [
+      "components/MetadataEditorModal.tsx"
+    ],
+    "literalExceptions": [
+      "LoRA",
+      "Euler a",
+      "normal",
+      "ComfyUI / A1111 / InvokeAI..."
+    ]
+  },
+  "shell": {
+    "paths": [
+      "components/Header.tsx",
+      "components/Sidebar.tsx",
+      "components/AppErrorBoundary.tsx",
+      "components/GeneratedOutputModal.tsx",
+      "components/VisualSearchOnboarding.tsx",
+      "components/Toast.tsx",
+      "components/CommandPalette.tsx",
+      "components/HotkeyHelp.tsx",
+      "components/CivitaiResourceLink.tsx",
+      "components/ComparisonHost.tsx",
+      "components/BrowserCompatibilityWarning.tsx",
+      "components/VerticalSplitPanels.tsx"
+    ],
+    "literalExceptions": [
+      "ComfyUI",
+      "Image MetaHub",
+      "Image MetaHub Pro",
+      "v0.23.1",
+      "Microsoft Edge"
+    ]
+  },
+  "libraryTags": {
+    "paths": [
+      "components/TagsAndFavorites.tsx",
+      "components/TriStateToggle.tsx"
+    ],
+    "literalExceptions": []
+  },
+  "librarySessions": {
+    "paths": [
+      "utils/imageGrouping.ts"
+    ],
+    "literalExceptions": []
+  },
+  "generationQueue": {
+    "paths": [
+      "components/GenerationQueueSidebar.tsx"
+    ],
+    "literalExceptions": [
+      "A1111",
+      "ComfyUI"
+    ]
+  },
+  "updates": {
+    "paths": [
+      "components/UpdateNotificationModal.tsx",
+      "components/ChangelogModal.tsx"
+    ],
+    "literalExceptions": []
+  },
+  "licensing": {
+    "paths": [
+      "components/TrialExpiredBanner.tsx",
+      "components/ReleaseTrialExtensionNotice.tsx",
+      "components/TrialExtensionModal.tsx",
+      "components/ProPlanSelector.tsx",
+      "components/ClusterUpgradeBanner.tsx",
+      "components/ProBadge.tsx",
+      "components/ProOnlyModal.tsx"
+    ],
+    "literalExceptions": [
+      "PRO",
+      "Pro",
+      "· Pro"
+    ]
+  },
+  "canvas": {
+    "paths": [
+      "components/CanvasWorkspace.tsx",
+      "components/BoardWorkspace.tsx",
+      "components/boards/BoardList.tsx",
+      "components/boards/BoardTabs.tsx",
+      "components/boards/BoardExportDialog.tsx",
+      "components/boards/BoardPanelResizeHandle.tsx",
+      "components/boards/BoardToolbar.tsx",
+      "components/boards/BoardListPreview.tsx",
+      "components/boards/BoardPngExport.tsx",
+      "components/boards/BoardAssetBrowser.tsx",
+      "components/boards/BoardInspector.tsx",
+      "components/boards/BoardPropertyControls.tsx",
+      "components/boards/BoardTextStyles.tsx",
+      "components/boards/BoardSelectionStyles.tsx",
+      "components/boards/BoardTextNode.tsx",
+      "components/boards/BoardCreativeNode.tsx",
+      "components/boards/BoardNodeControls.tsx",
+      "components/boards/BoardMiniMap.tsx",
+      "components/boards/BoardReferenceSyncNotice.tsx",
+      "components/boards/BoardViewportControls.tsx",
+      "components/boards/BoardBackgroundControl.tsx",
+      "components/boards/BoardCanvasHelp.tsx",
+      "components/boards/BoardAssetNode.tsx",
+      "components/boards/BoardFrameNode.tsx",
+      "components/boards/BoardVideoPreview.tsx",
+      "components/boards/BoardStackNode.tsx",
+      "components/boards/boardPresentation.ts",
+      "components/boards/BoardSmartFrameLayoutEditor.tsx",
+      "components/boards/BoardSmartFrameSelectionActions.tsx",
+      "components/boards/BoardCreateSmartFrameDialog.tsx",
+      "components/boards/BoardSetOperationDialog.tsx",
+      "components/boards/BoardSmartFrameInspector.tsx",
+      "services/boards/presentation.ts",
+      "components/boards/BoardInheritedQuerySummary.tsx",
+      "components/boards/BoardQueryFilterEditor.tsx",
+      "components/boards/BoardSmartFrameFilterPopover.tsx",
+      "components/boards/BoardSmartFrameNode.tsx",
+      "components/boards/BoardSmartFrameResults.tsx",
+      "components/boards/BoardSmartFrameGroups.tsx",
+      "components/boards/BoardSmartFrameMatrix.tsx",
+      "components/boards/BoardGroupPreview.tsx",
+      "components/boards/useBoardBrowse.tsx",
+      "components/boards/BoardResultThumbnail.tsx",
+      "components/boards/AddToBoardDialog.tsx",
+      "components/boards/LibraryCanvasDestination.tsx",
+      "components/boards/BoardCanvas.tsx",
+      "components/boards/BoardContextMenu.tsx",
+      "components/boards/BoardVisualGroupingDialog.tsx",
+      "components/boards/BoardFrameResizer.tsx",
+      "components/boards/BoardSelectionResizer.tsx"
+    ],
+    "literalExceptions": [
+      "URL",
+      "px",
+      "Delete"
+    ]
+  },
+  "promptLibrary": {
+    "paths": [
+      "components/boards/BoardPromptInspector.tsx",
+      "components/boards/BoardPromptNode.tsx",
+      "components/boards/BoardImagePromptActions.tsx",
+      "components/boards/PromptCardDialog.tsx",
+      "components/boards/BoardPromptIntegration.tsx",
+      "components/boards/BoardPromptLibrary.tsx",
+      "hooks/usePromptLibraryPreview.ts",
+      "components/PromptLibrary.tsx",
+      "hooks/usePromptBlockExtraction.tsx",
+      "hooks/usePromptSelectionMenu.tsx",
+      "components/promptLibrary/"
+    ],
+    "literalExceptions": [
+      "styles.csv",
+      "{{color}}"
+    ]
+  },
+  "modelLibrary": {
+    "paths": [
+      "components/ModelPromptPickerModal.tsx",
+      "components/ModelMetadataEditor.tsx",
+      "components/ModelDetailsPanels.tsx",
+      "components/ModelInspectorApp.tsx",
+      "components/ModelUsagePanel.tsx",
+      "components/ModelStoragePanel.tsx",
+      "components/ModelManagerPanels.tsx",
+      "components/ModelsWorkspace.tsx",
+      "components/ModelStorageTable.tsx",
+      "components/HuggingFaceModelPanel.tsx",
+      "components/UnifiedModelUpdatesPanel.tsx"
+    ],
+    "literalExceptions": [
+      "Civitai",
+      "SHA256",
+      "LoRAs",
+      "Hugging Face",
+      "owner/repository",
+      "folder/model.safetensors"
+    ]
+  },
+  "fileOperations": {
+    "paths": [
+      "components/RenameImageModal.tsx",
+      "components/TagManagerModal.tsx",
+      "components/TransferImagesModal.tsx"
+    ],
+    "literalExceptions": []
+  },
+  "analytics": {
+    "paths": [
+      "components/Analytics.tsx",
+      "components/AnalyticsSummaryStrip.tsx"
+    ],
+    "literalExceptions": [
+      "LoRA",
+      "LoRAs",
+      "GPU",
+      "N/A"
+    ]
+  },
+  "integrations": {
+    "paths": [
+      "components/ComfyUIGenerateModal.tsx",
+      "components/ComfyUIWorkflowNodeList.tsx",
+      "components/comfyui/WorkspaceContextPanel.tsx",
+      "components/comfyui/ComfyTextDrag.tsx",
+      "components/comfyui/WorkspaceSearch.tsx",
+      "components/comfyui/WorkspaceModels.tsx",
+      "components/comfyui/WorkspacePrompts.tsx",
+      "components/A1111GenerateModal.tsx",
+      "components/ComfyUIWorkflowVisualEditor.tsx",
+      "components/ComfyUIWorkflowWorkspace.tsx",
+      "components/ComfyUIWorkspace.tsx",
+      "components/comfyui/ComfyUITextActions.tsx",
+      "components/comfyui/WorkspaceImageInspector.tsx",
+      "hooks/useA1111Models.ts",
+      "hooks/useComfyUIModels.ts",
+      "hooks/useComfyTextFeedback.tsx"
+    ],
+    "literalExceptions": [
+      "ComfyUI",
+      "CFG",
+      "UNet",
+      "VAE",
+      "CLIP",
+      "LoRA",
+      "LoRAs",
+      "JSON",
+      "Prompt API JSON",
+      "Workflow UI JSON",
+      "ComfyUI ·"
+    ]
+  },
+  "collections": {
+    "paths": [
+      "components/CollectionCard.tsx",
+      "components/CollectionsWorkspace.tsx"
+    ],
+    "literalExceptions": []
+  },
+  "explore": {
+    "paths": [
+      "components/ExploreWorkspace.tsx"
+    ],
+    "literalExceptions": []
+  },
+  "automation": {
+    "paths": [
+      "components/AutomationRulesModal.tsx"
+    ],
+    "literalExceptions": [
+      "YYYY-MM-DD"
+    ]
   },
   "canvasFeedback": {
-    "paths": ["components/boards/BoardRichText.tsx"],
+    "paths": [
+      "components/boards/BoardRichText.tsx"
+    ],
     "literalExceptions": []
   }
 }

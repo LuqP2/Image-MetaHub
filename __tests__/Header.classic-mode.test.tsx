@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import Header from '../components/Header';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -53,6 +54,25 @@ const renderHeader = (overrides: Partial<React.ComponentProps<typeof Header>> = 
   );
 
 describe('Header classic mode', () => {
+  it.each(languages)('updates workspace and accessible labels in %s without changing actions', (language) => {
+    const onLibraryViewChange = vi.fn();
+    const onOpenSettings = vi.fn();
+    const onNavigateExplore = vi.fn();
+    useSettingsStore.setState({ classicMode: true, enableSafeMode: false });
+    renderHeader({ onLibraryViewChange, onOpenSettings, onNavigateExplore });
+    act(() => useSettingsStore.setState({ language }));
+    expect(screen.getByRole('navigation', { name: formatMessage(language, 'shell.workspaces') })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'metadataEditor.prompts'), exact: true }));
+    expect(onLibraryViewChange).toHaveBeenCalledExactlyOnceWith('prompts');
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'shell.smartLibrary'), exact: true }));
+    expect(onNavigateExplore).toHaveBeenCalledExactlyOnceWith('clusters');
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'shell.safeOff') }));
+    expect(useSettingsStore.getState().enableSafeMode).toBe(true);
+    expect(screen.getByRole('button', { name: formatMessage(language, 'shell.safeOn') })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'shell.openSettings') }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+  });
+
   it('opens Canvas on desktop even when editing needs a Pro upgrade', () => {
     const original = window.electronAPI;
     Object.defineProperty(window, 'electronAPI', { configurable: true, value: {} });

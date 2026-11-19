@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -10,8 +11,11 @@ interface ChangelogModalProps {
 }
 
 const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, currentVersion }) => {
+  const { t: tr } = useTranslation();
+
   const [changelog, setChangelog] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isPlanSelectorOpen, setIsPlanSelectorOpen] = useState(false);
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
 
@@ -23,6 +27,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
   const loadChangelog = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const sources = ['/CHANGELOG.md', 'CHANGELOG.md'];
       let text = '';
@@ -61,7 +66,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
       }
     } catch (error) {
       console.warn('[ChangelogModal] Failed to load changelog', error);
-      setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -146,14 +151,14 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <div>
-            <h2 className="text-2xl font-bold text-gray-100">What's New</h2>
-            <p className="text-gray-400 text-sm mt-1">Image MetaHub v{currentVersion}</p>
+            <h2 className="text-2xl font-bold text-gray-100">{tr('updates.whatsNewTitle')}</h2>
+            <p className="text-gray-400 text-sm mt-1">{tr('updates.appVersion', { version: currentVersion })}</p>
           </div>
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            title="Close"
-            aria-label="Close changelog"
+            title={tr('comparison.close')}
+            aria-label={tr('updates.closeChangelog')}
           >
             <X size={24} />
           </button>
@@ -170,39 +175,39 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
               {/* Message from the Dev for v0.22 */}
               {currentVersion.startsWith('0.22.') && (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
+                <h3 className="text-lg font-semibold text-blue-300 mb-3" data-i18n-content="release-note">Message from the Dev</h3>
                 <div className="space-y-3 text-sm leading-relaxed">
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Hey, Lucas here - the solo dev behind Image MetaHub.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     As you've probably noticed, Image MetaHub looks a bit different now.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     I've been wanting to move away from the whole magenta-and-cyan aesthetic that seems to have taken over everything AI-related. Nothing against those colors, but I figured the world had enough of that already.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     So, new branding, new icons, and a new default theme. I personally think it suits IMH much better. But that's my taste, not necessarily yours, so if you preferred the previous look, the original themes are still available under Settings → Appearance, along with all the others.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     The other major addition is the expanded Prompt Library. The original implementation was fairly basic, and I wanted to turn it into something genuinely useful beyond just saving and copying prompts. You can now work with reusable blocks, compose prompts, create templates, and drag &amp; drop blocks and prompts directly to ComfyUI text nodes.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     It's a first implementation of a much more ambitious feature, and I'm sure there are things I haven't considered, especially since everyone seems to have their own way of working with prompts. So please, give it a try and let me know what you think. And if something feels unnecessarily complicated, I'd particularly like to hear about it.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     I also want to take a moment to thank everyone who's purchased a Pro license. Seriously, thank you. I'm developing Image MetaHub independently, and those purchases make a real difference in allowing me to keep working on it. I know there are plenty of things competing for your money, and the fact that some of you chose to spend it on something I've built means a lot to me.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     And to everyone who's reported bugs, contributed code, suggested features, or taken the time to write to me, thank you as well. I may not implement every suggestion, but I do read them, and quite a few features exist today because someone took the time to ask.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     If you'd like to get in touch, ask for help, share ideas, or just have a chat, you're always welcome to {renderMarkdownLink('[join the Discord](https://discord.gg/2MXWxjKyJ5)')}. Fair warning: it's been pretty quiet in there lately. People keep joining, but apparently everyone's waiting for someone else to start a conversation. 😅 I'd genuinely love to see a little more life in there, so don't be shy!
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Anyway, I hope you enjoy the update. Thanks for being here.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Lucas
                   </p>
 
@@ -212,16 +217,14 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                       onClick={() => setIsPlanSelectorOpen(true)}
                       className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-accent-strong text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      Get Pro
-                    </button>
+                      {tr('shell.getPro')}</button>
                     <a
                       href="https://discord.gg/2MXWxjKyJ5"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      Join Discord
-                    </a>
+                      {tr('updates.joinDiscord')}</a>
                   </div>
                 </div>
               </div>
@@ -230,33 +233,33 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
               {/* Message for the Dev */}
               {currentVersion === '0.19.3' && (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
+                <h3 className="text-lg font-semibold text-blue-300 mb-3" data-i18n-content="release-note">Message from the Dev</h3>
                 <div className="space-y-3 text-sm leading-relaxed">
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Hey there, this is Lucas - the solo dev behind Image MetaHub
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     v0.19 is a pretty big update with the main new features being local visual search (CLIP) and support to 3D assets. If you use ComfyUI, please update the MetaHub Save Node and use the 3D Save Node so Image MetaHub can keep track of the original image and related metadata. As usual, its a first implementation that, although functional, might still need a bit of trimming around the edges. Let me know what you think.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     There's also an important change to licensing that IMH now uses a new license format; if you already own a license, a replacement license has been sent to the e-mail address used for your purchase. Your existing purchase is still valid, you'll just need to activate using the new key.{' '}
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     One other change worth calling out: the Pro Trial is no longer available in the Portable version. It can still be accessed in the regular installed version of IMH.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Before you go, I’d really appreciate it if you could {renderMarkdownLink('[answer the short anonymous survey](https://forms.gle/7WKvUC5RVf9Mx9jF7)')}. It directly helps me figure out what’s worth working on next.
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     And if you want to chat, share feedback, show what you’re working on, or just make the place feel a little less abandoned, {renderMarkdownLink('[come join the Discord](https://discord.gg/2MXWxjKyJ5)')}. It’s been a bit quiet in there lately. 😅
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Thanks for sticking around, and if you have any issues, suggestions, criticism or feature request, please open an Issue on GitHub or contact me directly on  {renderMarkdownLink('[Discord](https://discord.gg/2MXWxjKyJ5)')} or through imagemetahub@gmail.com
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     Back to shipping
                   </p>
-                  <p className="text-gray-300">
+                  <p className="text-gray-300" data-i18n-content="release-note">
                     - Lucas
                   </p>
 
@@ -267,16 +270,14 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                       onClick={() => setIsPlanSelectorOpen(true)}
                       className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-accent-strong text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      Get Pro
-                    </button>
+                      {tr('shell.getPro')}</button>
                     <a
                       href="https://discord.gg/2MXWxjKyJ5"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      Join Discord
-                    </a>
+                      {tr('updates.joinDiscord')}</a>
                   </div>
                 </div>
               </div>
@@ -284,9 +285,9 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
               {/* Changelog Content */}
               <div className="prose prose-invert prose-sm max-w-none">
-                <ul className="list-disc list-inside space-y-1">
-                  {renderMarkdown(changelog)}
-                </ul>
+                {loadFailed ? <p role="alert">{tr('updates.changelogLoadFailed')}</p> : (
+                  <ul className="list-disc list-inside space-y-1">{renderMarkdown(changelog)}</ul>
+                )}
               </div>
             </>
           )}
@@ -299,14 +300,12 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
           >
             <ExternalLink size={16} />
-            View Full Release Notes
-          </button>
+            {tr('updates.viewFullReleaseNotes')}</button>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-accent hover:bg-accent-strong text-gray-950 hover:text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            Got it!
-          </button>
+            {tr('updates.gotItExclamation')}</button>
         </div>
       </div>
       </div>

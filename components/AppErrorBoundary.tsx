@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 
 interface State { error: Error | null }
@@ -27,19 +28,25 @@ export class AppErrorBoundary extends React.Component<React.PropsWithChildren<Pr
 
     const isDetachedViewer = this.props.variant === 'detached-viewer';
 
+    return <ErrorFallback error={this.state.error} isDetachedViewer={isDetachedViewer} />;
+  }
+}
+
+function ErrorFallback({ error, isDetachedViewer }: { error: Error; isDetachedViewer: boolean }) {
+  const { t } = useTranslation();
     return (
       <main className="flex h-screen items-center justify-center bg-gray-950 p-8 text-gray-100">
         <div className="max-w-lg rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center">
           <h1 className="text-lg font-semibold">
-            {isDetachedViewer ? 'The image viewer stopped unexpectedly.' : 'Image MetaHub stopped unexpectedly.'}
+            {isDetachedViewer ? t('shell.viewerStopped') : t('shell.appStopped')}
           </h1>
           <p className="mt-2 text-sm text-gray-300">
             {isDetachedViewer
-              ? 'Close this window and reopen the image from Image MetaHub.'
-              : 'Reload the app to continue. Your library and settings are unaffected.'}
+              ? t('shell.reopenViewer')
+              : t('shell.reloadHelp')}
           </p>
-          {this.state.error.message && (
-            <p className="mt-3 break-words text-xs text-gray-500">{this.state.error.message}</p>
+          {error.message && (
+            <p className="mt-3 break-words text-xs text-gray-500">{error.message}</p>
           )}
           {!isDetachedViewer && (
             <button
@@ -47,11 +54,10 @@ export class AppErrorBoundary extends React.Component<React.PropsWithChildren<Pr
               onClick={() => window.location.reload()}
               className="mt-4 rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-gray-500 hover:bg-gray-700"
             >
-              Reload Image MetaHub
+              {t('shell.reloadApp')}
             </button>
           )}
         </div>
       </main>
     );
-  }
 }

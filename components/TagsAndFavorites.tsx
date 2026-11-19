@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import LibraryRatingFilter from './LibraryRatingFilter';
 import LibraryFavoriteFilter from './LibraryFavoriteFilter';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
@@ -25,6 +26,8 @@ type RenameDialogState = {
 };
 
 const TagsAndFavorites: React.FC = () => {
+  const { t } = useTranslation();
+  const matchModeLabel = (mode: 'all' | 'any') => t(mode === 'all' ? 'libraryTags.all' : 'libraryTags.any');
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
   const selectedRatings = useImageStore((state) => state.selectedRatings);
@@ -341,7 +344,7 @@ const TagsAndFavorites: React.FC = () => {
     }
 
     const confirmed = window.confirm(
-      `Clear tag "${contextMenu.tag.name}" from all images?\n\nThe tag will remain in the library as an empty tag.`,
+      t('libraryTags.clearConfirm', { tag: contextMenu.tag.name }),
     );
     if (!confirmed) {
       return;
@@ -357,7 +360,7 @@ const TagsAndFavorites: React.FC = () => {
 
     if (contextMenu.tag.count > 0) {
       const shouldPurge = window.confirm(
-        `Tag "${contextMenu.tag.name}" is still used by ${contextMenu.tag.count} image(s) and cannot be deleted directly.\n\nDo you want to purge it instead?`,
+        t('libraryTags.usedConfirm', { tag: contextMenu.tag.name, count: contextMenu.tag.count }),
       );
 
       if (shouldPurge) {
@@ -366,7 +369,7 @@ const TagsAndFavorites: React.FC = () => {
       return;
     }
 
-    const confirmed = window.confirm(`Delete empty tag "${contextMenu.tag.name}" from the library?`);
+    const confirmed = window.confirm(t('libraryTags.deleteEmptyConfirm', { tag: contextMenu.tag.name }));
     if (!confirmed) {
       return;
     }
@@ -380,7 +383,7 @@ const TagsAndFavorites: React.FC = () => {
     }
 
     if (contextMenu.automatic) {
-      if (window.confirm(`Delete auto-tag "${contextMenu.tag.name}" from all images?`)) {
+      if (window.confirm(t('libraryTags.deleteAutoConfirm', { tag: contextMenu.tag.name }))) {
         removeAutoTags(contextMenu.tag.name);
         closeContextMenu();
       }
@@ -388,7 +391,7 @@ const TagsAndFavorites: React.FC = () => {
     }
 
     const confirmed = window.confirm(
-      `Purge tag "${contextMenu.tag.name}"?\n\nThis will remove it from all images and then delete the tag from the library. This cannot be undone.`,
+      t('libraryTags.purgeConfirm', { tag: contextMenu.tag.name }),
     );
     if (!confirmed) {
       return;
@@ -415,13 +418,13 @@ const TagsAndFavorites: React.FC = () => {
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-        aria-label={isExpanded ? 'Collapse Ratings, Favorites & Tags' : 'Expand Ratings, Favorites & Tags'}
+        aria-label={isExpanded ? t('libraryTags.collapse') : t('libraryTags.expand')}
       >
         <div className="flex items-center space-x-2">
-          <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
+          <span className="text-gray-300 font-medium">{t('libraryTags.heading')}</span>
           {(selectedRatings.length > 0 || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
             <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
-              active
+              {t('libraryTags.active')}
             </span>
           )}
         </div>
@@ -452,7 +455,7 @@ const TagsAndFavorites: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <Tag className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-400 font-medium">Tags</span>
+                      <span className="text-sm text-gray-400 font-medium">{t('comparison.tags')}</span>
                       <button
                         type="button"
                         onClick={() => setSelectedTagsMatchMode(selectedTagsMatchMode === 'any' ? 'all' : 'any')}
@@ -461,19 +464,19 @@ const TagsAndFavorites: React.FC = () => {
                             ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
                             : 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
                         }`}
-                        title={selectedTagsMatchMode === 'all' ? 'Tags must match all included filters' : 'Tags can match any included filter'}
-                        aria-label={`Tag match mode: ${selectedTagsMatchMode}`}
+                        title={selectedTagsMatchMode === 'all' ? t('libraryTags.matchAllHelp') : t('libraryTags.matchAnyHelp')}
+                        aria-label={t('libraryTags.matchMode', { mode: matchModeLabel(selectedTagsMatchMode) })}
                       >
-                        {selectedTagsMatchMode === 'all' ? 'All' : 'Any'}
+                        {selectedTagsMatchMode === 'all' ? t('libraryTags.all') : t('libraryTags.any')}
                       </button>
                       {selectedTags.length > 0 && (
                         <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
-                          {selectedTags.length} include{selectedTags.length > 1 ? ` · ${selectedTagsMatchMode}` : ''}
+                          {selectedTags.length > 1 ? t('libraryTags.includeModeCount', { count: selectedTags.length, mode: matchModeLabel(selectedTagsMatchMode) }) : t('librarySearch.includeCount', { count: selectedTags.length })}
                         </span>
                       )}
                       {excludedTags.length > 0 && (
                         <span className="rounded border border-red-700/50 bg-red-900/40 px-2 py-0.5 text-xs text-red-300">
-                          {excludedTags.length} exclude
+                          {t('librarySearch.excludeCount', { count: excludedTags.length })}
                         </span>
                       )}
                     </div>
@@ -482,8 +485,8 @@ const TagsAndFavorites: React.FC = () => {
                         type="button"
                         onClick={clearSelectedTags}
                         className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                        title="Clear tag filters"
-                        aria-label="Clear tag filters"
+                        title={t('libraryTags.clearFilters')}
+                        aria-label={t('libraryTags.clearFilters')}
                       >
                         <X size={16} />
                       </button>
@@ -494,7 +497,7 @@ const TagsAndFavorites: React.FC = () => {
                   {availableTags.length > 5 && (
                     <input
                       type="text"
-                      placeholder="Filter tags..."
+                      placeholder={t('libraryTags.filterTags')}
                       value={tagSearchQuery}
                       onChange={(e) => setTagSearchQuery(e.target.value)}
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
@@ -505,7 +508,7 @@ const TagsAndFavorites: React.FC = () => {
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
                     {filteredTags.length === 0 ? (
                       <div className="text-xs text-gray-500 py-2">
-                        No tags match "{tagSearchQuery}"
+                        {t('libraryTags.noTags', { query: tagSearchQuery })}
                       </div>
                     ) : (
                       filteredTags.map((tag) => (
@@ -517,7 +520,7 @@ const TagsAndFavorites: React.FC = () => {
                           <TriStateToggle
                             mode={getTagFilterMode(tag.name)}
                             onClick={() => handleTagCycle(tag.name)}
-                            title={`Tag "${tag.name}": ${getFilterModeLabel(getTagFilterMode(tag.name))}. Click to cycle.`}
+                            title={t('libraryTags.tagCycle', { tag: tag.name, mode: getFilterModeLabel(getTagFilterMode(tag.name), t) })}
                           />
                           <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">
                             {tag.name}
@@ -532,7 +535,7 @@ const TagsAndFavorites: React.FC = () => {
 
                   {filteredTags.length > 0 && availableTags.length > filteredTags.length && (
                     <div className="text-xs text-gray-500 text-center pt-1">
-                      {filteredTags.length} of {availableTags.length} tags
+                      {t('libraryTags.tagCount', { count: filteredTags.length, total: availableTags.length })}
                     </div>
                   )}
                 </div>
@@ -544,33 +547,33 @@ const TagsAndFavorites: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <Tag className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-400 font-medium">Auto Tags</span>
+                      <span className="text-sm text-gray-400 font-medium">{t('libraryTags.autoTags')}</span>
                       {selectedAutoTags.length > 0 && (
                         <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
-                          {selectedAutoTags.length} include
+                          {t('librarySearch.includeCount', { count: selectedAutoTags.length })}
                         </span>
                       )}
                       {excludedAutoTags.length > 0 && (
                         <span className="rounded border border-red-700/50 bg-red-900/40 px-2 py-0.5 text-xs text-red-300">
-                          {excludedAutoTags.length} exclude
+                          {t('librarySearch.excludeCount', { count: excludedAutoTags.length })}
                         </span>
                       )}
                     </div>
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm('Delete all auto-tags from all images in the library?')) removeAutoTags();
+                        if (window.confirm(t('libraryTags.deleteAllAutoConfirm'))) removeAutoTags();
                       }}
                       className="text-xs text-gray-400 hover:text-red-400"
                     >
-                      Clear All
+                      {t('librarySearch.clearAll')}
                     </button>
                     {(selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
                       <button
                         onClick={clearSelectedAutoTags}
                         className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                        title="Clear auto-tag filters"
-                        aria-label="Clear auto-tag filters"
+                        title={t('libraryTags.clearAutoFilters')}
+                        aria-label={t('libraryTags.clearAutoFilters')}
                       >
                         <X size={16} />
                       </button>
@@ -581,7 +584,7 @@ const TagsAndFavorites: React.FC = () => {
                   {availableAutoTags.length > 5 && (
                     <input
                       type="text"
-                      placeholder="Filter auto-tags..."
+                      placeholder={t('libraryTags.filterAutoTags')}
                       value={autoTagSearchQuery}
                       onChange={(e) => setAutoTagSearchQuery(e.target.value)}
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 placeholder-gray-500"
@@ -592,7 +595,7 @@ const TagsAndFavorites: React.FC = () => {
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
                     {filteredAutoTags.length === 0 ? (
                       <div className="text-xs text-gray-500 py-2">
-                        No auto-tags match "{autoTagSearchQuery}"
+                        {t('libraryTags.noAutoTags', { query: autoTagSearchQuery })}
                       </div>
                     ) : (
                       filteredAutoTags.slice(0, 50).map((tag) => (
@@ -604,7 +607,7 @@ const TagsAndFavorites: React.FC = () => {
                           <TriStateToggle
                             mode={getAutoTagFilterMode(tag.name)}
                             onClick={() => handleAutoTagCycle(tag.name)}
-                            title={`Auto-tag "${tag.name}": ${getFilterModeLabel(getAutoTagFilterMode(tag.name))}. Click to cycle.`}
+                            title={t('libraryTags.autoTagCycle', { tag: tag.name, mode: getFilterModeLabel(getAutoTagFilterMode(tag.name), t) })}
                           />
                           <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">
                             {tag.name}
@@ -619,7 +622,7 @@ const TagsAndFavorites: React.FC = () => {
 
                   {filteredAutoTags.length > 50 && (
                     <div className="text-xs text-gray-500 text-center pt-1">
-                      Showing top 50 of {filteredAutoTags.length} auto-tags
+                      {t('libraryTags.topAutoTags', { count: filteredAutoTags.length })}
                     </div>
                   )}
                 </div>
@@ -628,7 +631,7 @@ const TagsAndFavorites: React.FC = () => {
               {/* Empty State */}
               {availableTags.length === 0 && totalFavoriteCount === 0 && availableAutoTags.length === 0 && (
                 <div className="text-xs text-gray-500 text-center py-4">
-                  No favorites or tags yet
+                  {t('libraryTags.empty')}
                 </div>
               )}
             </div>
@@ -652,7 +655,7 @@ const TagsAndFavorites: React.FC = () => {
                   closeContextMenu();
                 }}
               >
-                Include
+                {t('librarySearch.include')}
               </button>
               <button
                 type="button"
@@ -662,7 +665,7 @@ const TagsAndFavorites: React.FC = () => {
                   closeContextMenu();
                 }}
               >
-                Exclude
+                {t('librarySearch.exclude')}
               </button>
               <button
                 type="button"
@@ -672,7 +675,7 @@ const TagsAndFavorites: React.FC = () => {
                   closeContextMenu();
                 }}
               >
-                Clear Filter
+                {t('libraryTags.clearFilter')}
               </button>
 
               <div className="my-1 border-t border-gray-700" />
@@ -684,14 +687,14 @@ const TagsAndFavorites: React.FC = () => {
             className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
             onClick={openRenameDialog}
           >
-            Rename Tag
+            {t('libraryTags.rename')}
           </button>
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
             onClick={openCreateCollectionDialog}
           >
-            Create Collection
+            {t('libraryGallery.createCollection')}
           </button>
           {!contextMenu.automatic && contextMenu.tag.count > 0 && (
             <button
@@ -699,8 +702,8 @@ const TagsAndFavorites: React.FC = () => {
               className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
               onClick={() => void handleClearFromMenu()}
             >
-              <span className="block">Clear From Images</span>
-              <span className="block text-xs text-gray-500">Keep the tag in the library</span>
+              <span className="block">{t('libraryTags.clearFromImages')}</span>
+              <span className="block text-xs text-gray-500">{t('libraryTags.keepTag')}</span>
             </button>
           )}
           {contextMenu.tag.count === 0 && (
@@ -709,8 +712,8 @@ const TagsAndFavorites: React.FC = () => {
               className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
               onClick={() => void handleDeleteFromMenu()}
             >
-              <span className="block">Remove Empty Tag</span>
-              <span className="block text-xs text-gray-500">Removes only the unused library entry</span>
+              <span className="block">{t('libraryTags.removeEmpty')}</span>
+              <span className="block text-xs text-gray-500">{t('libraryTags.removeEmptyHelp')}</span>
             </button>
           )}
 
@@ -723,8 +726,8 @@ const TagsAndFavorites: React.FC = () => {
                 className="w-full px-4 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-900/30"
                 onClick={() => void handlePurgeFromMenu()}
               >
-                <span className="block">{contextMenu.automatic ? 'Delete from All Images' : 'Clear and Delete'}</span>
-                {!contextMenu.automatic && <span className="block text-xs text-red-200/80">Removes the tag from images, then deletes the tag</span>}
+                <span className="block">{contextMenu.automatic ? t('libraryTags.deleteAllImages') : t('libraryTags.clearDelete')}</span>
+                {!contextMenu.automatic && <span className="block text-xs text-red-200/80">{t('libraryTags.clearDeleteHelp')}</span>}
               </button>
             </>
           )}
@@ -734,8 +737,8 @@ const TagsAndFavorites: React.FC = () => {
 
       <CollectionFormModal
         isOpen={collectionSourceTag !== null}
-        title="Create Collection"
-        submitLabel="Create Collection"
+        title={t('libraryGallery.createCollection')}
+        submitLabel={t('libraryGallery.createCollection')}
         initialValues={{
           name: collectionSourceTag?.tag.name ?? '',
           description: '',
@@ -759,13 +762,13 @@ const TagsAndFavorites: React.FC = () => {
             className="w-full max-w-sm rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-2xl"
             role="dialog"
             aria-modal="true"
-            aria-label="Rename tag"
+            aria-label={t('libraryTags.renameAccessible')}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-3">
-              <h3 className="text-sm font-semibold text-white">Rename Tag</h3>
+              <h3 className="text-sm font-semibold text-white">{t('libraryTags.rename')}</h3>
               <p className="mt-1 text-xs text-gray-400">
-                Renaming to an existing tag will merge both tags.
+                {t('libraryTags.renameHelp')}
               </p>
             </div>
 
@@ -785,7 +788,7 @@ const TagsAndFavorites: React.FC = () => {
                 }
               }}
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="Tag name"
+              placeholder={t('libraryTags.tagName')}
             />
 
             <div className="mt-4 flex justify-end gap-2">
@@ -794,14 +797,14 @@ const TagsAndFavorites: React.FC = () => {
                 className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800"
                 onClick={closeRenameDialog}
               >
-                Cancel
+                {t('libraryFolders.cancel')}
               </button>
               <button
                 type="button"
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
                 onClick={() => void handleRenameSubmit()}
               >
-                Rename
+                {t('libraryFolders.rename')}
               </button>
             </div>
           </div>

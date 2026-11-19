@@ -1,6 +1,8 @@
+import { formatMessage, languages } from '../i18n/messages.mjs';
+import { useSettingsStore } from '../store/useSettingsStore';
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import Analytics from '../components/Analytics';
 import { useImageStore } from '../store/useImageStore';
 import { useLicenseStore } from '../store/useLicenseStore';
@@ -20,7 +22,23 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   ...overrides,
 });
 
+afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); });
+
 describe('Analytics Explorer', () => {
+  it.each(languages)('keeps model filter commands and original metadata intact in %s', language => {
+    useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
+    const original = JSON.stringify(useImageStore.getState().images);
+    render(<Analytics isOpen onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: t('analytics.fullLibrary'), exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: t('analytics.tabResources'), exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Flux/ }));
+    expect(useImageStore.getState().selectedModels).toEqual(['Flux']);
+    fireEvent.click(screen.getByRole('button', { name: /^Flux/ }), { altKey: true });
+    expect(useImageStore.getState().excludedModels).toEqual(['Flux']);
+    expect(JSON.stringify(useImageStore.getState().images)).toBe(original);
+  });
+
   beforeEach(() => {
     useImageStore.getState().resetState();
     useLicenseStore.setState({ initialized: true, licenseStatus: 'pro' });

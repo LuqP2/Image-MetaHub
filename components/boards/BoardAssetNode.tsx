@@ -1,6 +1,8 @@
+import { useTranslation } from '../../i18n/useTranslation';
+import { boardMediaLabel, boardMetadataLabel } from './boardPresentation';
 import { useBoardPrompts } from './BoardPromptContext';
 import BoardRichText from './BoardRichText';
-import { boardValueLabel } from '../../services/boards/presentation';
+import { useBoardPresentation } from '../../i18n/useBoardPresentation';
 import { getBoardDisplayName } from './boardPresentation';
 import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
@@ -16,6 +18,8 @@ import BoardVideoPreview from './BoardVideoPreview';
 import { useImageStore } from '../../store/useImageStore';
 
 export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardFlowNode>) {
+  const { t } = useTranslation();
+  const { boardValueLabel } = useBoardPresentation();
   const editor = useBoardEditor();
   const prompts = useBoardPrompts();
   const object = data.object;
@@ -39,9 +43,9 @@ export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardF
       {image && isModel && !disableThumbnails ? <Model3DThumbnail key={image.id} image={image} directoryPath={directoryPath} eager={editor.exporting} />
         : image && object.mediaType === 'video' && !editor.exporting && !disableThumbnails ? <BoardVideoPreview key={image.id} image={image} directoryPath={directoryPath} poster={source ?? undefined} />
         : source ? <img src={source} alt={object.name} draggable={false} />
-        : <span>{resolution?.status === 'loading' ? 'Loading…' : resolution?.status === 'ambiguous' ? 'Choose a reference' : `${object.mediaType} · Unavailable`}</span>}
+        : <span>{resolution?.status === 'loading' ? t('imageViewer.provenance.loading') : resolution?.status === 'ambiguous' ? t('canvas.chooseReference') : t('canvas.unavailableAsset', { type: boardMediaLabel(object.mediaType, t) })}</span>}
     </div>
-    <div className="board-asset-caption" title={object.name}>{object.label?.trim() || getBoardDisplayName(object.name)}{object.mediaType !== 'image' && <span>{object.mediaType}</span>}</div>
-    {fields && object.visibleFields.length > 0 && <div className="board-asset-fields">{object.visibleFields.map(field => <div key={field} title={String(fields[field] ?? '')}><strong>{field}</strong> {field === 'model' ? image?.models?.map(boardValueLabel).join(', ') || '—' : <BoardRichText text={String(fields[field] ?? '—')} />}</div>)}</div>}
+    <div className="board-asset-caption" title={object.name}>{object.label?.trim() || getBoardDisplayName(object.name)}{object.mediaType !== 'image' && <span>{boardMediaLabel(object.mediaType, t)}</span>}</div>
+    {fields && object.visibleFields.length > 0 && <div className="board-asset-fields">{object.visibleFields.map(field => <div key={field} title={String(fields[field] ?? '')}><strong>{boardMetadataLabel(field, t)}</strong> {field === 'model' ? image?.models?.map(boardValueLabel).join(', ') || '—' : <BoardRichText text={String(fields[field] ?? '—')} />}</div>)}</div>}
   </div>;
 });

@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { updateConnection } from '../../services/boards/operations';
 import type { BoardSide } from '../../services/boards/types';
 import { PROMPT_DRAG_TYPE, readPromptDrag } from '../../services/boards/prompts';
@@ -50,6 +51,8 @@ export default function BoardCanvas({ boardId, onFitAll = () => {} }: { boardId:
 }
 
 function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: () => void }) {
+  const { t, language } = useTranslation();
+  const toolKeys = { sticky: 'canvas.sticky', text: 'imageViewer.editor.text', rectangle: 'imageViewer.editor.rectangle', ellipse: 'imageViewer.editor.ellipse', diamond: 'canvas.diamond', frame: 'canvas.frame' } as const;
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const prompts = useBoardPrompts();
   const [nodeRuntime, setNodeRuntime] = useState<ReadonlyMap<string, BoardNodeRuntime>>(() => new Map());
@@ -154,7 +157,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     onDrop={event => {
       if (event.dataTransfer.types.includes(PROMPT_DRAG_TYPE)) {
         event.preventDefault(); event.stopPropagation();
-        if (editor.editable) { try { prompts.add(readPromptDrag(event.dataTransfer), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch (cause) { editor.reportError?.(cause instanceof Error ? cause.message : 'Could not add prompt.'); } }
+        if (editor.editable) { try { prompts.add(readPromptDrag(event.dataTransfer), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch (cause) { editor.reportError?.(cause instanceof Error ? cause.message : t('canvas.addPromptFailed')); } }
         return;
       }
       if (hasStackCardDrag(event.dataTransfer)) {
@@ -162,7 +165,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
         const source = getStackCardDrag(event.dataTransfer);
         clearStackCardDrag(); clearInternalImageDragData();
         if (!editor.editable || !source) return;
-        if (source.boardId !== boardId) { editor.reportError?.('Move stack cards within their original Canvas.'); return; }
+        if (source.boardId !== boardId) { editor.reportError?.(t('canvas.originalStack')); return; }
         if ((event.target as HTMLElement).closest<HTMLElement>('.react-flow__node')?.dataset.id === source.stackId) return;
         const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
         useBoardStore.getState().executeOperation(boardId, document => extractStackMember(document, source.stackId, source.objectId, point));
@@ -240,7 +243,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       {showGrid && <Background bgColor={boardBackground(session.document.backgroundColor)} color={boardGridColor(session.document.backgroundColor)} gap={24} size={1} />}
     </ReactFlow>
     </BoardEditorContext.Provider>
-    {!!snapping.guides.length && <svg aria-label="Smart Guides" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1001, overflow: 'hidden' }}>
+    {!!snapping.guides.length && <svg aria-label={t('canvas.guidesOverlay')} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1001, overflow: 'hidden' }}>
       <g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
         {snapping.guides.map(guide => <line key={guide.axis} data-axis={guide.axis} data-reference={guide.referenceId}
           x1={guide.axis === 'x' ? guide.coordinate : guide.start} y1={guide.axis === 'y' ? guide.coordinate : guide.start}
@@ -249,24 +252,24 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
       </g>
     </svg>}
     {connections.preview && <>
-      <svg className="board-connect-preview" aria-label="Connection preview"><g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
+      <svg className="board-connect-preview" aria-label={t('canvas.connectionPreview')}><g transform={`translate(${viewportX ?? 0}, ${viewportY ?? 0}) scale(${zoom})`}>
         <path d={connections.preview.path} style={{ stroke: connectionStyle.color, strokeWidth: connectionStyle.width, strokeDasharray: connectionStyle.lineStyle === 'dashed' ? `${connectionStyle.width * 4} ${connectionStyle.width * 3}` : 'none' }} vectorEffect="non-scaling-stroke" />
         {connections.preview.target && <rect className="board-connect-target" x={connections.preview.target.x - 3 / zoom} y={connections.preview.target.y - 3 / zoom} width={connections.preview.target.width + 6 / zoom} height={connections.preview.target.height + 6 / zoom} rx={8 / zoom} vectorEffect="non-scaling-stroke" />}
       </g></svg>
-      <div className="board-connect-hint">Connect: drag or click a destination · Esc to cancel</div>
+      <div className="board-connect-hint">{t('canvas.connectCancel')}</div>
     </>}
     {grouping && <BoardVisualGroupingDialog boardId={boardId} ids={grouping.ids} close={() => setGrouping(null)} />}
     <BoardSelectionResizer boardId={boardId} />
     <BoardSmartFrameFilterPopover boardId={boardId} />
     {menu && <BoardContextMenu boardId={boardId} menu={menu} close={closeMenu} create={createObject} fit={onFitAll} changeBackground={() => { useBoardUIStore.getState().setUIHidden(false); setBackgroundOpen(true); }} autoGroup={ids => setGrouping({ ids })} />}
     {!session.document.objects.length && editor.editable && <div className="board-empty-start nodrag nopan">
-      <h2>Start your board</h2><p>Arrange selected references, or explore a source with a Smart Frame.</p>
-      <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Search canvas library"]')?.focus()); }}>Add references</button><small>Select files in the side library, then drag them here or use Add to canvas.</small></div>
-      <div><button className="board-button" onClick={() => { const center = editor.getVisibleCenter?.(); if (center) { queryActions?.create(center); editor.setTool?.('select'); } }}>Add Smart Frame</button><small>Show your library here, then use Filters to narrow the results. Matching images update automatically.</small></div>
-      <footer>Ctrl + wheel to zoom · Wheel to scroll · Shift + wheel to scroll horizontally · Right drag or Space + drag to pan</footer>
+      <h2>{t('canvas.startBoard')}</h2><p>{t('canvas.startHelp')}</p>
+      <div><button className="board-button" onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-board-library-search]')?.focus()); }}>{t('canvas.addReferences')}</button><small>{t('canvas.addReferencesHelp')}</small></div>
+      <div><button className="board-button" onClick={() => { const center = editor.getVisibleCenter?.(); if (center) { queryActions?.create(center); editor.setTool?.('select'); } }}>{t('canvas.addSmartFrameButton')}</button><small>{t('canvas.addSmartFrameHelp')}</small></div>
+      <footer>{t('canvas.navigationHelp')}</footer>
     </div>}
-    {drawingTool && <div className="board-drawing-hint">Drag to draw {drawingTool === 'text' ? 'a text box' : `a ${drawingTool}`} · Esc to cancel</div>}
-    {drawingTool && <div className="board-draw-overlay" aria-label={`Draw ${drawingTool}`}
+    {drawingTool && <div className="board-drawing-hint">{t('canvas.drawHint', { tool: drawingTool })}</div>}
+    {drawingTool && <div className="board-draw-overlay" aria-label={t('canvas.drawLabel', { tool: t(toolKeys[drawingTool]).toLocaleLowerCase(language) })}
       onPointerDown={event => {
         if (event.button !== 0) return;
         event.preventDefault(); event.stopPropagation();

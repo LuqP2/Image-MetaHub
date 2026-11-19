@@ -7,7 +7,7 @@ const base = process.argv[2];
 function fromBase(path) {
   if (!base || /^0{40}$/.test(base)) return {};
   try {
-    return JSON.parse(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 }));
+    return JSON.parse(execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }));
   } catch {
     const paths = execFileSync('git', ['ls-tree', '--name-only', base, '--', path], { encoding: 'utf8' });
     if (paths.trim()) throw new Error(`Cannot read ${path} at ${base}`);
@@ -63,10 +63,18 @@ for (const file of files) {
     }
   }
   function visit(node) {
+    // Historical developer letters are release content, excluded by the migration scope.
+    // Only prose elements may opt out; buttons and other UI controls remain checked.
+    if (file === 'components/ChangelogModal.tsx' && ts.isJsxElement(node)
+      && ['p', 'h3'].includes(node.openingElement.tagName.getText(source))
+      && node.openingElement.attributes.properties.some((attribute) => ts.isJsxAttribute(attribute)
+        && attribute.name.getText(source) === 'data-i18n-content'
+        && attribute.initializer && ts.isStringLiteral(attribute.initializer)
+        && attribute.initializer.text === 'release-note')) return;
     if (ts.isCallExpression(node) && node.arguments.length) {
       const first = node.arguments[0];
       const key = ts.isStringLiteralLike(first) ? first.text : undefined;
-      if (key && /^[a-zA-Z-]+\.[a-zA-Z]/.test(key) && ['t', 'translate', 'translateApp', 'folderText'].includes(node.expression.getText(source)) && !Object.hasOwn(en, key)) {
+      if (key && /^[a-zA-Z-]+\.[a-zA-Z]/.test(key) && ['t', 'tr', 'translate', 'translateApp', 'folderText'].includes(node.expression.getText(source)) && !Object.hasOwn(en, key)) {
         report(first, `Unknown message: ${key}`);
       }
     }

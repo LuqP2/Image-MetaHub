@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IndexedImage } from '../types';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import { groupImages } from '../utils/imageGrouping';
 import { findRelatedImages } from '../utils/relatedImages';
 
@@ -16,6 +17,27 @@ const makeImage = (id: string, name: string, lastModified: number, models: strin
 });
 
 describe('imageGrouping', () => {
+  it.each(languages)('localizes session labels in %s without changing grouping or source models', (language) => {
+    const timestamp = new Date(2026, 4, 21, 9).getTime();
+    const model = 'fixture {model} 海.safetensors';
+    const images = [makeImage('one', 'one.png', timestamp, [model]), makeImage('two', 'two.png', timestamp + 1000)];
+    const english = groupImages(images, 'session', { sortOrder: 'date-desc' });
+    const localized = groupImages(images, 'session', {
+      sortOrder: 'date-desc', language,
+      translate: (key, values) => formatMessage(language, key, values),
+    });
+    expect(localized.groups[0]).toMatchObject({
+      id: english.groups[0].id, dateKey: english.groups[0].dateKey,
+      startTime: timestamp, endTime: timestamp + 1000, count: 2,
+      subtitle: formatMessage(language, 'librarySessions.dominantModel', { model }),
+    });
+    expect(localized.groups[0].label).toContain(new Date(timestamp).toLocaleDateString(language, { year: 'numeric', month: 'short', day: 'numeric' }));
+    expect(localized.items.filter(item => item.type === 'image')).toEqual(english.items.filter(item => item.type === 'image'));
+    const grouped = groupImages(images, 'model', { translate: (key, values) => formatMessage(language, key, values) });
+    expect(grouped.groups.find(group => group.id === 'model-' + model)?.label).toBe(model);
+    expect(grouped.groups.find(group => group.id === 'model-Unknown model')?.label).toBe(formatMessage(language, 'librarySessions.unknownModel'));
+  });
+
   it('groups images by local date while preserving incoming order', () => {
     const firstDay = new Date(2026, 4, 20, 18, 30).getTime();
     const nextDay = new Date(2026, 4, 21, 9, 15).getTime();

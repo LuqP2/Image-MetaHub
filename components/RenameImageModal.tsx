@@ -1,3 +1,5 @@
+import { useTranslation } from '../i18n/useTranslation';
+import { translatePresentationMessage } from '../i18n/presentationMessages';
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { IndexedImage } from '../types';
@@ -11,6 +13,7 @@ interface RenameImageModalProps {
 }
 
 const RenameImageModal: React.FC<RenameImageModalProps> = ({ image, isOpen, onClose, onRenamed }) => {
+  const { t } = useTranslation();
   const [value, setValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -41,7 +44,7 @@ const RenameImageModal: React.FC<RenameImageModalProps> = ({ image, isOpen, onCl
       const oldImageId = image.id;
       const result = await renameIndexedImage(image, value);
       if (!result.success || !result.newImageId || !result.newRelativePath) {
-        alert(result.error || 'Failed to rename image.');
+        alert(translatePresentationMessage(result.error || 'Failed to rename image.', t));
         return;
       }
 
@@ -60,21 +63,20 @@ const RenameImageModal: React.FC<RenameImageModalProps> = ({ image, isOpen, onCl
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-700 px-5 py-4">
-          <h2 className="text-sm font-semibold text-white">Rename Image</h2>
+          <h2 className="text-sm font-semibold text-white">{t('fileOperations.renameImage')}</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-            title="Close"
-            aria-label="Close rename modal"
+            title={t('modelLibrary.close')}
+            aria-label={t('fileOperations.closeRename')}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="space-y-4 p-5">
           <label className="block text-sm text-gray-300">
-            Filename
-            <input
+            {t('modelLibrary.filename')}<input
               ref={inputRef}
               value={value}
               onChange={(event) => setValue(event.target.value)}
@@ -93,8 +95,7 @@ const RenameImageModal: React.FC<RenameImageModalProps> = ({ image, isOpen, onCl
             />
           </label>
           <p className="text-xs text-gray-500">
-            The original extension and subfolder are preserved automatically.
-          </p>
+            {t('fileOperations.renameHelp')}</p>
           <div className="flex gap-3">
             <button
               type="button"
@@ -102,15 +103,14 @@ const RenameImageModal: React.FC<RenameImageModalProps> = ({ image, isOpen, onCl
               className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700"
               disabled={isSubmitting}
             >
-              Cancel
-            </button>
+              {t('modelLibrary.cancel')}</button>
             <button
               type="button"
               onClick={() => void handleSubmit()}
               className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Renaming...' : 'Rename'}
+              {isSubmitting ? t('fileOperations.renaming') : t('libraryFolders.rename')}
             </button>
           </div>
         </div>

@@ -1,3 +1,5 @@
+import { useTranslation } from '../../i18n/useTranslation';
+import { translatePromptMessage } from '../../i18n/promptMessages';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { IndexedImage } from '../../types';
 import type { BoardAssetObject, BoardPromptObject } from '../../services/boards/types';
@@ -18,6 +20,7 @@ import { emptyEditor } from '../../services/promptLibrary/core.mjs';
 import { usePromptDialogFocus } from '../../hooks/usePromptDialogFocus';
 
 function PromptSaveDialog({ card, close }: { card: BoardPromptObject; close(): void }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState(card.title);
   const [positive, setPositive] = useState(card.positivePrompt);
   const [negative, setNegative] = useState(card.negativePrompt);
@@ -34,30 +37,32 @@ function PromptSaveDialog({ card, close }: { card: BoardPromptObject; close(): v
     try {
       const editor = { ...emptyEditor(), title, folderId };
       const store = useSavedPromptStore.getState();
-      if (store.prompts.some(prompt => prompt.positivePrompt === positive && prompt.negativePrompt === negative)) { setStatus('This prompt is already in your Prompt Library.'); return; }
+      if (store.prompts.some(prompt => prompt.positivePrompt === positive && prompt.negativePrompt === negative)) { setStatus('promptLibrary.alreadySaved'); return; }
       await store.mutate({ action: 'create', kind: 'prompt', item: { positivePrompt: positive, negativePrompt: negative, textBasis: 'authored', source: null, sourceCreatedAt: null, editor } });
       close();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save prompt.'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'promptLibrary.saveFailed'); }
     finally { setBusy(false); }
   };
-  return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4" onKeyDown={event => event.stopPropagation()}><section ref={ref} role="dialog" aria-modal="true" aria-label="Save card to Prompt Library" className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
-    <h2>Save to Prompt Library</h2><div className="board-prompt-inspector">
-      <label>Title<input className="board-input" value={title} onChange={event => setTitle(event.target.value)} /></label>
-      <label>Folder<select className="board-input" value={folderId} onChange={event => setFolderId(event.target.value)}><option value="">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
-      <label>Positive prompt<textarea className="board-textarea" value={positive} onChange={event => setPositive(event.target.value)} /></label>
-      <label>Negative prompt<textarea className="board-textarea" value={negative} onChange={event => setNegative(event.target.value)} /></label>
-      {error && <p role="alert">{error}</p>}{status && <p role="status">{status}</p>}
-      <button className="board-button" disabled={busy || !(positive.trim() || negative.trim())} onClick={() => void save()}>Save new prompt</button><button className="board-button" disabled={busy} onClick={close}>Close</button>
+  return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4" onKeyDown={event => event.stopPropagation()}><section ref={ref} role="dialog" aria-modal="true" aria-label={t('promptLibrary.saveCardTitle')} className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
+    <h2>{t('promptLibrary.saveTitle')}</h2><div className="board-prompt-inspector">
+      <label>{t('imageViewer.collection.title')}<input className="board-input" value={title} onChange={event => setTitle(event.target.value)} /></label>
+      <label>{t('canvas.folder')}<select className="board-input" value={folderId} onChange={event => setFolderId(event.target.value)}><option value="">{t('promptLibrary.unfiled')}</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
+      <label>{t('imageViewer.provenance.positive')}<textarea className="board-textarea" value={positive} onChange={event => setPositive(event.target.value)} /></label>
+      <label>{t('imageViewer.provenance.negative')}<textarea className="board-textarea" value={negative} onChange={event => setNegative(event.target.value)} /></label>
+      {error && <p role="alert">{translatePromptMessage(error, t)}</p>}{status && <p role="status">{translatePromptMessage(status, t)}</p>}
+      <button className="board-button" disabled={busy || !(positive.trim() || negative.trim())} onClick={() => void save()}>{t('promptLibrary.saveNew')}</button><button className="board-button" disabled={busy} onClick={close}>{t('settings.native.close')}</button>
     </div></section></div>;
 }
 function BringDialog({ count, busy, error, close, confirm }: { count: number; busy: boolean; error: string; close(): void; confirm(): void }) {
+  const { t } = useTranslation();
   const ref = usePromptDialogFocus(close, busy);
-  return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4" onKeyDown={event => event.stopPropagation()}><section ref={ref} role="dialog" aria-modal="true" aria-label="Bring matching images" className="space-y-4 rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
-    <h2>Bring matching images</h2><p>{count} matching images are not yet on this Canvas.</p>{error && <p role="alert">{error}</p>}
-    <button className="board-button" disabled={busy || count === 0} onClick={confirm}>Add {count} images</button><button className="board-button" disabled={busy} onClick={close}>Cancel</button>
+  return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4" onKeyDown={event => event.stopPropagation()}><section ref={ref} role="dialog" aria-modal="true" aria-label={t('promptLibrary.bringTitle')} className="space-y-4 rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
+    <h2>{t('promptLibrary.bringTitle')}</h2><p>{t('promptLibrary.bringCount', { count })}</p>{error && <p role="alert">{translatePromptMessage(error, t)}</p>}
+    <button className="board-button" disabled={busy || count === 0} onClick={confirm}>{t('promptLibrary.addImages', { count })}</button><button className="board-button" disabled={busy} onClick={close}>{t('libraryFolders.cancel')}</button>
   </section></div>;
 }
 export default function BoardPromptIntegration({ images, loading, resolve, editable, onOpenLibrary, children }: { images: IndexedImage[]; loading: boolean; editable: boolean; resolve(object: BoardAssetObject): { status: string; image?: IndexedImage }; onOpenLibrary?(id: string): void; children: ReactNode }) {
+  const { t } = useTranslation();
   const boardId = useBoardStore(state => state.activeBoardId);
   const session = useBoardStore(state => boardId ? state.sessions[boardId] : undefined);
   const results = useBoardQueryStore(state => boardId ? state.results[boardId] : undefined);
@@ -110,7 +115,7 @@ export default function BoardPromptIntegration({ images, loading, resolve, edita
       const baseline = await getBoardReferenceBaseline();
       const state = useBoardStore.getState();
       const settings = useSettingsStore.getState();
-      if (live.current.loading || !live.current.editable || state.activeBoardId !== targetId || state.closing || state.sessions[targetId]?.recovering || state.sessions[targetId]?.document !== captured.document || useImageStore.getState().images !== imageSet || querySet !== useBoardQueryStore.getState().results[targetId] || safeModeKey !== JSON.stringify([settings.enableSafeMode, settings.blurSensitiveImages, settings.sensitiveTags])) throw new Error('The Canvas or library changed. Review the updated matches and try again.');
+      if (live.current.loading || !live.current.editable || state.activeBoardId !== targetId || state.closing || state.sessions[targetId]?.recovering || state.sessions[targetId]?.document !== captured.document || useImageStore.getState().images !== imageSet || querySet !== useBoardQueryStore.getState().results[targetId] || safeModeKey !== JSON.stringify([settings.enableSafeMode, settings.blurSensitiveImages, settings.sensitiveTags])) throw new Error('promptLibrary.bringChanged');
       const directories = useImageStore.getState().directories;
       state.executeOperation(targetId, document => {
         const assets = candidates.map(image => { const dimensions = image.dimensions?.match(/(\d+)\s*x\s*(\d+)/i); return { name: image.name, mediaType: 'image' as const, reference: createBoardAssetReference(image, directories, baseline), ...(dimensions ? { width: Number(dimensions[1]), height: Number(dimensions[2]) } : {}) }; });
@@ -125,7 +130,7 @@ export default function BoardPromptIntegration({ images, loading, resolve, edita
         return addAssets(document, assets, point);
       });
       setBring(null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add matching images.'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'promptLibrary.bringFailed'); }
     finally { setBusy(false); }
   };
   return <BoardPromptContext.Provider value={{ loading, matchedIds, matchedObjectIds,
@@ -137,10 +142,10 @@ export default function BoardPromptIntegration({ images, loading, resolve, edita
       await useSavedPromptStore.getState().loadLibrary();
       const library = useSavedPromptStore.getState();
       if (library.error) { setOriginError(library.error); return; }
-      if (!library.prompts.some(prompt => prompt.id === id)) { setOriginError('The source prompt is no longer in your Prompt Library. This card keeps its own copy.'); return; }
+      if (!library.prompts.some(prompt => prompt.id === id)) { setOriginError('promptLibrary.sourceMissing'); return; }
       onOpenLibrary?.(id);
     })(); },
-  }}>{originError && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{originError}<button className="board-button" onClick={() => setOriginError('')}>Dismiss</button></div>}{children}
+  }}>{originError && <div role="alert" className="border-b border-red-500/40 p-2 text-sm text-red-300">{translatePromptMessage(originError, t)}<button className="board-button" onClick={() => setOriginError('')}>{t('licensing.dismiss')}</button></div>}{children}
     {bring && <BringDialog count={loading ? 0 : candidates.length} busy={busy} error={error} close={() => setBring(null)} confirm={() => void confirmBring()} />}
     {saving && <PromptSaveDialog card={saving} close={() => setSaving(null)} />}
   </BoardPromptContext.Provider>;

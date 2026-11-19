@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import BoardAssetBrowser from '../components/boards/BoardAssetBrowser';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -9,10 +10,24 @@ import { clearInternalImageDragData, getInternalImageDragIds } from '../utils/in
 vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }) => children({ width: 270, height: 500 }) }));
 vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => {} }));
 vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: () => ({ thumbnailUrl: 'synthetic-thumbnail.png' }) }));
-beforeEach(() => useSettingsStore.setState({ enableSafeMode: false, blurSensitiveImages: true, sensitiveTags: ['private'] }));
+beforeEach(() => useSettingsStore.setState({ language: 'en', enableSafeMode: false, blurSensitiveImages: true, sensitiveTags: ['private'] }));
 afterEach(() => { cleanup(); clearInternalImageDragData(); });
 function clearPanelSearch() { fireEvent.change(screen.getByLabelText('Search canvas library'), { target: { value: '' } }); }
 describe('Canvas asset panel', () => {
+  it.each(languages)('keeps selected files and the local search unchanged in %s', (language) => {
+    const image = boardImage('original {file} 海.png', { models: ['FixtureModel'] });
+    const add = vi.fn();
+    render(<BoardAssetBrowser images={[image]} directories={[boardDirectory]} editable onAdd={add} />);
+    clearPanelSearch();
+    fireEvent.change(screen.getByLabelText('Search canvas library'), { target: { value: 'FixtureModel' } });
+    fireEvent.click(screen.getByTitle(image.name));
+    act(() => useSettingsStore.setState({ language }));
+    expect((screen.getByLabelText(formatMessage(language, 'canvas.searchLibrary')) as HTMLInputElement).value).toBe('FixtureModel');
+    expect(screen.getByTitle(image.name).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.addCount', { count: 1 }) }));
+    expect(add).toHaveBeenCalledExactlyOnceWith([image]);
+  });
+
   it('selects and drags multiple assets without modifying library selection/search', () => {
     const images = [boardImage('a.png', { models: ['Flux'] }), boardImage('b.png')];
     useImageStore.setState({ images, selectedImages: new Set(['unrelated']), searchQuery: 'global query' });

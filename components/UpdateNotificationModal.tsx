@@ -1,3 +1,4 @@
+import { useTranslation, type Translate } from '../i18n/useTranslation';
 import React from 'react';
 import { CheckCircle2, Download, ExternalLink, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { type UpdateDownloadProgress, type UpdateNotificationPayload } from '../types';
@@ -31,9 +32,9 @@ const formatBytes = (value?: number): string | null => {
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
-const getReleaseNotesText = (update: UpdateNotificationPayload | null): string => {
+const getReleaseNotesText = (update: UpdateNotificationPayload | null, t: Translate): string => {
   if (!update?.releaseNotes) {
-    return update?.releaseName ? `Release: ${update.releaseName}` : 'No release notes were included with this update.';
+    return update?.releaseName ? t('updates.release', { name: update.releaseName }) : t('updates.noNotes');
   }
 
   if (typeof update.releaseNotes === 'string') {
@@ -46,7 +47,7 @@ const getReleaseNotesText = (update: UpdateNotificationPayload | null): string =
     .join('\n');
 };
 
-const renderReleaseNotes = (text: string) => {
+const renderReleaseNotes = (text: string, t: Translate) => {
   const lines = text
     .replace(/<[^>]*>/g, '')
     .split('\n')
@@ -55,7 +56,7 @@ const renderReleaseNotes = (text: string) => {
     .slice(0, 18);
 
   if (lines.length === 0) {
-    return <p className="text-sm text-gray-400">No release notes were included with this update.</p>;
+    return <p className="text-sm text-gray-400">{t('updates.noNotes')}</p>;
   }
 
   return (
@@ -102,21 +103,22 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
   onSkip,
   onInstallNow,
 }) => {
+  const { t } = useTranslation();
   if (!isOpen || !update) return null;
 
   const percent = Math.max(0, Math.min(100, progress?.percent ?? 0));
   const transferred = formatBytes(progress?.transferred);
   const total = formatBytes(progress?.total);
-  const releaseNotes = getReleaseNotesText(update);
+  const releaseNotes = getReleaseNotesText(update, t);
   const changelogUrl = update.changelogUrl ?? `https://github.com/LuqP2/Image-MetaHub/releases/tag/v${update.version}`;
 
-  const title = status === 'downloaded' ? 'Update ready to install' : 'Update available';
+  const title = status === 'downloaded' ? t('updates.ready') : t('updates.available');
   const subtitle =
     status === 'downloaded'
-      ? `Image MetaHub ${update.version} has been downloaded.`
+      ? t('updates.downloaded', { version: update.version })
       : update.manualDownload
-        ? `Image MetaHub ${update.version} is available. Download and install it manually from GitHub Releases.`
-        : `Image MetaHub ${update.version} is ready to download.`;
+        ? t('updates.manual', { version: update.version })
+        : t('updates.downloadReady', { version: update.version });
 
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
@@ -135,8 +137,8 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
-            title="Close"
-            aria-label="Close update notification"
+            title={t('settings.native.close')}
+            aria-label={t('updates.close')}
             disabled={status === 'downloading'}
           >
             <X size={20} />
@@ -148,23 +150,23 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm text-gray-300">
                 <RefreshCw size={18} className="animate-spin text-blue-300" />
-                Downloading update...
+                {t('updates.downloading')}
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-gray-800">
                 <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${percent}%` }} />
               </div>
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>{percent.toFixed(0)}%</span>
-                {transferred && total ? <span>{transferred} of {total}</span> : null}
+                {transferred && total ? <span>{t('updates.transfer', { transferred, total })}</span> : null}
               </div>
             </div>
           ) : status === 'error' ? (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200 light:text-red-800">
-              {error || 'The update could not be downloaded. Please try again later.'}
+              {error || t('updates.failed')}
             </div>
           ) : (
             <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-4">
-              {renderReleaseNotes(releaseNotes)}
+              {renderReleaseNotes(releaseNotes, t)}
             </div>
           )}
         </div>
@@ -176,7 +178,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
             className="inline-flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-blue-300"
           >
             <ExternalLink size={16} />
-            View release notes
+            {t('updates.notes')}
           </button>
 
           {status === 'downloaded' ? (
@@ -186,7 +188,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
                 onClick={onClose}
                 className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800"
               >
-                Install Later
+                {t('updates.installLater')}
               </button>
               <button
                 type="button"
@@ -194,7 +196,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
               >
                 <RotateCcw size={16} />
-                Restart and Install
+                {t('updates.install')}
               </button>
             </div>
           ) : (
@@ -205,7 +207,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
                 className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800"
                 disabled={status === 'downloading'}
               >
-                Skip Version
+                {t('updates.skip')}
               </button>
               <button
                 type="button"
@@ -213,7 +215,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
                 className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800"
                 disabled={status === 'downloading'}
               >
-                Later
+                {t('updates.later')}
               </button>
               <button
                 type="button"
@@ -222,7 +224,7 @@ const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = ({
                 disabled={status === 'downloading'}
               >
                 {update.manualDownload ? <ExternalLink size={16} /> : <Download size={16} />}
-                {update.manualDownload ? 'Open GitHub Releases' : 'Download'}
+                {update.manualDownload ? t('updates.github') : t('updates.download')}
               </button>
             </div>
           )}

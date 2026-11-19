@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AutomationRulesModal from '../components/AutomationRulesModal';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
+import type { Translate } from '../i18n/useTranslation';
 
 describe('AutomationRulesModal', () => {
   beforeEach(() => {
     useImageStore.getState().resetState();
-    useSettingsStore.setState({ tagSuggestionLimit: 5 });
+    useSettingsStore.setState({ tagSuggestionLimit: 5, language: 'en' });
     useImageStore.setState({
       images: [],
       filteredImages: [],
@@ -35,6 +37,23 @@ describe('AutomationRulesModal', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     cleanup();
+    useSettingsStore.setState({ language: 'en' });
+  });
+
+  it.each(languages)('keeps condition enums and original model values when saving in %s', async language => {
+    useSettingsStore.setState({ language });
+    const t: Translate = (key, values) => formatMessage(language, key, values);
+    render(<AutomationRulesModal isOpen onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: t('automation.addFirstCondition') }));
+    fireEvent.change(screen.getByLabelText(t('automation.conditionFieldLabel')), { target: { value: 'model' } });
+    fireEvent.change(screen.getByLabelText(t('automation.fieldValueLabel', { field: t('librarySearch.checkpoint') })), { target: { value: 'CyberRealistic' } });
+    fireEvent.change(screen.getByPlaceholderText(t('automation.addTagPlaceholder')), { target: { value: 'animal' } });
+    fireEvent.click(screen.getByRole('button', { name: t('automation.addButton'), exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: t('automation.saveRule') }));
+    await waitFor(() => expect(useImageStore.getState().automationRules).toHaveLength(1));
+    expect(useImageStore.getState().automationRules[0].criteria.conditionRows?.[0]).toMatchObject({
+      field: 'model', operator: 'includes', value: 'CyberRealistic',
+    });
   });
 
   it('opens a clean guided editor for a new rule', () => {

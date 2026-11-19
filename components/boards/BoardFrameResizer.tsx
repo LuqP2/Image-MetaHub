@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useReactFlow, useViewport } from '@xyflow/react';
 import { useBoardStore } from '../../store/useBoardStore';
@@ -13,6 +14,7 @@ const corners = ['top left', 'top right', 'bottom left', 'bottom right'] as cons
 export default function BoardFrameResizer({ boardId, frame, selected }: { boardId: string; frame: BoardFrameObject; selected: boolean }) {
   const editor = useBoardEditor();
   const flow = useReactFlow();
+  const { t } = useTranslation();
   const { zoom } = useViewport();
   const cancelGesture = useRef<(() => void) | null>(null);
   const enabled = editor.editable && !editor.connecting && (!editor.tool || editor.tool === 'select');
@@ -105,10 +107,10 @@ export default function BoardFrameResizer({ boardId, frame, selected }: { boardI
 
   return <>
     {edges.map(side => <div key={side} className={`react-flow__resize-control line ${side} nodrag nopan board-frame-resize`}
-      data-selected={selected} title="Drag to resize frame" style={{ '--board-resize-hit': `${12 / zoom}px`, '--board-resize-stroke': `${1 / zoom}px` } as CSSProperties}
+      data-selected={selected} title={t('canvas.dragResizeFrame')} style={{ '--board-resize-hit': `${12 / zoom}px`, '--board-resize-stroke': `${1 / zoom}px` } as CSSProperties}
       onPointerDown={event => startResize(event, side)} />)}
     {corners.map(side => <div key={side} className={`react-flow__resize-control handle ${side} nodrag nopan board-frame-resize`}
-      data-selected={selected} title="Drag to resize frame · Alt/Option + drag to scale images"
+      data-selected={selected} title={t('canvas.dragResizeFrameScale')}
       style={{ width: 12 / zoom, height: 12 / zoom }} onPointerDown={event => startResize(event, side)} />)}
   </>;
 }

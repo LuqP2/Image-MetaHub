@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { Crown, Sparkles, TrendingUp } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -16,6 +17,7 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
   remainingCount,
   clusterCount,
 }) => {
+  const { t } = useTranslation();
   const { showProModal, canStartTrial } = useFeatureAccess();
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const proLicenseUrl = buildProLicenseUrl(creatorAttributionToken, 'banner');
@@ -30,12 +32,11 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-green-400" />
-            Found {clusterCount.toLocaleString()} duplicate groups in your first {processedCount.toLocaleString()} images
+            {t('licensing.clusterFound', { groups: clusterCount.toLocaleString(), images: processedCount.toLocaleString() })}
           </h3>
 
           <p className="text-gray-300 mb-3">
-            <span className="font-semibold text-purple-300">{remainingCount.toLocaleString()} images remaining</span>
-            {' '}— Upgrade to Pro to analyze your entire library and find more duplicates.
+            {t('licensing.clusterRemaining', { count: remainingCount.toLocaleString() })}
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -44,8 +45,7 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
               className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
             >
               <Crown className="w-4 h-4" />
-              Unlock Full Clustering
-            </button>
+              {t('licensing.unlockClustering')}</button>
 
             <a
               href={proLicenseUrl}
@@ -53,13 +53,13 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold py-2 px-4 rounded-lg transition-colors border border-gray-700"
             >
-              Learn more
+              {t('licensing.learnMore')}
             </a>
           </div>
 
           {canStartTrial && (
             <p className="text-xs text-gray-400 mt-2">
-              💡 Start your {TRIAL_DURATION_DAYS}-day trial to test unlimited clustering
+              {t('licensing.clusterTrial', { days: TRIAL_DURATION_DAYS })}
             </p>
           )}
         </div>

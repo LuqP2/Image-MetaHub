@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useMemo, useState } from 'react';
 import { BarChart3, CheckCircle2, Layers } from 'lucide-react';
 import type { IndexedImage } from '../types';
@@ -17,6 +18,7 @@ const AnalyticsSummaryStrip: React.FC<AnalyticsSummaryStripProps> = ({
   allImages,
   onOpenAnalytics,
 }) => {
+  const { t, language } = useTranslation();
   const [dismissed, setDismissed] = useState(() => (
     typeof window !== 'undefined' && window.localStorage.getItem(DISMISS_KEY) === 'true'
   ));
@@ -61,21 +63,21 @@ const AnalyticsSummaryStrip: React.FC<AnalyticsSummaryStripProps> = ({
   return (
     <DiscoveryBanner
       icon={BarChart3}
-      title="Analytics Explorer"
+      title={t('analytics.title')}
       description={
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span>{summary.totalImages.toLocaleString()} in scope</span>
+          <span>{t('analytics.inScope', { count: summary.totalImages.toLocaleString(language) })}</span>
           <span className="inline-flex items-center gap-1">
             <Layers size={11} />
             <span className="max-w-[11rem] truncate">{summary.dominantModel || 'N/A'}</span>
           </span>
           <span className="inline-flex items-center gap-1">
             <CheckCircle2 size={11} />
-            {(summary.telemetryCoverage * 100).toFixed(0)}% with metrics
+            {t('analytics.withMetrics', { percent: (summary.telemetryCoverage * 100).toFixed(0) })}
           </span>
         </span>
       }
-      actionLabel="Open"
+      actionLabel={t('modelLibrary.open')}
       onAction={onOpenAnalytics}
       onDismiss={() => {
         if (typeof window !== 'undefined') {
@@ -83,7 +85,7 @@ const AnalyticsSummaryStrip: React.FC<AnalyticsSummaryStripProps> = ({
         }
         setDismissed(true);
       }}
-      dismissLabel="Dismiss analytics summary"
+      dismissLabel={t('analytics.dismissSummary')}
     />
   );
 };

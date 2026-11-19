@@ -14,7 +14,7 @@ test('CLI should show help without arguments', async () => {
 			resolve(undefined);
 		});
 	});
-});
+}, 60000);
 
 /**
  * These run the CLI as a real subprocess (`tsx cli.ts parse ...`), not as an

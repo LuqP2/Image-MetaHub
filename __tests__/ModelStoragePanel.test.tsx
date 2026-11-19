@@ -1,3 +1,5 @@
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +12,7 @@ import ModelStoragePanel, { ModelRemovalDialog } from '../components/ModelStorag
 const storageProps = { select: vi.fn(), openInspector: vi.fn(), folder: 'all', kind: 'all', selectedId: null, clearSharedFilters: vi.fn(), onCollection: vi.fn(), addFolder: vi.fn() };
 
 beforeEach(() => {
+  useSettingsStore.setState({ language: 'en' });
   fakes.refresh.mockReset().mockResolvedValue(undefined); fakes.remove.mockReset().mockResolvedValue(undefined); fakes.request.mockReset(); fakes.verify.mockReset();
   fakes.state = { revision: 1, sources: [], catalog: { version: 1, updatedAt: 1, locations: [
     { id: 'ready', absolutePath: '/synthetic/ready.safetensors', fileName: 'ready.safetensors', sourceKind: 'checkpoint', size: 100 },
@@ -141,21 +144,25 @@ describe('Storage selection and removal choices', () => {
     expect(screen.getByText('3 files · 1 selected')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Remove selected/ })).toHaveProperty('disabled', true);
   });
-  it('requires explicit copy selection in the model removal dialog', async () => {
+  it.each(languages)('requires explicit copy selection in the model removal dialog in %s', async language => {
+    useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
     fakes.state.removal = { locationIds: ['ready', 'partial'], selected: false };
     render(<ModelRemovalDialog />);
-    const review = screen.getByRole('button', { name: 'Review in system dialog…' }) as HTMLButtonElement;
+    const review = screen.getByRole('button', { name: t('modelLibrary.reviewSystemDialog') }) as HTMLButtonElement;
     expect(review.disabled).toBe(true);
     fireEvent.click(screen.getAllByRole('checkbox')[0]);
     await act(async () => { fireEvent.click(review); });
     expect(fakes.remove).toHaveBeenCalledExactlyOnceWith(['ready']);
   });
-  it('makes all-copy selection deliberate and does not remove files before review', async () => {
+  it.each(languages)('makes all-copy selection deliberate and does not remove files before review in %s', async language => {
+    useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
     fakes.state.removal = { locationIds: ['ready', 'partial'], selected: false };
     render(<ModelRemovalDialog />);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove all copies' }));
+    fireEvent.click(screen.getByRole('button', { name: t('modelLibrary.removeCopies') }));
     expect(fakes.remove).not.toHaveBeenCalled();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Review in system dialog…' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: t('modelLibrary.reviewSystemDialog') })); });
     expect(fakes.remove).toHaveBeenCalledExactlyOnceWith(['ready', 'partial']);
   });
 });

@@ -1,3 +1,5 @@
+import { useTranslation } from '../i18n/useTranslation';
+import { translatePromptMessage } from '../i18n/promptMessages';
 import PromptCardDialog from './boards/PromptCardDialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bookmark, Blocks, MoreHorizontal, Plus } from 'lucide-react';
@@ -21,10 +23,12 @@ import PromptTagsInput from './promptLibrary/PromptTagsInput';
 import { buttonClass, fieldClass } from './promptLibrary/PromptVariables';
 
 function UnsavedDialog({ onSave, onDiscard, onCancel }: { onSave: () => void; onDiscard: () => void; onCancel: () => void }) {
+  const { t } = useTranslation();
   const ref = usePromptDialogFocus(onCancel);
-  return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4"><section ref={ref} role="dialog" aria-modal="true" aria-label="Unsaved changes" className="space-y-4 rounded-xl border border-gray-700 bg-gray-900 p-5"><h3 className="font-semibold">Save your changes before leaving?</h3><p className="text-xs text-gray-400">Your saved item has not been changed yet.</p><div className="flex justify-end gap-2"><button className={buttonClass} onClick={onCancel}>Cancel</button><button className={buttonClass} onClick={onDiscard}>Discard</button><button className={buttonClass + ' !border-accent/40 !bg-accent/15'} onClick={onSave}>Save</button></div></section></div>;
+  return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4"><section ref={ref} role="dialog" aria-modal="true" aria-label={t('promptLibrary.unsavedChanges')} className="space-y-4 rounded-xl border border-gray-700 bg-gray-900 p-5"><h3 className="font-semibold">{t('promptLibrary.saveBeforeLeaving')}</h3><p className="text-xs text-gray-400">{t('promptLibrary.savedUnchanged')}</p><div className="flex justify-end gap-2"><button className={buttonClass} onClick={onCancel}>{t('promptLibrary.cancel')}</button><button className={buttonClass} onClick={onDiscard}>{t('promptLibrary.discard')}</button><button className={buttonClass + ' !border-accent/40 !bg-accent/15'} onClick={onSave}>{t('promptLibrary.save')}</button></div></section></div>;
 }
 export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas, sourcePromptId, onSourcePromptHandled }: { sourcePromptId?: string | null; onSourcePromptHandled?(): void; onOpenCanvas?(): void; onViewSource: (path: string) => void | Promise<void>; onFindImages?: (prompt: string) => void }) {
+  const { t } = useTranslation();
   const { prompts, blocks, folders = [], loadLibrary, mutate, error, isLoading, selectedPromptId, select } = useSavedPromptStore();
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
   const [canvasValues, setCanvasValues] = useState<Record<string, string>>({});
@@ -65,7 +69,7 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
     const navigate = () => {
       if (request !== navigationRequest.current) return;
       if (id && suggestionDrafts.current.get(id)?.size) {
-        setActionError('Save the pending field suggestions before leaving.'); return;
+        setActionError('promptLibrary.pendingSuggestions'); return;
       }
       const proceed = () => { setActionError(''); setComposeAppend(undefined); action(); };
       if (dirty.current) setPending(() => proceed);
@@ -77,7 +81,7 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
       while (operation) { await operation; operation = pendingSaves.current.get(id); }
       navigate();
     })().catch(cause => {
-      if (request === navigationRequest.current) setActionError(cause instanceof Error ? cause.message : 'Could not save changes.');
+      if (request === navigationRequest.current) setActionError(cause instanceof Error ? cause.message : 'promptLibrary.changesFailed');
     });
   }, [selectedPromptId]);
   const handledSource = useRef<string | null>(null);
@@ -97,9 +101,9 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
   const open = (item: PromptLibraryItem) => change(() => { setEditing(null); select(item.id); setShowDuplicates(false); dirty.current = false; });
   const copyItem = async (item: PromptLibraryItem) => {
     const result = 'text' in item ? { positivePrompt: item.text, negativePrompt: '', errors: [] } : compilePrompt(item);
-    if (result.errors.length) { open(item); setActionError('Fill the required values before copying.'); return; }
+    if (result.errors.length) { open(item); setActionError('promptLibrary.fillCopy'); return; }
     const response = await copyTextToClipboard(result.positivePrompt + (result.negativePrompt ? `\nNegative prompt: ${result.negativePrompt}` : ''));
-    setCopyStatus(response.success ? 'Copied.' : response.error || 'Copy failed.');
+    setCopyStatus(response.success ? 'promptLibrary.copied' : response.error || 'promptLibrary.copyFailedShort');
   };
   const editLatest = async (id: string, itemKind: 'prompt' | 'block') => {
     try {
@@ -107,9 +111,9 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
       while (operation) { await operation; operation = pendingSaves.current.get(id); }
       const state = useSavedPromptStore.getState();
       const latest = (itemKind === 'block' ? state.blocks : state.prompts).find(item => item.id === id);
-      if (!latest) throw new Error('This item no longer exists.');
+      if (!latest) throw new Error('promptLibrary.itemMissing');
       setKind(itemKind); select(id); setEditing(latest); setEditorKey(key => key + 1);
-    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not open this item.'); }
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'promptLibrary.openFailed'); }
   };
   const startEdit = () => change(() => { if (selectedPromptId) void editLatest(selectedPromptId, kind); });
   const findImages = async (item: PromptLibraryItem) => {
@@ -118,18 +122,18 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
       while (operation) { await operation; operation = pendingSaves.current.get(item.id); }
       const state = useSavedPromptStore.getState();
       const latest = ('text' in item ? state.blocks : state.prompts).find(entry => entry.id === item.id);
-      if (!latest) throw new Error('This item no longer exists.');
+      if (!latest) throw new Error('promptLibrary.itemMissing');
       const result = 'text' in latest ? compileBlockForUse(latest) : compilePrompt(latest);
-      if (result.errors.length) { open(latest); setActionError('Fill the required values before finding images.'); return; }
+      if (result.errors.length) { open(latest); setActionError('promptLibrary.fillFind'); return; }
       const query = result.positivePrompt.trim() || result.negativePrompt.trim();
-      if (!query) { open(latest); setActionError('Fill a value before finding images.'); return; }
+      if (!query) { open(latest); setActionError('promptLibrary.fillFindValue'); return; }
       setActionError(''); onFindImages?.(query);
-    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not find images.'); }
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'promptLibrary.findFailed'); }
   };
   const selectId = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async (operation: Parameters<typeof mutate>[0]) => {
     try { setActionError(''); const id = await mutate(operation); return { success: true as const, id }; }
-    catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Operation failed'); return { success: false as const }; }
+    catch (cause) { setActionError(cause instanceof Error ? cause.message : 'promptLibrary.operationFailed'); return { success: false as const }; }
   };
   const gate = () => { if (canUseAdvancedPromptLibrary) return true; showProModal('prompt_library_advanced'); return false; };
   const addToCompose = async (block: PromptBlock) => {
@@ -138,7 +142,7 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
       let operation = pendingSaves.current.get(block.id);
       while (operation) { await operation; operation = pendingSaves.current.get(block.id); }
       const latest = useSavedPromptStore.getState().blocks.find(entry => entry.id === block.id);
-      if (!latest) throw new Error('This block no longer exists.');
+      if (!latest) throw new Error('promptLibrary.blockMissing');
       setActionError('');
       change(() => {
         setKind('prompt'); select(null); setShowDuplicates(false);
@@ -146,7 +150,7 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
         setComposeAppend({ id: ++composeRequestId.current, text: latest.text, channel: 'positive', block: latest });
         setEditorKey(key => key + 1); dirty.current = false;
       });
-    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not add this block.'); }
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'promptLibrary.addBlockFailed'); }
   };
   const create = () => {
     if (kind === 'block' && !gate()) return;
@@ -169,7 +173,7 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
     });
   };
   const duplicate = () => change(() => { if (active) void run({ action: 'duplicate', kind, id: active.id }).then(result => { if (result.success) afterSaved(result.id); }); });
-  const remove = () => { if (active && window.confirm('Remove this saved item?')) void run({ action: 'remove', kind, id: active.id }).then(result => { if (result.success) { setEditing(null); select(null); } }); };
+  const remove = () => { if (active && window.confirm(t('promptLibrary.removeConfirm'))) void run({ action: 'remove', kind, id: active.id }).then(result => { if (result.success) { setEditing(null); select(null); } }); };
   const trackPendingSave = (id: string, operation: Promise<void>) => {
     pendingSaves.current.set(id, operation);
     const clear = () => { if (pendingSaves.current.get(id) === operation) pendingSaves.current.delete(id); };
@@ -186,10 +190,10 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
       while (operation) { await operation; operation = pendingSaves.current.get(item.id); }
       const state = useSavedPromptStore.getState();
       const latest = ('text' in item ? state.blocks : state.prompts).find(entry => entry.id === item.id);
-      if (!latest) throw new Error('This item no longer exists.');
+      if (!latest) throw new Error('promptLibrary.itemMissing');
       const editor = normalizeEditor(latest.editor);
       await run({ action: 'update', kind: 'text' in latest ? 'block' : 'prompt', item: { ...latest, editor: { ...editor, favorite: !editor.favorite } }, expectedRevision: latest.revision || 1 });
-    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Could not save favorite.'); }
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'promptLibrary.favoriteFailed'); }
   };
   const resetKind = (next: 'prompt' | 'block') => change(() => { setComposeAppend(undefined); setKind(next); setEditing(null); select(null); setSelected(new Set()); setSelectionMode(false); setFilters(emptyFilters); setShowDuplicates(false); dirty.current = false; });
   const browseFolder = (id: string) => change(() => {
@@ -208,33 +212,33 @@ export default function PromptLibrary({ onViewSource, onFindImages, onOpenCanvas
     const references = new Set(visible.flatMap(item => [...(item.editor?.document?.positive || []), ...(item.editor?.document?.negative || [])].map(part => part.blockId)));
     return { prompts: visible as SavedPrompt[], blocks: blocks.filter(item => references.has(item.id)) };
   }, [kind, visible, blocks]);
-  return <section className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden text-gray-100" aria-label="Prompt Library">
+  return <section className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden text-gray-100" aria-label={t('promptLibrary.library')}>
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-700 pb-3">
-      <div className="mr-auto flex items-center gap-2"><Bookmark size={18} className="text-accent" /><h2 className="text-sm font-semibold">Prompt Library</h2></div>
-      <div className="app-top-segmented"><button aria-pressed={kind === 'prompt'} className={`app-top-segment ${kind === 'prompt' ? 'app-top-segment-active' : ''}`} onClick={() => resetKind('prompt')}><Bookmark size={14} />Prompts</button><button aria-pressed={kind === 'block'} className={`app-top-segment ${kind === 'block' ? 'app-top-segment-active' : ''}`} onClick={() => resetKind('block')}><Blocks size={14} />Blocks</button></div>
-      <button className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} onClick={create}><Plus size={15} />New {kind}</button>
-      <div className="relative"><button className="app-top-icon-button" aria-label="Library tools" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><MoreHorizontal size={18} /></button>{toolsMenu && <><button tabIndex={-1} className="fixed inset-0 z-20 cursor-default" aria-label="Close library tools" onClick={() => setToolsMenu(false)} /><div className="absolute right-0 top-11 z-30 w-48 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800 disabled:opacity-40" disabled={kind !== 'prompt' || !visible.length} onClick={() => { setToolsMenu(false); const candidates = visible.length > 1 ? visible.filter(p => p.id !== active?.id) : visible; open(candidates[Math.floor(Math.random() * candidates.length)]); }}>Random</button><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800" onClick={() => { setToolsMenu(false); setShowTransfer(true); }}>Import / Export</button></div></>}</div>
+      <div className="mr-auto flex items-center gap-2"><Bookmark size={18} className="text-accent" /><h2 className="text-sm font-semibold">{t('promptLibrary.library')}</h2></div>
+      <div className="app-top-segmented"><button aria-pressed={kind === 'prompt'} className={`app-top-segment ${kind === 'prompt' ? 'app-top-segment-active' : ''}`} onClick={() => resetKind('prompt')}><Bookmark size={14} />{t('promptLibrary.prompts')}</button><button aria-pressed={kind === 'block'} className={`app-top-segment ${kind === 'block' ? 'app-top-segment-active' : ''}`} onClick={() => resetKind('block')}><Blocks size={14} />{t('promptLibrary.blocks')}</button></div>
+      <button className={buttonClass + ' !border-accent/40 !bg-accent/15 !text-gray-100'} onClick={create}><Plus size={15} />{t(kind === 'prompt' ? 'promptLibrary.newPrompt' : 'promptLibrary.newBlock')}</button>
+      <div className="relative"><button className="app-top-icon-button" aria-label={t('promptLibrary.libraryTools')} aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><MoreHorizontal size={18} /></button>{toolsMenu && <><button tabIndex={-1} className="fixed inset-0 z-20 cursor-default" aria-label={t('promptLibrary.closeLibraryTools')} onClick={() => setToolsMenu(false)} /><div className="absolute right-0 top-11 z-30 w-48 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800 disabled:opacity-40" disabled={kind !== 'prompt' || !visible.length} onClick={() => { setToolsMenu(false); const candidates = visible.length > 1 ? visible.filter(p => p.id !== active?.id) : visible; open(candidates[Math.floor(Math.random() * candidates.length)]); }}>{t('promptLibrary.random')}</button><button className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800" onClick={() => { setToolsMenu(false); setShowTransfer(true); }}>{t('promptLibrary.importExport')}</button></div></>}</div>
     </header>
-    <PromptFolders onRemove={removeFolder} removing={removingFolder} folders={folders} value={folderId} onChange={browseFolder} onMutate={async command => { if (!gate()) return; const result = await run(command); if (!result.success) throw new Error('Could not update folder.'); }} />
+    <PromptFolders onRemove={removeFolder} removing={removingFolder} folders={folders} value={folderId} onChange={browseFolder} onMutate={async command => { if (!gate()) return; const result = await run(command); if (!result.success) throw new Error('promptLibrary.folderFailed'); }} />
     {canvasPrompt && <PromptCardDialog key={canvasPrompt.id} item={canvasPrompt} initialValues={canvasValues} destination onClose={() => setCanvasPrompt(null)} onPrepared={() => { setCanvasPrompt(null); onOpenCanvas?.(); }} />}
-    {copyStatus && <p role="status" className="text-xs text-accent">{copyStatus}</p>}
-    {(error || actionError) && <div role="alert" className="shrink-0 rounded border border-red-500/40 p-2 text-sm text-red-400">{actionError || error}<button className={buttonClass + ' ml-2'} onClick={() => void loadLibrary()}>Retry</button></div>}
+    {copyStatus && <p role="status" className="text-xs text-accent">{translatePromptMessage(copyStatus, t)}</p>}
+    {(error || actionError) && <div role="alert" className="shrink-0 rounded border border-red-500/40 p-2 text-sm text-red-400">{translatePromptMessage(actionError || error || '', t)}<button className={buttonClass + ' ml-2'} onClick={() => void loadLibrary()}>{t('promptLibrary.retry')}</button></div>}
     {selectionMode && <div className="shrink-0 space-y-2 rounded-xl border border-accent/25 bg-accent/5 p-3 text-xs">
-      <div className="flex flex-wrap items-center gap-2"><span className="mr-auto font-semibold">{selected.size} selected</span><button className={buttonClass} onClick={() => setSelected(new Set(visible.map(p => p.id)))}>Select filtered ({visible.length})</button><button className={buttonClass} onClick={() => { setSelected(new Set()); setSelectionMode(false); }}>Clear selection</button></div>
-      {selected.size > 0 && <div className="flex flex-wrap items-end gap-2"><div className="w-56"><PromptTagsInput label="Bulk tags" tags={bulkTags} onChange={setBulkTags} suggestions={all.flatMap(i => i.editor?.tags || [])} /></div><button className={buttonClass} onClick={() => bulk({ addTags: bulkTags })}>Add tags</button><button className={buttonClass} onClick={() => bulk({ removeTags: bulkTags })}>Remove tags</button><button className={buttonClass} onClick={() => bulk({ favorite: true })}>Favorite</button><button className={buttonClass} onClick={() => bulk({ favorite: false })}>Unfavorite</button><label>Move to folder<select aria-label="Move selected to folder" value="" className={fieldClass} onChange={event => { if (event.target.value) bulk({ folderId: event.target.value === 'none' ? '' : event.target.value }); }}><option value="">Choose folder…</option><option value="none">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><button className={buttonClass} onClick={() => setShowTransfer(true)}>Export selected</button>{kind === 'block' && <><input aria-label="Bulk category" className={fieldClass + ' !w-32'} placeholder="Category" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} /><button className={buttonClass} onClick={() => bulk({ category: bulkCategory })}>Set category</button></>}</div>}
+      <div className="flex flex-wrap items-center gap-2"><span className="mr-auto font-semibold">{t('promptLibrary.selectedCount', { count: selected.size })}</span><button className={buttonClass} onClick={() => setSelected(new Set(visible.map(p => p.id)))}>{t('promptLibrary.selectFiltered', { count: visible.length })}</button><button className={buttonClass} onClick={() => { setSelected(new Set()); setSelectionMode(false); }}>{t('promptLibrary.clearSelection')}</button></div>
+      {selected.size > 0 && <div className="flex flex-wrap items-end gap-2"><div className="w-56"><PromptTagsInput label={t('promptLibrary.bulkTags')} tags={bulkTags} onChange={setBulkTags} suggestions={all.flatMap(i => i.editor?.tags || [])} /></div><button className={buttonClass} onClick={() => bulk({ addTags: bulkTags })}>{t('promptLibrary.addTags')}</button><button className={buttonClass} onClick={() => bulk({ removeTags: bulkTags })}>{t('promptLibrary.removeTags')}</button><button className={buttonClass} onClick={() => bulk({ favorite: true })}>{t('promptLibrary.favorite')}</button><button className={buttonClass} onClick={() => bulk({ favorite: false })}>{t('promptLibrary.unfavorite')}</button><label>{t('promptLibrary.moveFolder')}<select aria-label={t('promptLibrary.moveSelectedFolder')} value="" className={fieldClass} onChange={event => { if (event.target.value) bulk({ folderId: event.target.value === 'none' ? '' : event.target.value }); }}><option value="">{t('promptLibrary.chooseFolder')}</option><option value="none">{t('promptLibrary.unfiled')}</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><button className={buttonClass} onClick={() => setShowTransfer(true)}>{t('promptLibrary.exportSelected')}</button>{kind === 'block' && <><input aria-label={t('promptLibrary.bulkCategory')} className={fieldClass + ' !w-32'} placeholder={t('promptLibrary.category')} value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} /><button className={buttonClass} onClick={() => bulk({ category: bulkCategory })}>{t('promptLibrary.setCategory')}</button></>}</div>}
     </div>}
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
       {showFilters && (!editing || editing.id) && <div className="absolute inset-y-0 left-0 z-10 w-60 bg-gray-950 lg:static lg:shrink-0"><PromptLibraryFiltersPanel all={all} kind={kind} filters={filters} onChange={setBrowseFilters} onClose={() => setShowFilters(false)} /></div>}
       <div className={`min-h-0 min-w-0 flex-1 ${editing || active ? 'hidden lg:block' : ''} ${editing && !editing.id ? 'lg:!hidden' : ''}`}>
-        {isLoading && !all.length ? <p>Loading saved prompts…</p> : <PromptLibraryBrowser onAddToCanvas={item => change(() => { const latest = useSavedPromptStore.getState().prompts.find(prompt => prompt.id === item.id); if (!latest) { setActionError('This prompt no longer exists.'); return; } setCanvasValues({}); setCanvasPrompt(latest); })} onAddToCompose={addToCompose} all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={editing?.id || active?.id} contextNodeActions={false} onFindImages={onFindImages ? findImages : undefined} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
+        {isLoading && !all.length ? <p>{t('promptLibrary.loadingSaved')}</p> : <PromptLibraryBrowser onAddToCanvas={item => change(() => { const latest = useSavedPromptStore.getState().prompts.find(prompt => prompt.id === item.id); if (!latest) { setActionError('promptLibrary.promptMissing'); return; } setCanvasValues({}); setCanvasPrompt(latest); })} onAddToCompose={addToCompose} all={all} visible={visible} filters={filters} onFilters={setBrowseFilters} selected={selected} selectionMode={selectionMode} onSelectionMode={() => { setSelectionMode(!selectionMode); setSelected(new Set()); }} activeId={editing?.id || active?.id} contextNodeActions={false} onFindImages={onFindImages ? findImages : undefined} onCopyItem={item => void copyItem(item)} onContextAction={(item, action) => {
           if (action === 'edit') change(() => { void editLatest(item.id, 'text' in item ? 'block' : 'prompt'); });
           else if (action === 'duplicate') change(() => { void run({ action: 'duplicate', kind, id: item.id }).then(result => { if (result.success) { setEditing(null); select(result.id || null); setShowDuplicates(false); dirty.current = false; } }); });
-          else if (action === 'remove' && window.confirm('Delete this saved item?')) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
+          else if (action === 'remove' && window.confirm(t('promptLibrary.deleteConfirm'))) void run({ action: 'remove', kind, id: item.id }).then(result => { if (result.success && selectedPromptId === item.id) select(null); });
         }} onOpen={open} onSelect={selectId} onFavorite={favorite} showFilters={showFilters} onToggleFilters={() => setShowFilters(!showFilters)} />}
       </div>
-      {editing ? <div aria-label="Selected library item" className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label="Selected library item" className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><label className="text-xs">Folder<select aria-label="Move item to folder" className={fieldClass} value={active.editor?.folderId || ''} onChange={event => { const value = event.target.value; if (gate()) change(() => { void run({ action: 'bulk', kind, ids: [active.id], folderId: value }); }); }}><option value="">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><PromptDetails key={active.id} item={active} onAddToCanvas={(item, values) => change(() => { setCanvasValues(values); setCanvasPrompt(item); })} onPendingSave={operation => trackPendingSave(active.id, operation)} onSuggestionDraftChange={(name, dirty) => trackSuggestionDraft(active.id, name, dirty)} onEdit={startEdit} onClose={() => change(() => { select(null); setShowDuplicates(false); })} onFavorite={favorite} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
+      {editing ? <div aria-label={t('promptLibrary.selectedItem')} className={editing.id ? "flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl" : "min-h-0 min-w-0 flex-1"}><PromptEditor withinPanel={!!editing.id} key={editorKey} appendText={composeAppend} initial={editing} kind={kind} onDirty={onDirty} onViewSource={onViewSource} requestSave={requestSave} onSaved={afterSaved} onSaveFailed={() => { saveIntent.current = null; setPending(null); setRequestSave(0); }} onClose={() => change(() => { setEditing(null); dirty.current = false; })} /></div> : active && <div aria-label={t('promptLibrary.selectedItem')} className="flex min-h-0 w-full min-w-0 flex-col gap-2 lg:w-[42%] lg:min-w-[340px] lg:max-w-xl"><label className="text-xs">{t('promptLibrary.folder')}<select aria-label={t('promptLibrary.moveItemFolder')} className={fieldClass} value={active.editor?.folderId || ''} onChange={event => { const value = event.target.value; if (gate()) change(() => { void run({ action: 'bulk', kind, ids: [active.id], folderId: value }); }); }}><option value="">{t('promptLibrary.unfiled')}</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><PromptDetails key={active.id} item={active} onAddToCanvas={(item, values) => change(() => { setCanvasValues(values); setCanvasPrompt(item); })} onPendingSave={operation => trackPendingSave(active.id, operation)} onSuggestionDraftChange={(name, dirty) => trackSuggestionDraft(active.id, name, dirty)} onEdit={startEdit} onClose={() => change(() => { select(null); setShowDuplicates(false); })} onFavorite={favorite} onDuplicate={duplicate} onRemove={remove} onDuplicates={() => setShowDuplicates(!showDuplicates)} onFindImages={onFindImages} onViewSource={onViewSource} />{showDuplicates && <PromptDuplicatesPanel item={active} items={all} onOpen={open} />}</div>}
     </div>
     {pending && <UnsavedDialog onSave={() => { saveIntent.current = pending; setRequestSave(n => n + 1); }} onDiscard={() => { const action = pending; setPending(null); saveIntent.current = null; clearDraft(); dirty.current = false; action(); }} onCancel={() => { setPending(null); saveIntent.current = null; }} />}
-    {showTransfer && <PromptImportExportDialog snapshot={{ ...exportSnapshot, folders }} librarySnapshot={{ prompts, blocks, folders }} filteredSnapshot={selected.size ? { ...filteredSnapshot, folders } : undefined} scope={selected.size ? 'Selected items' : visible.length !== all.length ? 'Filtered items' : 'All items in this view'} onClose={() => setShowTransfer(false)} />}
+    {showTransfer && <PromptImportExportDialog snapshot={{ ...exportSnapshot, folders }} librarySnapshot={{ prompts, blocks, folders }} filteredSnapshot={selected.size ? { ...filteredSnapshot, folders } : undefined} scope={selected.size ? t('promptLibrary.selectedItems') : visible.length !== all.length ? t('promptLibrary.filteredItems') : t('promptLibrary.allViewItems')} onClose={() => setShowTransfer(false)} />}
   </section>;
 }

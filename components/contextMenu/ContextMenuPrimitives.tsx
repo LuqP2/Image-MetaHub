@@ -1,3 +1,4 @@
+import { useTranslation, type Translate } from '../../i18n/useTranslation';
 import React from 'react';
 import { ChevronRight, Pencil, Folder, Download, Package } from 'lucide-react';
 import ProBadge from '../ProBadge';
@@ -104,6 +105,7 @@ export interface FileMenuItem {
 }
 
 export interface BuildFileMenuItemsArgs {
+  t: Translate;
   onRename: () => void;
   onCopyTo: () => void;
   onMoveTo: () => void;
@@ -120,6 +122,7 @@ export interface BuildFileMenuItemsArgs {
  * two menus can't drift out of sync.
  */
 export const buildFileMenuItems = ({
+  t: tr,
   onRename,
   onCopyTo,
   onMoveTo,
@@ -132,28 +135,28 @@ export const buildFileMenuItems = ({
   {
     key: 'rename',
     icon: <Pencil className="w-4 h-4" />,
-    label: 'Rename...',
+    label: tr('libraryGallery.renameEllipsis'),
     onClick: onRename,
     isPro: false,
   },
   {
     key: 'copy-to',
     icon: <Folder className="w-4 h-4" />,
-    label: 'Copy To...',
+    label: tr('libraryGallery.copyToEllipsis'),
     onClick: onCopyTo,
     isPro: !canUseFileManagement,
   },
   {
     key: 'move-to',
     icon: <Folder className="w-4 h-4" />,
-    label: 'Move To...',
+    label: tr('libraryGallery.moveToEllipsis'),
     onClick: onMoveTo,
     isPro: !canUseFileManagement,
   },
   {
     key: 'export',
     icon: <Download className="w-4 h-4" />,
-    label: 'Export Image',
+    label: tr('libraryGallery.exportImage'),
     onClick: onExport,
     isPro: false,
   },
@@ -161,17 +164,20 @@ export const buildFileMenuItems = ({
     ? [{
         key: 'batch-export',
         icon: <Package className="w-4 h-4" />,
-        label: `Batch Export Selected (${selectedCount})`,
+        label: tr('libraryGallery.batchExportSelectedCount', { count: selectedCount }),
         onClick: onBatchExport,
         isPro: !canUseBatchExport,
       }]
     : []),
 ];
 
-export const ShowInFolderContextAction: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+export const ShowInFolderContextAction: React.FC<{ onClick: () => void }> = ({ onClick }) => {
+  const { t: tr } = useTranslation();
+return (
   <ContextMenuButton
     onClick={onClick}
     icon={<Folder className="w-4 h-4" />}
-    label="Show in Folder"
+    label={tr('libraryGallery.showInFolder')}
   />
 );
+};

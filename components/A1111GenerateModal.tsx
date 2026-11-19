@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { IndexedImage } from '../types';
@@ -41,6 +42,8 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   onGenerate,
   isGenerating,
 }) => {
+  const { t: tr } = useTranslation();
+
   // Feature access safety check
   const { canUseA1111 } = useFeatureAccess();
 
@@ -157,22 +160,22 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   const handleGenerate = async () => {
     // Validation
     if (!params.prompt.trim()) {
-      setValidationError('Prompt cannot be empty');
+      setValidationError(tr('integrations.a1111.validationPromptEmpty'));
       return;
     }
 
     if (params.cfgScale <= 0) {
-      setValidationError('CFG Scale must be greater than 0');
+      setValidationError(tr('integrations.a1111.validationCfgPositive'));
       return;
     }
 
     if (params.steps <= 0) {
-      setValidationError('Steps must be greater than 0');
+      setValidationError(tr('integrations.a1111.validationStepsPositive'));
       return;
     }
 
     if (params.numberOfImages <= 0 || params.numberOfImages > 10) {
-      setValidationError('Number of images must be between 1 and 10');
+      setValidationError(tr('integrations.a1111.validationImageCountRange'));
       return;
     }
 
@@ -262,18 +265,17 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-red-400">No Metadata Available</h2>
-            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700" aria-label="Close generate modal">
+            <h2 className="text-xl font-bold text-red-400">{tr('integrations.a1111.noMetadataTitle')}</h2>
+            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700" aria-label={tr('integrations.closeGenerate')}>
               <X size={20} />
             </button>
           </div>
-          <p className="text-gray-300">This image doesn't have metadata available for generation.</p>
+          <p className="text-gray-300">{tr('integrations.a1111.noMetadataDescription')}</p>
           <button
             onClick={handleClose}
             className="mt-4 w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium"
           >
-            Close
-          </button>
+            {tr('comparison.close')}</button>
         </div>
       </div>
     );
@@ -287,24 +289,23 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
       >
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Generate with A1111</h2>
+          <h2 className="text-2xl font-bold">{tr('integrations.a1111.title')}</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={handleLoadFromImage}
               className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
-              title="Load parameters from image metadata"
+              title={tr('integrations.a1111.loadFromImageTooltip')}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Load from Image
-            </button>
+              {tr('integrations.a1111.loadFromImage')}</button>
             <button
               onClick={handleClose}
               className="p-1 rounded-full hover:bg-gray-700 transition-colors"
-              aria-label="Close generate modal"
+              aria-label={tr('integrations.closeGenerate')}
             >
               <X size={24} />
             </button>
@@ -316,8 +317,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
           {/* Prompt */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-300">
-              Prompt
-            </label>
+              {tr('libraryGallery.prompt')}</label>
             <textarea
               value={params.prompt}
               onChange={(e) => setParams(prev => ({ ...prev, prompt: e.target.value }))}
@@ -329,15 +329,14 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               }}
               rows={10}
               className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your prompt..."
+              placeholder={tr('integrations.a1111.promptPlaceholder')}
             />
           </div>
 
           {/* Negative Prompt */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-300">
-              Negative Prompt
-            </label>
+              {tr('libraryGallery.negativePrompt')}</label>
             <textarea
               value={params.negativePrompt}
               onChange={(e) => setParams(prev => ({ ...prev, negativePrompt: e.target.value }))}
@@ -349,30 +348,29 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               }}
               rows={6}
               className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter negative prompt (optional)..."
+              placeholder={tr('integrations.a1111.negativePromptPlaceholder')}
             />
           </div>
 
           {/* Generation Parameters */}
           <div className="bg-gray-900 p-4 rounded-md border border-gray-700 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300">Generation Parameters</h3>
+            <h3 className="text-sm font-semibold text-gray-300">{tr('integrations.a1111.generationParameters')}</h3>
 
             {/* Model Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-300">
-                Model
-              </label>
+                {tr('libraryGallery.model')}</label>
               <input
                 type="text"
                 value={modelSearch}
                 onChange={(e) => setModelSearch(e.target.value)}
-                placeholder="Search model..."
+                placeholder={tr('integrations.a1111.searchModelPlaceholder')}
                 className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading models...</div>
+                <div className="text-xs text-gray-400">{tr('integrations.a1111.loadingModels')}</div>
               ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading models: {resourcesError}</div>
+                <div className="text-xs text-red-400">{tr('integrations.a1111.errorLoadingModels', { error: resourcesError })}</div>
               ) : (
                 <select
                   value={params.model || ''}
@@ -386,7 +384,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!resources?.models || resources.models.length === 0}
                 >
-                  {!params.model && <option value="">Select a model...</option>}
+                  {!params.model && <option value="">{tr('integrations.a1111.selectModel')}</option>}
                   {resources?.models
                     .filter(model => model.toLowerCase().includes(modelSearch.trim().toLowerCase()))
                     .map(model => (
@@ -397,19 +395,18 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                 </select>
               )}
               {resources?.models.length === 0 && (
-                <p className="text-xs text-gray-400">No models found in A1111</p>
+                <p className="text-xs text-gray-400">{tr('integrations.a1111.noModelsFound')}</p>
               )}
             </div>
 
             {/* LoRA Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-300">
-                LoRAs
-              </label>
+                {tr('comparison.loras')}</label>
               {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading LoRAs...</div>
+                <div className="text-xs text-gray-400">{tr('integrations.a1111.loadingLoras')}</div>
               ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading LoRAs</div>
+                <div className="text-xs text-red-400">{tr('integrations.a1111.errorLoadingLoras')}</div>
               ) : (
                 <>
                   <select
@@ -422,7 +419,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     disabled={!resources?.loras || resources.loras.length === 0}
                   >
-                    <option value="">Add a LoRA...</option>
+                    <option value="">{tr('integrations.a1111.addLora')}</option>
                     {resources?.loras
                       .filter(lora => !selectedLoras.some(selected => selected.name === lora))
                       .map(lora => (
@@ -452,7 +449,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                           <button
                             onClick={() => handleRemoveLora(index)}
                             className="text-blue-300 hover:text-blue-100 transition-colors"
-                            title="Remove LoRA"
+                            title={tr('integrations.a1111.removeLora')}
                           >
                             <X size={14} />
                           </button>
@@ -460,24 +457,23 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-500 italic mt-2">No LoRAs selected</p>
+                    <p className="text-xs text-gray-500 italic mt-2">{tr('integrations.a1111.noLorasSelected')}</p>
                   )}
                 </>
               )}
               {resources?.loras.length === 0 && (
-                <p className="text-xs text-gray-400">No LoRAs found in A1111</p>
+                <p className="text-xs text-gray-400">{tr('integrations.a1111.noLorasFound')}</p>
               )}
             </div>
 
             {/* Sampler Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-300">
-                Sampler
-              </label>
+                {tr('librarySearch.sampler')}</label>
               {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading samplers...</div>
+                <div className="text-xs text-gray-400">{tr('integrations.a1111.loadingSamplers')}</div>
               ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading samplers</div>
+                <div className="text-xs text-red-400">{tr('integrations.a1111.errorLoadingSamplers')}</div>
               ) : (
                 <select
                   value={params.sampler || ''}
@@ -485,7 +481,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!resources?.samplers || resources.samplers.length === 0}
                 >
-                  {!params.sampler && <option value="">Select a sampler...</option>}
+                  {!params.sampler && <option value="">{tr('integrations.a1111.selectSampler')}</option>}
                   {resources?.samplers.map((sampler) => (
                     <option key={sampler} value={sampler}>
                       {sampler}
@@ -494,18 +490,17 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                 </select>
               )}
               {resources?.samplers.length === 0 && (
-                <p className="text-xs text-gray-400">No samplers found in A1111</p>
+                <p className="text-xs text-gray-400">{tr('integrations.a1111.noSamplersFound')}</p>
               )}
             </div>
 
             {/* Image Size */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-300">
-                Image Size
-              </label>
+                {tr('integrations.a1111.imageSize')}</label>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">Width</label>
+                  <label className="block text-xs text-gray-400">{tr('comparison.width')}</label>
                   <input
                     type="number"
                     value={params.width}
@@ -517,7 +512,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">Height</label>
+                  <label className="block text-xs text-gray-400">{tr('comparison.height')}</label>
                   <input
                     type="number"
                     value={params.height}
@@ -535,8 +530,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">
-                  CFG Scale
-                </label>
+                  {tr('comparison.cfgScale')}</label>
                 <input
                   type="number"
                   value={params.cfgScale}
@@ -549,8 +543,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
 
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">
-                  Steps
-                </label>
+                  {tr('libraryGallery.steps')}</label>
                 <input
                   type="number"
                   value={params.steps}
@@ -565,8 +558,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">
-                  Seed
-                </label>
+                  {tr('libraryGallery.seed')}</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -583,14 +575,12 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     onChange={(e) => setParams(prev => ({ ...prev, randomSeed: e.target.checked }))}
                     className="cursor-pointer"
                   />
-                  Random seed
-                </label>
+                  {tr('integrations.a1111.randomSeed')}</label>
               </div>
 
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">
-                  Number of Images
-                </label>
+                  {tr('integrations.a1111.numberOfImages')}</label>
                 <input
                   type="number"
                   value={params.numberOfImages}
@@ -599,7 +589,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   max="10"
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-gray-500">Max: 10 images</p>
+                <p className="text-xs text-gray-500">{tr('integrations.a1111.maxImagesHint', { max: 10 })}</p>
               </div>
             </div>
           </div>
@@ -618,8 +608,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
             onClick={handleClose}
             className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
           >
-            Cancel
-          </button>
+            {tr('batchExport.cancel')}</button>
           <button
             onClick={handleGenerate}
             className="bg-blue-600 hover:bg-accent-strong px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
@@ -630,10 +619,10 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span>Generating...</span>
+                <span>{tr('imageViewer.preview.generating')}</span>
               </>
             ) : (
-              <span>Generate</span>
+              <span>{tr('libraryGallery.generate')}</span>
             )}
           </button>
         </div>

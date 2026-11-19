@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box } from 'lucide-react';
 import type { IndexedImage } from '../types';
@@ -54,6 +55,7 @@ interface Model3DThumbnailProps {
 }
 
 const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPath, className = '', variant = 'grid', eager = false }) => {
+  const { t } = useTranslation();
   const cacheKey = getModel3DThumbnailId(image, variant);
   const cacheSafe = isModel3DThumbnailCacheSafe(image.name);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -162,7 +164,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
       {!cacheSafe ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-950 text-violet-300">
           <Box className="h-7 w-7" />
-          <span className="text-[10px] font-medium">3D preview</span>
+          <span className="text-[10px] font-medium">{t('modelLibrary.previewNamed', { name: '3D' })}</span>
         </div>
       ) : thumbnailUrl ? (
         <img src={thumbnailUrl} alt={image.name} className="h-full w-full object-cover" draggable={false} />
@@ -179,7 +181,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-950 text-violet-300">
           <Box className="h-7 w-7" />
           <span className="text-[10px] font-medium">3D</span>
-          {failed && <span className="text-[9px] text-gray-500">Preview unavailable</span>}
+          {failed && <span className="text-[9px] text-gray-500">{t('promptLibrary.previewUnavailable')}</span>}
         </div>
       )}
     </div>

@@ -1,0 +1,2 @@
+# The fingerprint fixture has a byte-exact SHA-256 expectation on every platform.
+__tests__/fixtures/provenance/fingerprint.txt -text

@@ -1,7 +1,10 @@
+import { formatMessage, languages } from '../i18n/messages.mjs';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { summarizeBoardCriteria } from '../components/boards/BoardInheritedQuerySummary';
 import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BoardSmartFrameNode from '../components/boards/BoardSmartFrameNode';
 import BoardQueryFilterEditor from '../components/boards/BoardQueryFilterEditor';
 import { BoardQueryContext } from '../components/boards/BoardQueryContext';
@@ -17,9 +20,33 @@ vi.mock('../components/boards/BoardNodeControls', () => ({ default: () => null }
 vi.mock('../hooks/useThumbnail', () => ({ useThumbnail: () => {} }));
 vi.mock('../hooks/useResolvedThumbnail', () => ({ useResolvedThumbnail: () => ({ thumbnailUrl: 'blob:test' }) }));
 vi.mock('../components/boards/BoardLocalSizer', () => ({ default: ({ children }) => children({ width: 600, height: 300 }) }));
+beforeEach(() => useSettingsStore.setState({ language: 'en' }));
 afterEach(() => { cleanup(); useBoardQueryStore.setState({ results: {} }); });
 
 describe('Smart Frame rendering', () => {
+  it.each(languages)('preserves local query values and sort enums in %s', (language) => {
+    const value = normalizeLibraryQueryCriteria({
+      searchQuery: 'original {query} 海', selectedModels: ['FixtureModel_{model}.safetensors'],
+      selectedLoras: ['FixtureLoRA_{lora}'], selectedTags: ['user tag 海'],
+      sortOrder: 'date-desc', selectedNodes: ['KSamplerAdvanced'],
+    });
+    const original = JSON.stringify(value);
+    const change = vi.fn();
+    const globalQuery = useImageStore.getState().searchQuery;
+    render(<BoardQueryFilterEditor value={value} disabled={false} onChange={change} />);
+    act(() => useSettingsStore.setState({ language }));
+    expect((screen.getByLabelText(formatMessage(language, 'canvas.querySearch')) as HTMLInputElement).value).toBe(value.searchQuery);
+    const sort = screen.getByRole('combobox', { name: formatMessage(language, 'canvas.sort'), exact: true });
+    expect((sort as HTMLSelectElement).value).toBe('date-desc');
+    expect(change).not.toHaveBeenCalled();
+    const summary = summarizeBoardCriteria(value, (key, values) => formatMessage(language, key, values)).join(' · ');
+    for (const raw of [value.searchQuery, ...value.selectedModels, ...value.selectedLoras, ...value.selectedTags, ...value.selectedNodes!]) expect(summary).toContain(raw);
+    fireEvent.change(sort, { target: { value: 'random' } });
+    expect(change.mock.lastCall![0]).toMatchObject({ sortOrder: 'random', selectedModels: value.selectedModels, selectedTags: value.selectedTags, searchQuery: value.searchQuery });
+    expect(JSON.stringify(value)).toBe(original);
+    expect(useImageStore.getState().searchQuery).toBe(globalQuery);
+  });
+
   it.each([15, 1000])('makes all %i results available immediately without creating board objects', count => {
     const document = createSmartFrame(createBoardDocument());
     const frame = document.objects[0];
@@ -30,7 +57,7 @@ describe('Smart Frame rendering', () => {
     render(<BoardQueryContext.Provider value={{ images: new Map(images.map(image => [image.id, image])), open, create: vi.fn(), retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn(), collections: [] }}>
       <BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {} }}><BoardSmartFrameNode {...({ data: { object: frame }, selected: false } as any)} /></BoardEditorContext.Provider>
     </BoardQueryContext.Provider>);
-    expect(screen.getByText(`${count.toLocaleString()} images in frame`)).toBeTruthy();
+    expect(screen.getByText(formatMessage('en', 'canvas.imagesInFrame', { count }))).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Browse' })).toBeNull();
     fireEvent.doubleClick(screen.getAllByRole('button', { name: /^Open / })[0]);
     expect(open).toHaveBeenCalledWith(images[0].id, frame.id, images.map(image => image.id));

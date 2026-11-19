@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ModelActionsPanel, ModelFilesPanel, ModelLocalEditor, ModelMediaPanel, ModelQuickActions } from './ModelManagerPanels';
 import { HuggingFaceModelPanel } from './HuggingFaceModelPanel';
@@ -7,6 +8,7 @@ import { modelUpdateCounts } from '../services/modelLibrary/huggingFaceTracking'
 import type { ModelInspectorItem } from '../services/modelLibrary/types';
 
 export default function ModelDetailsPanels({ item, revealUpdates = 0, connectionExtras }: { item: ModelInspectorItem; revealUpdates?: number; connectionExtras?: React.ReactNode }) {
+  const { t } = useTranslation();
   const manager = useModelManager();
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
@@ -22,9 +24,9 @@ export default function ModelDetailsPanels({ item, revealUpdates = 0, connection
   return <div className="space-y-4">
     <ModelQuickActions item={item} />
     <ModelUsagePanel item={item} />
-    <details open={connectionsOpen} onToggle={(event) => setConnectionsOpen(event.currentTarget.open)} className={sectionClass}><summary className="cursor-pointer text-sm font-medium">Connections &amp; updates{updates > 0 ? ` · ${updates} new` : ''}{watchErrors ? ' · Check failed' : ''}</summary><div className="mt-3 space-y-3">{connectionExtras}<ModelActionsPanel item={item} revealUpdates={revealUpdates} grouped /><HuggingFaceModelPanel item={item} revealUpdates={revealUpdates} /></div></details>
-    <details open={filesOpen} onToggle={(event) => setFilesOpen(event.currentTarget.open)} className={sectionClass}><summary className="cursor-pointer text-sm font-medium">Files</summary><div className="mt-3"><ModelFilesPanel item={item} /></div></details>
-    <details open={mediaOpen} onToggle={(event) => setMediaOpen(event.currentTarget.open)} className={sectionClass}><summary className="cursor-pointer text-sm font-medium">Cover &amp; examples</summary><div className="mt-3"><ModelMediaPanel item={item} /></div></details>
+    <details open={connectionsOpen} onToggle={(event) => setConnectionsOpen(event.currentTarget.open)} className={sectionClass}><summary className="cursor-pointer text-sm font-medium">{t('modelLibrary.connections')}{updates > 0 ? t('modelLibrary.newUpdates', { count: updates }) : ''}{watchErrors ? t('modelLibrary.checkFailed') : ''}</summary><div className="mt-3 space-y-3">{connectionExtras}<ModelActionsPanel item={item} revealUpdates={revealUpdates} grouped /><HuggingFaceModelPanel item={item} revealUpdates={revealUpdates} /></div></details>
+    <details open={filesOpen} onToggle={(event) => setFilesOpen(event.currentTarget.open)} className={sectionClass}><summary className="cursor-pointer text-sm font-medium">{t('modelLibrary.files')}</summary><div className="mt-3"><ModelFilesPanel item={item} /></div></details>
+    <details open={mediaOpen} onToggle={(event) => setMediaOpen(event.currentTarget.open)} className={sectionClass}><summary className="cursor-pointer text-sm font-medium">{t('modelLibrary.coverExamples')}</summary><div className="mt-3"><ModelMediaPanel item={item} /></div></details>
     <ModelLocalEditor item={item} />
   </div>;
 }

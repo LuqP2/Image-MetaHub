@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 /**
  * ComfyUI Generation Modal
  * Supports original-workflow and simple rebuild generation modes.
@@ -33,6 +34,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   onGenerate,
   isGenerating,
 }) => {
+  const { t } = useTranslation();
   const { canUseComfyUI } = useFeatureAccess();
   const [isExpandedModal, setIsExpandedModal] = useState(false);
 
@@ -74,21 +76,20 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       >
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Generate with ComfyUI</h2>
+            <h2 className="text-2xl font-bold">{t('integrations.generateComfy')}</h2>
             <p className="text-sm text-gray-400">
-              Inspect the embedded workflow, edit supported values, and generate variations without leaving MetaHub.
-            </p>
+              {t('integrations.generateHelp')}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setIsExpandedModal((current) => !current)}
               className="rounded-full p-2 text-gray-300 hover:bg-gray-700"
-              title={isExpandedModal ? 'Restore modal size' : 'Expand modal'}
+              title={isExpandedModal ? t('integrations.restoreModal') : t('integrations.expandModal')}
             >
               {isExpandedModal ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button>
-            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700" aria-label="Close generate modal">
+            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700" aria-label={t('integrations.closeGenerate')}>
               <X size={24} />
             </button>
           </div>

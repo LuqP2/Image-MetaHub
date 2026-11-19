@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import type { BoardBounds } from '../../services/boards/layout';
 import type { BoardDocument } from '../../services/boards/types';
 import BoardPromptNode from './BoardPromptNode';
@@ -23,6 +24,7 @@ const nodeTypes = { prompt: BoardPromptNode, stack: BoardStackNode, asset: Board
 const edgeTypes = { manual: BoardConnection, query: BoardQueryConnection };
 
 export default function BoardPngExport({ boardId, selection, close }: { boardId: string; selection: boolean; close(): void }) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const session = useBoardStore(state => state.sessions[boardId]);
   const results = useBoardQueryStore(state => state.results[boardId]);
@@ -68,18 +70,18 @@ export default function BoardPngExport({ boardId, selection, close }: { boardId:
     if (!scene.current || !dimensions.valid || pending) return;
     setBusy(true); setError(null);
     try {
-      if (!window.electronAPI?.boardsExportPng) throw new Error('PNG export requires the updated desktop application.');
+      if (!window.electronAPI?.boardsExportPng) throw new Error(t('canvas.pngDesktop'));
       // React Flow must measure every node before computing connectors and rendering the snapshot.
       const started = Date.now();
       while (true) {
         const before = currentDimensions.current;
         await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-        if (Date.now() - started > 10000) throw new Error('The board is still preparing. Try exporting again.');
+        if (Date.now() - started > 10000) throw new Error(t('canvas.preparing'));
         const after = currentDimensions.current;
         if (before.width !== after.width || before.height !== after.height || before.bounds.x !== after.bounds.x || before.bounds.y !== after.bounds.y) continue;
         const nodes = scene.current.querySelectorAll<HTMLElement>('.react-flow__node');
         const paths = scene.current.querySelectorAll('.react-flow__edge-path');
-        if (scene.current.querySelector('[data-export-error="true"]')) throw new Error('A local thumbnail could not be loaded. Retry after the image becomes available.');
+        if (scene.current.querySelector('[data-export-error="true"]')) throw new Error(t('canvas.thumbnailFailed'));
         if (nodes.length === flow.nodes.length && [...nodes].every(node => getComputedStyle(node).visibility !== 'hidden') && paths.length >= flow.edges.length && !scene.current.querySelector('[data-export-pending="true"]')) break;
       }
       const finalDimensions = currentDimensions.current;
@@ -94,7 +96,7 @@ export default function BoardPngExport({ boardId, selection, close }: { boardId:
   };
   const bg = boardBackground(snapshot.backgroundColor, transparent);
   return <>
-    <div ref={dialog} role="dialog" aria-modal="true" aria-label="Export PNG" className="board-export-backdrop" onKeyDown={event => {
+    <div ref={dialog} role="dialog" aria-modal="true" aria-label={t('canvas.exportPng')} className="board-export-backdrop" onKeyDown={event => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); if (!busy) close(); return; }
       if (event.key !== 'Tab') return;
@@ -103,13 +105,13 @@ export default function BoardPngExport({ boardId, selection, close }: { boardId:
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}><div className="board-export-dialog">
-      <h2>Export PNG</h2><label>Content<select className="board-input" disabled={busy} value={scope} onChange={event => setScope(event.target.value)}><option value="board">Entire board</option><option value="selection" disabled={!session.selectedObjectIds.length}>Selection</option></select></label>
-      <label>Resolution<select className="board-input" disabled={busy} value={scale} onChange={event => setScale(Number(event.target.value))}>{[1, 2, 4].map(value => <option key={value} value={value} disabled={!pngExportSize(snapshot, value, labelBounds).valid}>{value}×</option>)}</select></label>
-      <label><input type="checkbox" disabled={busy} checked={transparent} onChange={event => setTransparent(event.target.checked)} /> Transparent background</label>
-      <p>{dimensions.width.toLocaleString()} × {dimensions.height.toLocaleString()} pixels</p>
-      {!dimensions.valid && <p role="alert">Choose content and a lower resolution. Maximum: 64 megapixels and 16,384 pixels per side.</p>}
-      {pending && <p role="status">Waiting for Smart Frames…</p>}{error && <p role="alert">{error}</p>}
-      <div><button className="board-button" disabled={busy} onClick={close}>Cancel</button><button className="board-button" disabled={busy || pending || !dimensions.valid} onClick={() => void exportPng()}>{busy ? 'Exporting…' : 'Save PNG'}</button></div>
+      <h2>{t('canvas.exportPng')}</h2><label>{t('imageViewer.editor.content')}<select className="board-input" disabled={busy} value={scope} onChange={event => setScope(event.target.value)}><option value="board">{t('canvas.entire')}</option><option value="selection" disabled={!session.selectedObjectIds.length}>{t('imageViewer.actions.selection')}</option></select></label>
+      <label>{t('canvas.resolution')}<select className="board-input" disabled={busy} value={scale} onChange={event => setScale(Number(event.target.value))}>{[1, 2, 4].map(value => <option key={value} value={value} disabled={!pngExportSize(snapshot, value, labelBounds).valid}>{value}×</option>)}</select></label>
+      <label><input type="checkbox" disabled={busy} checked={transparent} onChange={event => setTransparent(event.target.checked)} /> {t('canvas.transparent')}</label>
+      <p>{t('canvas.pixels', { width: dimensions.width, height: dimensions.height })}</p>
+      {!dimensions.valid && <p role="alert">{t('canvas.sizeLimit')}</p>}
+      {pending && <p role="status">{t('canvas.waitingFrames')}</p>}{error && <p role="alert">{error}</p>}
+      <div><button className="board-button" disabled={busy} onClick={close}>{t('libraryFolders.cancel')}</button><button className="board-button" disabled={busy || pending || !dimensions.valid} onClick={() => void exportPng()}>{busy ? t('canvas.exporting') : t('canvas.savePng')}</button></div>
     </div></div>
     {createPortal(<div className="board-export-host" aria-hidden="true"><div ref={scene} className="board-export-scene" style={{ width: dimensions.width / scale, height: dimensions.height / scale, background: bg }}>
       <BoardEditorContext.Provider value={{ ...editor, exporting: true, editable: false, editingObjectId: null }}><ReactFlowProvider><ReactFlow key={scope} nodes={flow.nodes} edges={flow.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} viewport={{ x: 32 - viewportX, y: 32 - viewportY, zoom: 1 }} minZoom={1} maxZoom={1} onlyRenderVisibleElements={false} connectionMode={ConnectionMode.Loose} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} panOnDrag={false} zoomOnScroll={false} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }} /></ReactFlowProvider></BoardEditorContext.Provider>

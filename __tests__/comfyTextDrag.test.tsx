@@ -1,24 +1,28 @@
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ComfyTextDrag from '../components/comfyui/ComfyTextDrag';
 import { installComfyTextDrop } from '../services/comfyTextDrop.mjs';
 
-afterEach(() => { cleanup(); delete window.electronAPI; });
+afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); delete window.electronAPI; });
 
-it('transports literal text for left-button drops', () => {
+it.each(languages)('transports original literal text in %s', language => {
+  useSettingsStore.setState({ language });
   render(<ComfyTextDrag text={'café\n${literal}'} />);
   const transfer = { setData: vi.fn(), effectAllowed: '' };
-  fireEvent.dragStart(screen.getByLabelText('Drag to node'), { dataTransfer: transfer });
+  fireEvent.dragStart(screen.getByLabelText(formatMessage(language, 'integrations.dragNode')), { dataTransfer: transfer });
   expect(transfer.effectAllowed).toBe('copy');
   expect(transfer.setData).toHaveBeenCalledWith('text/plain', 'café\n${literal}');
   expect(transfer.setData).toHaveBeenCalledWith('application/x-imagemetahub-prompt-text', 'café\n${literal}');
 });
 
-it('disables dragging text with unresolved values', () => {
+it.each(languages)('disables dragging text with unresolved values in %s', language => {
+  useSettingsStore.setState({ language });
   render(<ComfyTextDrag text="{{pending}}" disabled />);
   const transfer = { setData: vi.fn() };
-  fireEvent.dragStart(screen.getByLabelText('Drag to node'), { dataTransfer: transfer });
+  fireEvent.dragStart(screen.getByLabelText(formatMessage(language, 'integrations.dragNode')), { dataTransfer: transfer });
   expect(transfer.setData).not.toHaveBeenCalled();
 });
 

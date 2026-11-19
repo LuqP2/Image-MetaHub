@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React, { useEffect, useRef, useState } from 'react';
 import type { PromptLibraryItem } from '../../types';
 import { findDuplicates } from '../../services/promptLibrary/duplicates';
@@ -9,6 +10,7 @@ export default function PromptDuplicatesPanel({ item, items, onOpen }: {
   items: PromptLibraryItem[];
   onOpen: (item: PromptLibraryItem) => void;
 }) {
+  const { t } = useTranslation();
   const [matches, setMatches] = useState<ReturnType<typeof findDuplicates>>([]);
   const [similar, setSimilar] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +21,7 @@ export default function PromptDuplicatesPanel({ item, items, onOpen }: {
     setError('');
     setMatches(findDuplicates(item, items, false));
     if(!similar || !canUseAdvancedPromptLibrary || typeof Worker === 'undefined') {
-      if (similar && canUseAdvancedPromptLibrary && typeof Worker === 'undefined') setError('Similarity analysis unavailable. Exact duplicates still work.');
+      if (similar && canUseAdvancedPromptLibrary && typeof Worker === 'undefined') setError('promptLibrary.similarityUnavailable');
       return;
     }
     const worker = new Worker(new URL('../../services/workers/promptDuplicateWorker.ts', import.meta.url), { type: 'module' });
@@ -27,27 +29,27 @@ export default function PromptDuplicatesPanel({ item, items, onOpen }: {
       if(e.data.requestId === request.current)
         setMatches(e.data.matches);
     };
-    worker.onerror = () => setError('Similarity analysis unavailable. Exact duplicates still work.');
+    worker.onerror = () => setError('promptLibrary.similarityUnavailable');
     worker.postMessage({ requestId, item, candidates: items, similar: true });
     return () => worker.terminate();
   }, [item, items, similar, canUseAdvancedPromptLibrary]);
   return <details open className="max-h-52 shrink-0 overflow-auto rounded-lg border border-gray-700 p-3 text-xs">
-    <summary className="cursor-pointer">{"Duplicate text ("}{matches.length}{")"}</summary>
+    <summary className="cursor-pointer">{t('promptLibrary.duplicateCount', { count: matches.length })}</summary>
     <button className={buttonClass + ' mt-2'} onClick={() => {
       if(!canUseAdvancedPromptLibrary)
         showProModal('prompt_library_advanced');
       else
         setSimilar(!similar);
     }}>
-      {similar ? 'Exact only' : 'Find similar (Pro)'}
+      {similar ? t('promptLibrary.exactOnly') : t('promptLibrary.findSimilarPro')}
     </button>
     {error && <p role="alert">
-      {error}
+      {t('promptLibrary.similarityUnavailable')}
     </p>}
     {matches.map((match) => {
       const candidate = items.find((p) => p.id === match.id); if (!candidate) return null; return <div key={match.id} className="mt-3 space-y-2 rounded border border-gray-700 p-2">
         <button className={buttonClass} onClick={() => onOpen(candidate)}>
-          {itemTitle(candidate)}{" · "}{match.exact ? 'Same text' : `${Math.round(match.score * 100)}% similarity`}
+          {itemTitle(candidate)}{" · "}{match.exact ? t('promptLibrary.sameText') : t('promptLibrary.similarityPercent', { percent: Math.round(match.score * 100) })}
         </button>
         <div className="grid grid-cols-2 gap-2">
           <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words">
@@ -59,6 +61,6 @@ export default function PromptDuplicatesPanel({ item, items, onOpen }: {
         </div>
       </div>;
     })}
-    <p className="mt-2 text-gray-400">{"Same text can belong to different models or compositions. Nothing is merged automatically."}</p>
+    <p className="mt-2 text-gray-400">{t('promptLibrary.duplicatesHelp')}</p>
   </details>;
 }

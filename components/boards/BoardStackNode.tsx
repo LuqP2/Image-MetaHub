@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useBoardPrompts } from './BoardPromptContext';
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -12,12 +13,14 @@ import BoardNodeControls from './BoardNodeControls';
 import BoardResultThumbnail from './BoardResultThumbnail';
 
 function StackImage({ object, stackId }: { object: BoardAssetObject; stackId: string }) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const boardId = useBoardStore(state => state.activeBoardId);
   const result = editor.resolveAsset?.(object);
-  return result?.image ? <BoardResultThumbnail image={result.image} draggable={editor.editable} stackDrag={boardId ? { boardId, stackId, objectId: object.id } : undefined} open={() => editor.openAsset?.(object)} /> : <span className="board-stack-missing">{object.name} · {result?.status === 'loading' ? 'Loading…' : 'Unavailable'}</span>;
+  return result?.image ? <BoardResultThumbnail image={result.image} draggable={editor.editable} stackDrag={boardId ? { boardId, stackId, objectId: object.id } : undefined} open={() => editor.openAsset?.(object)} /> : <span className="board-stack-missing">{object.name} · {result?.status === 'loading' ? t('imageViewer.provenance.loading') : t('canvas.unavailableState')}</span>;
 }
 export default memo(function BoardStackNode({ data, selected }: NodeProps<BoardFlowNode>) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const boardId = useBoardStore(state => state.activeBoardId);
   const prompts = useBoardPrompts();
@@ -50,20 +53,20 @@ export default memo(function BoardStackNode({ data, selected }: NodeProps<BoardF
   const run = (operation: Parameters<ReturnType<typeof useBoardStore.getState>['executeOperation']>[1]) => { if (editor.editable && boardId) useBoardStore.getState().executeOperation(boardId, operation); };
   return <div ref={anchor} className="board-stack" onDoubleClick={event => { event.stopPropagation(); if (current) editor.openAsset?.(current); }}>
     <BoardNodeControls selected={!!selected} keepAspectRatio minWidth={Math.max(80, ...members.map(member => stack.width * Math.max(80 / member.width, 60 / member.height)))} minHeight={Math.max(60, ...members.map(member => stack.height * Math.max(80 / member.width, 60 / member.height)))} />
-    <header className="board-stack-drag-handle" data-editable={editor.editable} title="Drag to move stack" aria-label="Move stack" onDoubleClick={event => event.stopPropagation()}>
+    <header className="board-stack-drag-handle" data-editable={editor.editable} title={t('canvas.dragStack')} aria-label={t('canvas.moveStack')} onDoubleClick={event => event.stopPropagation()}>
       <GripHorizontal size={16} aria-hidden="true" />
-      <span>Stack</span>
-      {!editor.exporting && members.some(member => prompts.matchedObjectIds.has(member.id)) && <span className="board-prompt-stack-count">{members.filter(member => prompts.matchedObjectIds.has(member.id)).length} matches</span>}
-      <span className="board-stack-count" aria-label={`Image ${current ? stack.memberIds.indexOf(current.id) + 1 : 0} of ${stack.memberIds.length}`}>{current ? stack.memberIds.indexOf(current.id) + 1 : 0}/{stack.memberIds.length}</span>
+      <span>{t('canvas.stack')}</span>
+      {!editor.exporting && members.some(member => prompts.matchedObjectIds.has(member.id)) && <span className="board-prompt-stack-count">{t('canvas.matches', { count: members.filter(member => prompts.matchedObjectIds.has(member.id)).length })}</span>}
+      <span className="board-stack-count" aria-label={t('canvas.stackPosition', { current: current ? stack.memberIds.indexOf(current.id) + 1 : 0, total: stack.memberIds.length })}>{current ? stack.memberIds.indexOf(current.id) + 1 : 0}/{stack.memberIds.length}</span>
     </header>
-    <div className="board-stack-picture">{current ? <StackImage object={current} stackId={stack.id} /> : <span>Unavailable</span>}</div>
+    <div className="board-stack-picture">{current ? <StackImage object={current} stackId={stack.id} /> : <span>{t('canvas.unavailableState')}</span>}</div>
     <div className="board-stack-actions nodrag nopan" onDoubleClick={event => event.stopPropagation()}>
-      <button className="board-icon-button" aria-label="Previous stack image" onClick={() => setOffset(value => value - 1)}><ChevronLeft size={16}/></button>
-      <button className="board-icon-button" aria-label="Next stack image" onClick={() => setOffset(value => value + 1)}><ChevronRight size={16}/></button>
-      <button className="board-button" disabled={!editor.editable || !current || current.id === stack.coverId} onClick={() => { if (current) { run(document => setStackCover(document, stack.id, current.id)); setOffset(0); } }}>Set cover</button>
-      <button className="board-button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Collapse' : 'Expand'}</button>
-      <button className="board-button" disabled={!editor.editable} onClick={() => { run(document => unstack(document, stack.id)); if (boardId) useBoardStore.getState().setSelection(boardId, stack.memberIds); }}>Unstack</button>
+      <button className="board-icon-button" aria-label={t('canvas.previousStack')} onClick={() => setOffset(value => value - 1)}><ChevronLeft size={16}/></button>
+      <button className="board-icon-button" aria-label={t('canvas.nextStack')} onClick={() => setOffset(value => value + 1)}><ChevronRight size={16}/></button>
+      <button className="board-button" disabled={!editor.editable || !current || current.id === stack.coverId} onClick={() => { if (current) { run(document => setStackCover(document, stack.id, current.id)); setOffset(0); } }}>{t('canvas.setCover')}</button>
+      <button className="board-button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? t('canvas.collapse') : t('canvas.expand')}</button>
+      <button className="board-button" disabled={!editor.editable} onClick={() => { run(document => unstack(document, stack.id)); if (boardId) useBoardStore.getState().setSelection(boardId, stack.memberIds); }}>{t('canvas.unstack')}</button>
     </div>
-    {expanded && createPortal(<div className="board-stack-expanded nodrag nopan nowheel" style={position} onDoubleClick={event => event.stopPropagation()}>{members.map(member => <div key={member.id}><StackImage object={member} stackId={stack.id} /><button className="board-button" disabled={!editor.editable} onClick={() => { run(document => setStackCover(document, stack.id, member.id)); setOffset(0); }}>Set cover</button></div>)}</div>, document.body)}
+    {expanded && createPortal(<div className="board-stack-expanded nodrag nopan nowheel" style={position} onDoubleClick={event => event.stopPropagation()}>{members.map(member => <div key={member.id}><StackImage object={member} stackId={stack.id} /><button className="board-button" disabled={!editor.editable} onClick={() => { run(document => setStackCover(document, stack.id, member.id)); setOffset(0); }}>{t('canvas.setCover')}</button></div>)}</div>, document.body)}
   </div>;
 });

@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../../i18n/useTranslation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoardStore } from '../../store/useBoardStore';
@@ -14,6 +15,7 @@ import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../../utils/saf
 import { contentKeyForImage } from '../../services/embeddings/embeddingStore';
 
 export default function BoardVisualGroupingDialog({ boardId, ids, close }: { boardId: string; ids?: string[]; close(): void }) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const document = useBoardStore(state => state.sessions[boardId].document);
   const settings = useSettingsStore();
@@ -21,7 +23,7 @@ export default function BoardVisualGroupingDialog({ boardId, ids, close }: { boa
   const { semanticSearchImageLimit } = useFeatureAccess();
   const [threshold, setThreshold] = useState(0.75);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState('');
+  const [progress, setProgress] = useState<{ key: MessageKey; values?: Record<string, number> } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [failures, setFailures] = useState<Array<{ imageId: string; error: string }>>([]);
   const [preview, setPreview] = useState<{ result: VisualGroupingResult; fingerprint: string; objectGroups: string[][]; modelKey: string; contentKey: string } | null>(null);
@@ -52,9 +54,9 @@ export default function BoardVisualGroupingDialog({ boardId, ids, close }: { boa
     const initialFingerprint = fingerprint;
     const modelKey = semantic.modelKey;
     try {
-      const prepared = await prepareVisualGrouping(uniqueImages, { signal: controller.signal, limit: semanticSearchImageLimit, progress: (done, total) => setProgress(`Preparing images: ${done} / ${total}`) });
-      controller.signal.throwIfAborted(); setFailures(prepared.failures); setProgress('Grouping images…');
-      const result = await runVisualGroupingWorker(prepared.vectors, threshold, controller.signal, (done, total) => setProgress(`Grouping images: ${done} / ${total}`));
+      const prepared = await prepareVisualGrouping(uniqueImages, { signal: controller.signal, limit: semanticSearchImageLimit, progress: (done, total) => setProgress({ key: 'canvas.preparingImages', values: { done, total } }) });
+      controller.signal.throwIfAborted(); setFailures(prepared.failures); setProgress({ key: 'canvas.groupingImages' });
+      const result = await runVisualGroupingWorker(prepared.vectors, threshold, controller.signal, (done, total) => setProgress({ key: 'canvas.groupingProgress', values: { done, total } }));
       controller.signal.throwIfAborted();
       const objectGroups = result.groups.map(group => images.filter(item => group.includes(item.image!.id)).map(item => item.object.id));
       // Repeated appearances of the same image form a group even when its vector is an isolated singleton.
@@ -64,10 +66,10 @@ export default function BoardVisualGroupingDialog({ boardId, ids, close }: { boa
       }
       setPreview({ result, objectGroups, fingerprint: initialFingerprint, modelKey, contentKey });
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { if (abort.current === controller) { setBusy(false); setProgress(''); } }
+    finally { if (abort.current === controller) { setBusy(false); setProgress(null); } }
   };
   return createPortal(<div className="board-grouping-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) dismiss(); }}>
-    <div ref={root} role="dialog" aria-modal="true" aria-label="Auto-group by visual similarity" tabIndex={-1} className="board-grouping-dialog" onKeyDown={event => {
+    <div ref={root} role="dialog" aria-modal="true" aria-label={t('canvas.autoGroup')} tabIndex={-1} className="board-grouping-dialog" onKeyDown={event => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); dismiss(); }
       if (event.key === 'Tab') {
@@ -76,32 +78,32 @@ export default function BoardVisualGroupingDialog({ boardId, ids, close }: { boa
         if (index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === controls.length - 1) { event.preventDefault(); controls[event.shiftKey ? controls.length - 1 : 0]?.focus(); }
       }
     }}>
-      <header><h2>Auto-group by visual similarity</h2><button className="board-button" aria-label="Close visual grouping" onClick={dismiss}>×</button></header>
-      <p>{candidates.length} Canvas images · {uniqueImages.length} unique available images · {ready} indexed</p>
-      {candidates.length !== images.length && <p>{candidates.length - images.length} unavailable or hidden references will stay in place.</p>}
-      {!settings.semanticSearchEnabled ? <button className="board-button" onClick={() => settings.setSemanticSearchEnabled(true)}>Enable Local Visual Search</button>
-        : !semantic.modelInstalled ? <div><p>Download the visual model to prepare images locally.</p><button className="board-button" disabled={semantic.modelDownloading} onClick={() => void semantic.startModelDownload().then(installed => { if (installed) void useSemanticStore.getState().openForLibrary(); })}>{semantic.modelDownloading ? 'Downloading model…' : 'Download visual model'}</button></div> : null}
-      <label>Similarity: {threshold.toFixed(2)}<input type="range" min="0.5" max="0.99" step="0.01" value={threshold} disabled={busy} onChange={event => { setThreshold(Number(event.target.value)); setPreview(null); }} /></label>
-      <p>Higher values create stricter groups. Every pair in a group must meet this similarity.</p>
-      {semantic.isBackfilling && <p>Pause Visual Search indexing before preparing these images.</p>}
-      {busy && <p role="status">{progress}</p>}
-      {(error || semantic.lastError) && <p role="alert">{error || semantic.lastError}</p>}
-      {failures.length > 0 && <details><summary>{failures.length} images could not be prepared</summary>{failures.map(failure => <p key={failure.imageId}>{uniqueImages.find(image => image.id === failure.imageId)?.name}: {failure.error}</p>)}</details>}
-      {preview && <div><p>{preview.objectGroups.length} groups · {images.length - preview.objectGroups.flat().length} images stay in place</p>
-        <div className="board-grouping-preview">{preview.objectGroups.map((group, i) => <section key={i}><strong>Visual group {i + 1} · {group.length}</strong><div>{group.slice(0, 4).map(id => { const image = images.find(item => item.object.id === id)?.image; return image ? <BoardResultThumbnail key={id} image={image} open={() => {}} /> : null; })}</div></section>)}</div>
-        {stale && <p role="alert">These images or the visual model changed. Recalculate the groups.</p>}
+      <header><h2>{t('canvas.autoGroup')}</h2><button className="board-button" aria-label={t('canvas.groupingClose')} onClick={dismiss}>×</button></header>
+      <p>{t('canvas.groupingCounts', { candidates: candidates.length, unique: uniqueImages.length, indexed: ready })}</p>
+      {candidates.length !== images.length && <p>{t('canvas.groupingStay', { count: candidates.length - images.length })}</p>}
+      {!settings.semanticSearchEnabled ? <button className="board-button" onClick={() => settings.setSemanticSearchEnabled(true)}>{t('canvas.enableVisual')}</button>
+        : !semantic.modelInstalled ? <div><p>{t('canvas.downloadVisualHelp')}</p><button className="board-button" disabled={semantic.modelDownloading} onClick={() => void semantic.startModelDownload().then(installed => { if (installed) void useSemanticStore.getState().openForLibrary(); })}>{semantic.modelDownloading ? t('canvas.downloadingVisual') : t('canvas.downloadVisual')}</button></div> : null}
+      <label>{t('canvas.similarity', { value: threshold.toFixed(2) })}<input type="range" min="0.5" max="0.99" step="0.01" value={threshold} disabled={busy} onChange={event => { setThreshold(Number(event.target.value)); setPreview(null); }} /></label>
+      <p>{t('canvas.similarityHelp')}</p>
+      {semantic.isBackfilling && <p>{t('canvas.pauseIndexing')}</p>}
+      {busy && <p role="status">{progress ? t(progress.key, progress.values) : ''}</p>}
+      {(error || semantic.lastError) && <p role="alert">{error === 'canvas.groupingChanged' ? t('canvas.groupingChanged') : error || semantic.lastError}</p>}
+      {failures.length > 0 && <details><summary>{t('canvas.prepareFailed', { count: failures.length })}</summary>{failures.map(failure => <p key={failure.imageId}>{uniqueImages.find(image => image.id === failure.imageId)?.name}: {failure.error}</p>)}</details>}
+      {preview && <div><p>{t('canvas.groupsPreview', { groups: preview.objectGroups.length, images: images.length - preview.objectGroups.flat().length })}</p>
+        <div className="board-grouping-preview">{preview.objectGroups.map((group, i) => <section key={i}><strong>{t('canvas.visualGroup', { index: i + 1, count: group.length })}</strong><div>{group.slice(0, 4).map(id => { const image = images.find(item => item.object.id === id)?.image; return image ? <BoardResultThumbnail key={id} image={image} open={() => {}} /> : null; })}</div></section>)}</div>
+        {stale && <p role="alert">{t('canvas.groupingStale')}</p>}
       </div>}
-      <footer><button className="board-button" onClick={dismiss}>Cancel</button>
-        <button className="board-button" disabled={busy || !editor.editable || !settings.semanticSearchEnabled || !semantic.modelInstalled || semantic.isBackfilling || images.length < 2} onClick={() => void run()}>{ready < uniqueImages.length ? 'Prepare images and group' : 'Calculate groups'}</button>
+      <footer><button className="board-button" onClick={dismiss}>{t('libraryFolders.cancel')}</button>
+        <button className="board-button" disabled={busy || !editor.editable || !settings.semanticSearchEnabled || !semantic.modelInstalled || semantic.isBackfilling || images.length < 2} onClick={() => void run()}>{ready < uniqueImages.length ? t('canvas.prepareAndGroup') : t('canvas.calculateGroups')}</button>
         {preview && <button className="board-button" disabled={!!stale || busy || !editor.editable || !settings.semanticSearchEnabled || preview.objectGroups.length === 0} onClick={() => {
           const state = useBoardStore.getState(), current = state.sessions[boardId];
           const currentContentKey = JSON.stringify([...new Map(candidates.map(object => editor.resolveAsset?.(object)?.image).filter(image => image && isVisibleWithSafeMode(image, getHiddenSensitiveTagSet(useSettingsStore.getState()))).map(image => [image!.id, image!])).values()].map(image => [image.id, contentKeyForImage(image)]));
-          if (!current || state.closing || current.recovering || visualGroupFingerprint(current.document, candidates.map(object => object.id)) !== preview.fingerprint || useSemanticStore.getState().modelKey !== preview.modelKey || currentContentKey !== preview.contentKey) { setError('The Canvas changed. Recalculate the groups.'); return; }
+          if (!current || state.closing || current.recovering || visualGroupFingerprint(current.document, candidates.map(object => object.id)) !== preview.fingerprint || useSemanticStore.getState().modelKey !== preview.modelKey || currentContentKey !== preview.contentKey) { setError('canvas.groupingChanged'); return; }
           const existing = new Set(current.document.objects.map(object => object.id));
           state.executeOperation(boardId, document => applyVisualGroups(document, preview.objectGroups));
           const added = useBoardStore.getState().sessions[boardId].document.objects.filter(object => !existing.has(object.id)).map(object => object.id);
           state.setSelection(boardId, added); state.requestReveal(boardId, added); dismiss();
-        }}>Apply groups</button>}
+        }}>{t('canvas.applyGroups')}</button>}
       </footer>
     </div>
   </div>, window.document.body);

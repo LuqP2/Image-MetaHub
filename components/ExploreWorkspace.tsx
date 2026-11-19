@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, FolderOpen, Layers, Lock, Pencil, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
@@ -21,13 +22,14 @@ interface ExploreWorkspaceProps {
   onFindMatchingPrompts?: (modelName: string) => void;
 }
 
-const DIMENSIONS: { id: ExploreDimension; label: string; icon: typeof Box }[] = [
-  { id: 'models', label: 'Models', icon: Box },
-  { id: 'clusters', label: 'Clusters', icon: Layers },
-  { id: 'collections', label: 'Collections', icon: FolderOpen },
-];
-
 const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary, onFindMatchingPrompts }) => {
+  const { t: tr } = useTranslation();
+  const DIMENSIONS: { id: ExploreDimension; label: string; icon: typeof Box }[] = [
+    { id: 'models', label: tr('libraryGallery.models'), icon: Box },
+    { id: 'clusters', label: tr('libraryGallery.clusters'), icon: Layers },
+    { id: 'collections', label: tr('libraryGallery.collections'), icon: FolderOpen },
+  ];
+
   const images = useImageStore((state) => state.images);
   const clusters = useImageStore((state) => state.clusters);
   const collections = useImageStore((state) => state.collections);
@@ -181,7 +183,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
 
   const handleDeleteCollection = async (collection: SmartCollection) => {
     const confirmed = window.confirm(
-      `Delete the collection "${collection.name}"? This does not delete the underlying images.`,
+      tr('explore.deleteCollectionConfirm', { name: collection.name }),
     );
     if (!confirmed) {
       return;
@@ -236,7 +238,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" />
-            {isClustering ? 'Clustering…' : 'Generate clusters'}
+            {isClustering ? tr('explore.clusteringProgress') : tr('explore.generateClusters')}
           </button>
         )}
 
@@ -247,8 +249,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white"
           >
             <FolderOpen className="h-4 w-4" />
-            New collection
-          </button>
+            {tr('explore.newCollection')}</button>
         )}
       </div>
 
@@ -257,8 +258,8 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
           (modelEntries.length === 0 ? (
             <EmptyState
               icon={Box}
-              title="No models yet"
-              description="Index a library with generation metadata to browse checkpoints here."
+              title={tr('explore.noModelsTitle')}
+              description={tr('explore.noModelsDescription')}
             />
           ) : (
             <div className={GRID_CLASS}>
@@ -289,17 +290,16 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                           }
                         }}
                         className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/40 bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-500/20"
-                        title={`Find matching prompts for ${entry.name}`}
-                        aria-label={`Find matching prompts for ${entry.name}`}
+                        title={tr('explore.findMatchingPrompts', { modelName: entry.name })}
+                        aria-label={tr('explore.findMatchingPrompts', { modelName: entry.name })}
                       >
                         <Search className="h-3.5 w-3.5" />
-                        Match prompts
-                      </div>
+                        {tr('explore.matchPrompts')}</div>
                     ) : undefined
                   }
                   subtitle={
                     <p className="mt-1 text-xs text-gray-400">
-                      {entry.count} image{entry.count !== 1 ? 's' : ''}
+                      {tr('libraryGallery.imageCount', { count: entry.count })}
                     </p>
                   }
                 />
@@ -309,14 +309,14 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
 
         {exploreDimension === 'clusters' && isClustering && (
           <ProgressBar
-            label={clusteringProgress?.message ?? 'Clustering…'}
+            label={clusteringProgress?.message ?? tr('explore.clusteringProgress')}
             current={clusteringProgress?.current ?? 0}
             total={clusteringProgress?.total ?? 0}
           />
         )}
 
         {exploreDimension === 'clusters' && isRestoringClusters && !isClustering && (
-          <ProgressBar label="Loading saved clusters…" current={0} total={0} />
+          <ProgressBar label={tr('explore.loadingClusters')} current={0} total={0} />
         )}
 
         {exploreDimension === 'clusters' &&
@@ -324,8 +324,8 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             isClustering || isRestoringClusters ? null : (
             <EmptyState
               icon={Layers}
-              title="No clusters yet"
-              description="Group visually similar images into stacks to explore them together."
+              title={tr('explore.noClustersTitle')}
+              description={tr('explore.noClustersDescription')}
               action={
                 <button
                   type="button"
@@ -334,15 +334,14 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                   className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/25 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
-                  Generate clusters
-                </button>
+                  {tr('explore.generateClusters')}</button>
               }
             />
             )
           ) : (
             <div className={GRID_CLASS}>
               {paginate(clusterEntries).map(({ cluster, images: clusterImages, isLocked }) => {
-                const label = cluster.basePrompt || 'Untitled stack';
+                const label = cluster.basePrompt || tr('explore.untitledStack');
                 return (
                   <ScopeCard
                     key={cluster.id}
@@ -364,7 +363,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                         <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                           <div className="flex flex-col items-center gap-2 text-purple-300">
                             <Lock className="h-12 w-12" />
-                            <span className="text-sm font-semibold">Pro Only</span>
+                            <span className="text-sm font-semibold">{tr('explore.proOnly')}</span>
                           </div>
                         </div>
                       ) : undefined
@@ -376,8 +375,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                     }
                     subtitle={
                       <p className="mt-1 text-xs text-gray-400">
-                        {clusterImages.length} images | similarity{' '}
-                        {Math.round(cluster.similarityThreshold * 100)}%
+                        {tr('explore.clusterSubtitle', { count: clusterImages.length, percent: Math.round(cluster.similarityThreshold * 100) })}
                       </p>
                     }
                   />
@@ -398,8 +396,8 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
           (collectionEntries.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
-              title="No collections yet"
-              description="Create a collection to group images manually or by a tag rule."
+              title={tr('libraryGallery.noCollectionsYet')}
+              description={tr('explore.noCollectionsDescription')}
               action={
                 <button
                   type="button"
@@ -407,8 +405,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                   className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/25"
                 >
                   <FolderOpen className="h-4 w-4" />
-                  New collection
-                </button>
+                  {tr('explore.newCollection')}</button>
               }
             />
           ) : (
@@ -421,7 +418,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                   coverAlt={collection.name}
                   countLabel={count}
                   title={collection.name}
-                  ariaLabel={`Open collection ${collection.name}`}
+                  ariaLabel={tr('collections.openCollection', { name: collection.name })}
                   contentClassName="p-4"
                   isActive={activeImageScope?.type === 'collection' && activeImageScope.id === collection.id}
                   onClick={() => scopeToLibrary({ type: 'collection', id: collection.id, label: collection.name })}
@@ -429,7 +426,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                     collection.sourceTag ? (
                       <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-100">
                         <Sparkles className="h-3.5 w-3.5" />
-                        {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                        {collection.autoUpdate !== false ? tr('collections.autoBadge') : tr('collections.linkedBadge')}
                       </div>
                     ) : undefined
                   }
@@ -441,15 +438,15 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                         </p>
                       ) : (
                         <p className="mt-1 min-h-[2.5rem] text-xs text-gray-500">
-                          {count} image{count !== 1 ? 's' : ''}
+                          {tr('libraryGallery.imageCount', { count })}
                         </p>
                       )}
                       <div className="mt-2 flex items-center gap-1">
                         <div
                           role="button"
                           tabIndex={0}
-                          aria-label={`Edit collection ${collection.name}`}
-                          title="Edit collection"
+                          aria-label={tr('explore.editCollectionNamed', { name: collection.name })}
+                          title={tr('explore.editCollection')}
                           onClick={(event) => {
                             event.stopPropagation();
                             setEditingCollection(collection);
@@ -464,13 +461,12 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                           className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-gray-400 transition-colors hover:bg-gray-700/60 hover:text-gray-100"
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                          Edit
-                        </div>
+                          {tr('promptLibrary.edit')}</div>
                         <div
                           role="button"
                           tabIndex={0}
-                          aria-label={`Delete collection ${collection.name}`}
-                          title="Delete collection"
+                          aria-label={tr('explore.deleteCollectionNamed', { name: collection.name })}
+                          title={tr('collections.deleteCollection')}
                           onClick={(event) => {
                             event.stopPropagation();
                             void handleDeleteCollection(collection);
@@ -485,8 +481,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                           className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-gray-400 transition-colors hover:bg-rose-900/40 hover:text-rose-200"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </div>
+                          {tr('libraryGallery.delete')}</div>
                       </div>
                     </>
                   }
@@ -504,10 +499,9 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             disabled={page <= 1}
             className="rounded-lg border border-gray-700 px-3 py-1.5 font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Previous
-          </button>
+            {tr('promptLibrary.previous')}</button>
           <span className="text-gray-400">
-            Page <span className="font-semibold text-gray-200">{page}</span> of {totalPages}
+            {tr('libraryGallery.pagePageOfTotal', { page, total: totalPages })}
           </span>
           <button
             type="button"
@@ -515,14 +509,13 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             disabled={page >= totalPages}
             className="rounded-lg border border-gray-700 px-3 py-1.5 font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Next
-          </button>
+            {tr('promptLibrary.next')}</button>
         </div>
       )}
 
       <CollectionFormModal
         isOpen={isCreateModalOpen}
-        title="New collection"
+        title={tr('explore.newCollection')}
         submitLabel="Create"
         initialValues={{
           name: '',
@@ -538,7 +531,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
 
       <CollectionFormModal
         isOpen={editingCollection !== null}
-        title="Collection settings"
+        title={tr('collections.collectionSettings')}
         submitLabel="Save changes"
         initialValues={{
           name: editingCollection?.name ?? '',
@@ -557,7 +550,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
         isOpen={automationRuleCollection !== null}
         onClose={() => setAutomationRuleCollection(null)}
         initialCollectionId={automationRuleCollection?.id ?? null}
-        initialRuleName={automationRuleCollection ? `Add to ${automationRuleCollection.name}` : undefined}
+        initialRuleName={automationRuleCollection ? tr('collections.defaultAutomationRuleName', { collectionName: automationRuleCollection.name }) : undefined}
       />
     </div>
   );

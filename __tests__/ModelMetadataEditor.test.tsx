@@ -1,3 +1,5 @@
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,8 +8,23 @@ const command = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('../components/ModelManagerPanels', () => ({ executeModelCommand: command, modelButton: '', modelInput: '' }));
 import ModelMetadataEditor from '../components/ModelMetadataEditor';
 const item = (id: string, notes = 'Saved notes'): ModelInspectorItem => ({ location: { id, sourceKind: 'checkpoint' } as ModelInspectorItem['location'], localMetadata: { notes, tags: [] } as ModelInspectorItem['localMetadata'] });
-afterEach(() => { cleanup(); command.mockReset().mockResolvedValue(undefined); });
+afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); command.mockReset().mockResolvedValue(undefined); });
 describe('metadata editor', () => {
+  it.each(languages)('keeps an unsaved draft and mutation payload intact when switching from %s', async language => {
+    useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
+    const id = 'locale-editor-' + language;
+    render(<ModelMetadataEditor item={item(id)} />);
+    fireEvent.click(screen.getByRole('button', { name: t('modelLibrary.edit') }));
+    fireEvent.change(screen.getByLabelText(t('modelLibrary.notes')), { target: { value: 'Original {notes} 海' } });
+    const nextLanguage = language === 'en' ? 'ja' : 'en';
+    act(() => { useSettingsStore.setState({ language: nextLanguage }); });
+    expect(screen.getByLabelText(formatMessage(nextLanguage, 'modelLibrary.notes'))).toHaveProperty('value', 'Original {notes} 海');
+    expect(command).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(nextLanguage, 'modelLibrary.save'), exact: true }));
+    await waitFor(() => expect(command).toHaveBeenCalledExactlyOnceWith({ type: 'saveLocal', locationId: id, patch: { notes: 'Original {notes} 海' } }));
+  });
+
   it('preserves unsaved edits across navigation and unmounting and sends only changed fields', async () => {
     let view = render(<ModelMetadataEditor item={item('editor-a')} />);
     fireEvent.click(screen.getByText('Edit'));

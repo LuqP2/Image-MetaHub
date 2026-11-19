@@ -1,3 +1,5 @@
+import { useTranslation, type Translate } from '../i18n/useTranslation';
+import { automationFieldLabels, automationOperatorLabels } from '../i18n/automationMessages';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Play, Plus, Power, Trash2, X } from 'lucide-react';
 import type {
@@ -13,8 +15,6 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import TagInputCombobox from './TagInputCombobox';
 import {
-  CONDITION_FIELD_LABELS,
-  OPERATOR_LABELS,
   TEXT_CONDITION_FIELDS,
   conditionRowsToCriteria,
   createDefaultConditionRow,
@@ -60,9 +60,9 @@ const compactInputClassName =
   'h-9 w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 const labelClassName = 'mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400';
 
-const createDraftRule = (): AutomationRule => ({
+const createDraftRule = (tr: Translate): AutomationRule => ({
   id: createId(),
-  name: 'New Rule',
+  name: tr('automation.newRule'),
   enabled: true,
   criteria: {
     matchMode: 'all',
@@ -79,19 +79,19 @@ const createDraftRule = (): AutomationRule => ({
   lastChangeCount: 0,
 });
 
-const describeCriteria = (rule: AutomationRule): string => {
+const describeCriteria = (rule: AutomationRule, tr: Translate): string => {
   const rows = ruleToConditionRows(rule);
-  if (rows.length === 0) return 'No conditions yet';
-  return `${rows.length} condition${rows.length === 1 ? '' : 's'} (${rule.criteria.matchMode})`;
+  if (rows.length === 0) return tr('automation.noConditions');
+  return tr('automation.conditionSummary', { count: rows.length, mode: rule.criteria.matchMode });
 };
 
-const describeActions = (rule: AutomationRule, collectionNames: Map<string, string>): string => {
+const describeActions = (rule: AutomationRule, collectionNames: Map<string, string>, tr: Translate): string => {
   const parts: string[] = [];
-  if (rule.actions.addTags.length > 0) parts.push(`tags: ${rule.actions.addTags.join(', ')}`);
+  if (rule.actions.addTags.length > 0) parts.push(tr('automation.actionTags', { tags: rule.actions.addTags.join(', ') }));
   if (rule.actions.addToCollectionIds.length > 0) {
-    parts.push(`collections: ${rule.actions.addToCollectionIds.map((id) => collectionNames.get(id) ?? id).join(', ')}`);
+    parts.push(tr('automation.actionCollections', { collections: rule.actions.addToCollectionIds.map((id) => collectionNames.get(id) ?? id).join(', ') }));
   }
-  return parts.length > 0 ? parts.join(' | ') : 'No actions yet';
+  return parts.length > 0 ? parts.join(' | ') : tr('automation.noActions');
 };
 
 const hasActions = (rule: AutomationRule): boolean =>
@@ -112,6 +112,8 @@ export default function AutomationRulesModal({
   initialCollectionId = null,
   initialRuleName,
 }: AutomationRulesModalProps) {
+  const { t: tr } = useTranslation();
+
   const images = useImageStore((state) => state.images);
   const automationRules = useImageStore((state) => state.automationRules);
   const collections = useImageStore((state) => state.collections);
@@ -155,7 +157,7 @@ export default function AutomationRulesModal({
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
 
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<AutomationRule>(() => createDraftRule());
+  const [draft, setDraft] = useState<AutomationRule>(() => createDraftRule(tr));
   const [rows, setRows] = useState<AutomationConditionRow[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [preview, setPreview] = useState<PreviewState>(emptyPreview);
@@ -197,7 +199,7 @@ export default function AutomationRulesModal({
   ]);
 
   const loadRuleForEditing = (rule: AutomationRule | null) => {
-    const nextRule = rule ?? createDraftRule();
+    const nextRule = rule ?? createDraftRule(tr);
     setEditingRuleId(rule?.id ?? null);
     setDraft(nextRule);
     setRows(rule ? ruleToConditionRows(rule) : []);
@@ -212,8 +214,8 @@ export default function AutomationRulesModal({
     if (didInitializeForOpenRef.current) return;
     didInitializeForOpenRef.current = true;
     if (initialCollectionId) {
-      const nextRule = createDraftRule();
-      nextRule.name = initialRuleName ?? 'New Collection Rule';
+      const nextRule = createDraftRule(tr);
+      nextRule.name = initialRuleName ?? tr('automation.newCollectionRule');
       nextRule.actions.addToCollectionIds = [initialCollectionId];
       setEditingRuleId(null);
       setDraft(nextRule);
@@ -222,7 +224,7 @@ export default function AutomationRulesModal({
       return;
     }
     loadRuleForEditing(null);
-  }, [automationRules, initialCollectionId, initialRuleName, isOpen]);
+  }, [automationRules, initialCollectionId, initialRuleName, isOpen, tr]);
 
   const ruleForPreview = useMemo(() => buildRuleFromRows(draft, rows), [draft, rows]);
 
@@ -327,7 +329,7 @@ export default function AutomationRulesModal({
     const copy = {
       ...rule,
       id: createId(),
-      name: `${rule.name} Copy`,
+      name: tr('automation.ruleCopyName', { name: rule.name }),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       lastAppliedAt: null,
@@ -340,7 +342,7 @@ export default function AutomationRulesModal({
   };
 
   const handleDelete = async (ruleId: string) => {
-    const confirmed = window.confirm('Delete this rule? Existing tags and collection membership will stay in place.');
+    const confirmed = window.confirm(tr('automation.deleteConfirm'));
     if (!confirmed) return;
     await deleteAutomationRuleById(ruleId);
     const nextRule = automationRules.find((rule) => rule.id !== ruleId) ?? null;
@@ -401,7 +403,7 @@ export default function AutomationRulesModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Automation rules"
+        aria-label={tr('automation.modalLabel')}
         className="flex h-[86vh] w-full max-w-6xl overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
@@ -409,8 +411,8 @@ export default function AutomationRulesModal({
           <div className="border-b border-gray-800 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-white">Rules</h2>
-                <p className="mt-1 text-xs text-gray-500">{activeRuleCount} active of {automationRules.length}</p>
+                <h2 className="text-base font-semibold text-white">{tr('automation.rulesTitle')}</h2>
+                <p className="mt-1 text-xs text-gray-500">{tr('automation.activeOfTotal', { active: activeRuleCount, total: automationRules.length })}</p>
               </div>
               <button
                 type="button"
@@ -418,22 +420,20 @@ export default function AutomationRulesModal({
                 className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
               >
                 <Plus className="h-4 w-4" />
-                New Rule
-              </button>
+                {tr('automation.newRule')}</button>
             </div>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {automationRules.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 px-3 py-8 text-center">
-                <span className="text-sm text-gray-500">No rules yet.</span>
+                <span className="text-sm text-gray-500">{tr('automation.noRulesYet')}</span>
                 <button
                   type="button"
                   onClick={() => loadRuleForEditing(null)}
                   className="text-xs text-blue-400 hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1"
                 >
-                  Create your first rule
-                </button>
+                  {tr('automation.createFirstRule')}</button>
               </div>
             ) : (
               automationRules.map((rule) => {
@@ -450,16 +450,16 @@ export default function AutomationRulesModal({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-gray-100">{rule.name}</div>
-                        <div className="mt-1 text-xs text-gray-500">{describeCriteria(rule)}</div>
+                        <div className="mt-1 text-xs text-gray-500">{describeCriteria(rule, tr)}</div>
                       </div>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] ${
                         rule.enabled ? 'border-emerald-700/50 bg-emerald-950/50 text-emerald-300' : 'border-gray-700 bg-gray-950 text-gray-500'
                       }`}>
-                        {rule.enabled ? 'On' : 'Off'}
+                        {rule.enabled ? tr('modelLibrary.on') : tr('modelLibrary.off')}
                       </span>
                     </div>
-                    <div className="mt-2 truncate text-xs text-gray-400" title={describeActions(rule, collectionNames)}>
-                      {describeActions(rule, collectionNames)}
+                    <div className="mt-2 truncate text-xs text-gray-400" title={describeActions(rule, collectionNames, tr)}>
+                      {describeActions(rule, collectionNames, tr)}
                     </div>
                   </button>
                 );
@@ -471,9 +471,9 @@ export default function AutomationRulesModal({
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-5 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-white">{isExistingRule ? 'Edit Rule' : 'New Rule'}</h2>
+              <h2 className="text-lg font-semibold text-white">{isExistingRule ? tr('automation.editRule') : tr('automation.newRule')}</h2>
             </div>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white" aria-label="Close modal">
+            <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white" aria-label={tr('automation.closeModal')}>
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -483,23 +483,23 @@ export default function AutomationRulesModal({
               <div className="space-y-5">
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_170px_180px]">
                   <label>
-                    <span className={labelClassName}>Name</span>
-                    <input value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} className={inputClassName} placeholder="Rule name" />
+                    <span className={labelClassName}>{tr('libraryGallery.name')}</span>
+                    <input value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} className={inputClassName} placeholder={tr('automation.ruleNamePlaceholder')} />
                   </label>
                   <label>
-                    <span className={labelClassName}>Match</span>
+                    <span className={labelClassName}>{tr('automation.matchLabel')}</span>
                     <select
                       value={draft.criteria.matchMode}
                       onChange={(event) => updateDraft({ criteria: conditionRowsToCriteria(rows, event.target.value === 'any' ? 'any' : 'all') })}
                       className={inputClassName}
                     >
-                      <option value="all">All conditions</option>
-                      <option value="any">Any condition</option>
+                      <option value="all">{tr('automation.allConditions')}</option>
+                      <option value="any">{tr('automation.anyCondition')}</option>
                     </select>
                   </label>
                   <label className="flex items-end gap-2 rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
                     <input type="checkbox" checked={draft.enabled} onChange={(event) => updateDraft({ enabled: event.target.checked })} className="mb-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500" />
-                    <span className="pb-0.5 text-sm text-gray-200">Enabled</span>
+                    <span className="pb-0.5 text-sm text-gray-200">{tr('settings.general.enabled')}</span>
                   </label>
                 </div>
 
@@ -547,7 +547,7 @@ export default function AutomationRulesModal({
       </div>
       <CollectionFormModal
         isOpen={isCreateCollectionModalOpen}
-        title="Create Collection"
+        title={tr('libraryGallery.createCollection')}
         submitLabel="Create Collection"
         initialValues={{
           name: '',
@@ -573,20 +573,20 @@ interface WhenBuilderProps {
   onRemove: (rowId: string) => void;
 }
 
-const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onImport, onUpdate, onRemove }) => (
+const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onImport, onUpdate, onRemove }) => {
+  const { t: tr } = useTranslation();
+return (
   <section className="rounded-xl border border-gray-800 bg-gray-950/30 p-4">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 className="text-sm font-semibold text-gray-100">When</h3>
+        <h3 className="text-sm font-semibold text-gray-100">{tr('automation.whenHeading')}</h3>
       </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={onImport} className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
-          Import current sidebar filters
-        </button>
+          {tr('automation.importSidebarFilters')}</button>
         <button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 hover:text-gray-950">
           <Plus className="h-3.5 w-3.5" />
-          Add condition
-        </button>
+          {tr('automation.addCondition')}</button>
       </div>
     </div>
 
@@ -595,10 +595,11 @@ const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onI
         type="button"
         onClick={onAdd}
         className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40 px-4 py-10 text-center text-gray-400 transition-colors hover:border-blue-600/50 hover:bg-blue-950/20 hover:text-blue-200"
+        aria-label={tr('automation.addFirstCondition')}
       >
         <Plus className="mb-2 h-6 w-6" />
-        <span className="text-sm font-medium">No conditions yet</span>
-        <span className="mt-1 text-xs text-gray-500">Add your first condition</span>
+        <span className="text-sm font-medium">{tr('automation.noConditions')}</span>
+        <span className="mt-1 text-xs text-gray-500">{tr('automation.addFirstCondition')}</span>
       </button>
     ) : (
       <div className="space-y-2">
@@ -615,6 +616,7 @@ const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onI
     )}
   </section>
 );
+};
 
 interface ConditionRowEditorProps {
   row: AutomationConditionRow;
@@ -624,7 +626,11 @@ interface ConditionRowEditorProps {
 }
 
 const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSource, onUpdate, onRemove }) => {
-  const fieldOptions = getConditionFieldOptions();
+  const { t: tr } = useTranslation();
+
+  const CONDITION_FIELD_LABELS = automationFieldLabels(tr);
+  const OPERATOR_LABELS = automationOperatorLabels(tr);
+  const fieldOptions = getConditionFieldOptions().map(option => ({ ...option, label: CONDITION_FIELD_LABELS[option.value] }));
   const operatorOptions = getOperatorsForField(row.field);
   const isText = TEXT_CONDITION_FIELDS.includes(row.field);
   const valueOptions = isText ? [] : getConditionValueOptions(row.field, valueSource);
@@ -637,7 +643,7 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
   return (
     <div className="grid gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
       <select
-        aria-label="Condition field"
+        aria-label={tr('automation.conditionFieldLabel')}
         value={row.field}
         onChange={(event) => onUpdate({ field: event.target.value as AutomationConditionField })}
         className={compactInputClassName}
@@ -645,7 +651,7 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
         {fieldOptions.map((field) => <option key={field.value} value={field.value}>{field.label}</option>)}
       </select>
       <select
-        aria-label="Condition operator"
+        aria-label={tr('automation.conditionOperatorLabel')}
         value={row.operator}
         onChange={(event) => onUpdate({ operator: event.target.value as AutomationConditionOperator })}
         className={compactInputClassName}
@@ -653,52 +659,52 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
         {operatorOptions.map((operator) => <option key={operator} value={operator}>{OPERATOR_LABELS[operator]}</option>)}
       </select>
 
-      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition" aria-label="Remove condition">
+      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title={tr('automation.removeCondition')} aria-label={tr('automation.removeCondition')}>
         <X className="mx-auto h-4 w-4" />
       </button>
 
       <div className={valueContainerClassName}>
         {isBoolean ? (
           <div className="flex h-9 w-full items-center rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-300">
-            {row.field === 'telemetry' ? 'present' : row.field === 'verifiedTelemetry' ? 'true' : 'favorite'}
+            {row.field === 'telemetry' ? tr('automation.boolean.present') : row.field === 'verifiedTelemetry' ? tr('automation.boolean.true') : tr('canvas.favorite').toLocaleLowerCase()}
           </div>
         ) : isText ? (
           <input
-            aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
+            aria-label={tr('automation.fieldValueLabel', { field: CONDITION_FIELD_LABELS[row.field] })}
             value={row.value}
             onChange={(event) => onUpdate({ value: event.target.value })}
             className={compactInputClassName}
-            placeholder="Type here..."
+            placeholder={tr('automation.typeHerePlaceholder')}
           />
         ) : valueOptions.length > 0 && !isNumericField && !isDateField ? (
           <select
-            aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
+            aria-label={tr('automation.fieldValueLabel', { field: CONDITION_FIELD_LABELS[row.field] })}
             value={row.value}
             onChange={(event) => onUpdate({ value: event.target.value })}
             className={compactInputClassName}
           >
-            <option value="">Choose...</option>
+            <option value="">{tr('automation.choosePlaceholder')}</option>
             {valueOptions.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
         ) : (
           <input
-            aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
+            aria-label={tr('automation.fieldValueLabel', { field: CONDITION_FIELD_LABELS[row.field] })}
             type={isDateField ? 'date' : 'number'}
             value={row.value}
             onChange={(event) => onUpdate({ value: event.target.value })}
             className={compactInputClassName}
-            placeholder={isDateField ? 'YYYY-MM-DD' : 'Value'}
+            placeholder={isDateField ? 'YYYY-MM-DD' : tr('automation.valuePlaceholder')}
           />
         )}
 
         {isBetween && (
           <input
-            aria-label={`${CONDITION_FIELD_LABELS[row.field]} end value`}
+            aria-label={tr('automation.fieldEndValueLabel', { field: CONDITION_FIELD_LABELS[row.field] })}
             type={isDateField ? 'date' : 'number'}
             value={row.valueEnd ?? ''}
             onChange={(event) => onUpdate({ valueEnd: event.target.value })}
             className={compactInputClassName}
-            placeholder={isDateField ? 'YYYY-MM-DD' : 'To'}
+            placeholder={isDateField ? 'YYYY-MM-DD' : tr('automation.toPlaceholder')}
           />
         )}
       </div>
@@ -730,13 +736,15 @@ const ThenActions: React.FC<ThenActionsProps> = ({
   recentTags,
   availableTags,
   tagSuggestionLimit,
-}) => (
+}) => {
+  const { t: tr } = useTranslation();
+return (
   <section className="rounded-xl border border-gray-800 bg-gray-950/30 p-4">
-    <h3 className="text-sm font-semibold text-gray-100">Then</h3>
+    <h3 className="text-sm font-semibold text-gray-100">{tr('automation.thenHeading')}</h3>
 
     <div className="mt-4 space-y-4">
       <div>
-        <span className={labelClassName}>Add tag</span>
+        <span className={labelClassName}>{tr('automation.addTagLabel')}</span>
         <TagInputCombobox
           value={tagInput}
           onValueChange={setTagInput}
@@ -746,7 +754,7 @@ const ThenActions: React.FC<ThenActionsProps> = ({
           excludedTags={draft.actions.addTags}
           suggestionLimit={tagSuggestionLimit}
           mode="single"
-          placeholder="Add tag..."
+          placeholder={tr('automation.addTagPlaceholder')}
           wrapperClassName="relative"
           inputClassName={`${inputClassName} pr-14`}
           trailingContent={
@@ -755,8 +763,7 @@ const ThenActions: React.FC<ThenActionsProps> = ({
               onClick={() => addTagsFromInput(tagInput)}
               className="absolute right-1.5 top-1.5 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500 hover:text-gray-950"
             >
-              Add
-            </button>
+              {tr('automation.addButton')}</button>
           }
         />
         {draft.actions.addTags.length > 0 && (
@@ -772,8 +779,9 @@ const ThenActions: React.FC<ThenActionsProps> = ({
                   },
                 })}
                 className="rounded-full border border-blue-700/40 bg-blue-950/40 px-2 py-1 text-xs text-blue-200 hover:border-rose-500/50 hover:text-rose-200"
+                aria-label={tr('imageViewer.preview.removeTag', { tag })}
               >
-                {tag} x
+                {tag} <span aria-hidden="true">×</span>
               </button>
             ))}
           </div>
@@ -781,10 +789,10 @@ const ThenActions: React.FC<ThenActionsProps> = ({
       </div>
 
       <div>
-        <span className={labelClassName}>Add to collection</span>
+        <span className={labelClassName}>{tr('automation.addToCollectionLabel')}</span>
         <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950/40 p-2">
           {collections.length === 0 && (
-            <div className="px-2 py-3 text-center text-xs text-gray-500">No collections yet.</div>
+            <div className="px-2 py-3 text-center text-xs text-gray-500">{tr('collections.emptySidebar')}</div>
           )}
           {collections.length > 0 && (
             collections.map((collection) => {
@@ -815,8 +823,7 @@ const ThenActions: React.FC<ThenActionsProps> = ({
             className="flex w-full items-center gap-2 rounded-md border border-dashed border-gray-700 px-2 py-2 text-left text-sm font-medium text-blue-300 transition-colors hover:border-blue-500/60 hover:bg-blue-950/30"
           >
             <Plus className="h-4 w-4" />
-            Create new collection
-          </button>
+            {tr('automation.createNewCollection')}</button>
         </div>
       </div>
 
@@ -828,12 +835,13 @@ const ThenActions: React.FC<ThenActionsProps> = ({
           className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
         />
         <span>
-          <span className="block text-sm text-gray-200">Run on new or updated images</span>
+          <span className="block text-sm text-gray-200">{tr('automation.runOnNewOrUpdated')}</span>
         </span>
       </label>
     </div>
   </section>
 );
+};
 
 interface PreviewPanelProps {
   preview: PreviewState;
@@ -863,22 +871,24 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   onDelete,
   updateAutomationRule,
   setDraft,
-}) => (
+}) => {
+  const { t: tr } = useTranslation();
+return (
   <aside className="space-y-3">
     <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4">
-      <h3 className="text-sm font-semibold text-gray-100">Preview</h3>
+      <h3 className="text-sm font-semibold text-gray-100">{tr('promptLibrary.preview')}</h3>
       <div className="mt-3 grid grid-cols-2 gap-2 text-center">
         <div className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-3">
           <div className="text-lg font-semibold text-white">{preview.matchCount}</div>
-          <div className="text-[11px] uppercase tracking-wide text-gray-500">matches</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">{tr('automation.matchesLabel')}</div>
         </div>
         <div className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-3">
           <div className="text-lg font-semibold text-white">{preview.changeCount}</div>
-          <div className="text-[11px] uppercase tracking-wide text-gray-500">changes</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">{tr('automation.changesLabel')}</div>
         </div>
       </div>
       <p className="mt-3 text-xs text-gray-500">
-        {preview.tagChangeCount} tag additions, {preview.collectionChangeCount} collection additions.
+        {tr('automation.previewAdditions', { tags: preview.tagChangeCount, collections: preview.collectionChangeCount })}
       </p>
     </div>
 
@@ -887,20 +897,19 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         type="button"
         onClick={() => void onSave()}
         disabled={!canSave}
-        title={!canSave ? "Add a name, at least one condition, and an action to save" : "Save Rule"}
+        title={!canSave ? tr('automation.saveDisabledTooltip') : tr('automation.saveRule')}
         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Save Rule
-      </button>
+        {tr('automation.saveRule')}</button>
       <button
         type="button"
         onClick={() => void onApply()}
         disabled={isApplying || !canSave}
-        title={isApplying ? "Applying rule..." : !canSave ? "Add a name, at least one condition, and an action to apply" : "Apply Now"}
+        title={isApplying ? tr('automation.applyingRuleTooltip') : !canSave ? tr('automation.applyDisabledTooltip') : tr('automation.applyNow')}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-emerald-950/40 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Play className="h-4 w-4" />
-        {isApplying ? 'Applying...' : 'Apply Now'}
+        {isApplying ? tr('automation.applying') : tr('automation.applyNow')}
       </button>
 
       {isExistingRule && editingRuleId && (
@@ -915,7 +924,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800"
           >
             <Power className="h-4 w-4" />
-            {draft.enabled ? 'Disable Rule' : 'Enable Rule'}
+            {draft.enabled ? tr('automation.disableRule') : tr('automation.enableRule')}
           </button>
           <button
             type="button"
@@ -923,18 +932,17 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800"
           >
             <Copy className="h-4 w-4" />
-            Duplicate
-          </button>
+            {tr('promptLibrary.duplicate')}</button>
           <button
             type="button"
             onClick={() => void onDelete(editingRuleId)}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-900/50 px-4 py-2 text-sm text-rose-200 transition-colors hover:bg-rose-950/40"
           >
             <Trash2 className="h-4 w-4" />
-            Delete
-          </button>
+            {tr('libraryGallery.delete')}</button>
         </>
       )}
     </div>
   </aside>
 );
+};

@@ -1,3 +1,6 @@
+import { useTranslation } from '../../i18n/useTranslation';
+import { formatMessage } from '../../i18n/messages.mjs';
+import { translatePromptMessage } from '../../i18n/promptMessages';
 import { useEffect, useState } from 'react';
 import type { SavedPrompt } from '../../types';
 import type { BoardPromptInput } from '../../services/boards/types';
@@ -13,17 +16,18 @@ import { addPromptToBoard } from '../../services/boards/prompts';
 export function materializeCanvasPrompt(item: SavedPrompt, values?: Record<string, string>): BoardPromptInput {
   const result = compilePrompt(item, values);
   if (result.errors.length) throw new Error(result.errors.join(' '));
-  if (!(result.positivePrompt.trim() || result.negativePrompt.trim())) throw new Error('Fill a prompt before adding it.');
+  if (!(result.positivePrompt.trim() || result.negativePrompt.trim())) throw new Error(formatMessage('en', 'promptLibrary.fillRequired'));
   return { title: itemTitle(item), positivePrompt: result.positivePrompt, negativePrompt: result.negativePrompt, origin: { kind: 'library', id: item.id, revision: item.revision ?? 1 } };
 }
 export default function PromptCardDialog({ item, destination = false, initialValues, onPrepared, onClose }: { item: SavedPrompt; destination?: boolean; initialValues?: Record<string, string>; onPrepared(input: BoardPromptInput): void; onClose(): void }) {
 
+  const { t } = useTranslation();
   const [values, setValues] = useState<Record<string, string>>(() => initialValues ?? getPreviewValues('library', item.id));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const ref = usePromptDialogFocus(onClose, busy);
   const [addedBoard, setAddedBoard] = useState<string | null>(null);
-  const [name, setName] = useState('Untitled board');
+  const [name, setName] = useState(t('canvas.untitled'));
   const summaries = useBoardStore(state => state.summaries);
   const { canUseCanvas, showProModal } = useFeatureAccess();
   const compiled = compilePrompt(item, values);
@@ -39,26 +43,26 @@ export default function PromptCardDialog({ item, destination = false, initialVal
       if (addedBoard) { await useBoardStore.getState().flushBoard(addedBoard); onPrepared(input); return; }
       if (destination) {
         const store = useBoardStore.getState();
-        const boardId = id ?? await store.createBoard(name.trim() || 'Untitled board');
+        const boardId = id ?? await store.createBoard(name.trim() || t('canvas.untitled'));
         if (id) await store.openBoard(id);
         addPromptToBoard(boardId, input);
         setAddedBoard(boardId);
         await useBoardStore.getState().flushBoard(boardId);
       }
       onPrepared(input);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add prompt.'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'canvas.addPromptFailed'); }
     finally { setBusy(false); }
   };
   return <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 p-4" onKeyDown={event => event.stopPropagation()}>
-    <section ref={ref} role="dialog" aria-modal="true" aria-label="Add prompt to Canvas" className="scrollbar-sidebar max-h-[85vh] w-full max-w-lg space-y-3 overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
-      <h2>Add prompt to Canvas</h2><p className="text-xs text-gray-400">{itemTitle(item)} · Independent copy</p>
+    <section ref={ref} role="dialog" aria-modal="true" aria-label={t('promptLibrary.addCanvas')} className="scrollbar-sidebar max-h-[85vh] w-full max-w-lg space-y-3 overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
+      <h2>{t('promptLibrary.addCanvas')}</h2><p className="text-xs text-gray-400">{t('promptLibrary.independent', { title: itemTitle(item) })}</p>
       {!!variables.length && <VariableValues variables={variables} values={values} onChange={setValues} />}
-      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs">{compiled.positivePrompt}{compiled.negativePrompt ? `\nNegative prompt: ${compiled.negativePrompt}` : ''}</pre>
-      {(error || variableError || compiled.errors.length > 0) && <p role="alert" className="text-sm text-red-300">{error || variableError || compiled.errors.join(' ')}</p>}
+      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs">{compiled.positivePrompt}{compiled.negativePrompt ? t('promptLibrary.negativeBlock', { prompt: compiled.negativePrompt }) : ''}</pre>
+      {(error || variableError || compiled.errors.length > 0) && <p role="alert" className="text-sm text-red-300">{(error ? [error] : variableError ? [variableError] : compiled.errors).map(message => translatePromptMessage(message, t)).join(' ')}</p>}
       <fieldset disabled={busy || !!variableError || !!compiled.errors.length} className="flex flex-col gap-2">
-        {addedBoard ? <button className={buttonClass} onClick={() => void prepare()}>Retry saving card</button> : destination ? <><label>New board name<input aria-label="New board name" className="board-input" value={name} onChange={event => setName(event.target.value)} /></label><button className={buttonClass} onClick={() => void prepare()}>Create board and add</button>{summaries.filter(board => !board.error).map(board => <button key={board.id} className={buttonClass} onClick={() => void prepare(board.id)}>{board.name}</button>)}</> : <button className={buttonClass} onClick={() => void prepare()}>Confirm values</button>}
+        {addedBoard ? <button className={buttonClass} onClick={() => void prepare()}>{t('promptLibrary.retryCard')}</button> : destination ? <><label>{t('canvas.newName')}<input aria-label={t('canvas.newName')} className="board-input" value={name} onChange={event => setName(event.target.value)} /></label><button className={buttonClass} onClick={() => void prepare()}>{t('canvas.createAndAdd')}</button>{summaries.filter(board => !board.error).map(board => <button key={board.id} className={buttonClass} onClick={() => void prepare(board.id)}>{board.name}</button>)}</> : <button className={buttonClass} onClick={() => void prepare()}>{t('promptLibrary.confirmValues')}</button>}
       </fieldset>
-      <button className={buttonClass} disabled={busy} onClick={onClose}>Cancel</button>
+      <button className={buttonClass} disabled={busy} onClick={onClose}>{t('libraryFolders.cancel')}</button>
     </section>
   </div>;
 }

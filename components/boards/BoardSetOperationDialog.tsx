@@ -1,9 +1,11 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
 
 export default function BoardSetOperationDialog({ frames, disabled, confirm, close }: {
   frames: BoardSmartFrameObject[]; disabled: boolean; confirm(left: string, right: string): void; close(): void;
 }) {
+  const { t } = useTranslation();
   const sorted = [...frames].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id));
   const [inverted, setInverted] = useState(false);
   const [left, right] = inverted ? [sorted[1], sorted[0]] : sorted;
@@ -25,7 +27,7 @@ export default function BoardSetOperationDialog({ frames, disabled, confirm, clo
     };
   }, [hasFrames]);
   if (!left || !right) return null;
-  return <div className="board-dialog-backdrop"><div ref={dialogRef} tabIndex={-1} className="board-query-dialog" role="dialog" aria-modal="true" aria-label="Difference between frames"
+  return <div className="board-dialog-backdrop"><div ref={dialogRef} tabIndex={-1} className="board-query-dialog" role="dialog" aria-modal="true" aria-label={t('canvas.differenceBetween')}
     onKeyDown={event => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); close(); }
@@ -40,10 +42,10 @@ export default function BoardSetOperationDialog({ frames, disabled, confirm, clo
         }
       }
     }}>
-    <h2>Difference</h2><p><strong>{left.title}</strong> minus <strong>{right.title}</strong></p>
-    <p>Keep images in the first frame that are absent from the second.</p>
-    <button className="board-button" disabled={disabled} onClick={() => setInverted(!inverted)}>Swap A and B</button>
-    <div className="board-dialog-actions"><button className="board-button" disabled={disabled} onClick={() => confirm(left.id, right.id)}>Create difference</button>
-    <button className="board-button" onClick={close}>Cancel</button></div>
+    <h2>{t('canvas.difference')}</h2><p>{t('canvas.subtractExpression', { left: left.title, right: right.title })}</p>
+    <p>{t('canvas.differenceHelp')}</p>
+    <button className="board-button" disabled={disabled} onClick={() => setInverted(!inverted)}>{t('canvas.swapFrames')}</button>
+    <div className="board-dialog-actions"><button className="board-button" disabled={disabled} onClick={() => confirm(left.id, right.id)}>{t('canvas.createDifference')}</button>
+    <button className="board-button" onClick={close}>{t('libraryFolders.cancel')}</button></div>
   </div></div>;
 }

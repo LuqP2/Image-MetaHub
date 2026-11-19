@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import BoardRichText from './BoardRichText';
 import { boardFontFamily } from '../../services/boards/fontFamily';
 import { memo, useEffect, useState } from 'react';
@@ -7,6 +8,7 @@ import BoardNodeControls from './BoardNodeControls';
 import { useBoardEditor } from './BoardEditorContext';
 
 export default memo(function BoardTextNode({ data, selected }: NodeProps<BoardFlowNode>) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const [localEditing, setEditing] = useState(false);
   const editing = localEditing || editor.editingObjectId === data.object.id;
@@ -15,10 +17,10 @@ export default memo(function BoardTextNode({ data, selected }: NodeProps<BoardFl
   if (object.type !== 'text') return null;
   return <div className="board-text" style={{ color: object.color === '#e5e7eb' ? 'rgb(var(--gray-100))' : object.color, fontSize: object.fontSize, fontFamily: boardFontFamily(object.fontFamily), textAlign: object.textAlign ?? 'left', backgroundColor: object.backgroundColor ?? undefined, borderRadius: `${Math.min(object.backgroundRoundness ?? 8, 24)}px` }} onDoubleClick={() => { if (editor.editable) { editor.begin(); setEditing(true); } }}>
     <BoardNodeControls selected={!!selected} />
-    {editing && editor.editable ? <textarea className="board-textarea nodrag nowheel" autoFocus value={object.text} aria-label="Board text"
+    {editing && editor.editable ? <textarea className="board-textarea nodrag nowheel" autoFocus value={object.text} aria-label={t('canvas.boardText')}
       onChange={event => editor.change({ id: object.id, text: event.target.value })}
       onBlur={() => { editor.commit(); setEditing(false); editor.editObject?.(null); }}
       onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { editor.cancel(); setEditing(false); editor.editObject?.(null); } }} />
-      : <div className="board-text-content"><BoardRichText text={object.text || 'Double-click to edit'} /></div>}
+      : <div className="board-text-content"><BoardRichText text={object.text || t('canvas.doubleEdit')} /></div>}
   </div>;
 });

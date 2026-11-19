@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 /**
  * ComfyUI Models Hook
  * Fetches available models, LoRAs, samplers, and schedulers from ComfyUI API
@@ -30,6 +31,8 @@ interface UseComfyUIModelsReturn {
  * Hook to fetch and cache available ComfyUI resources
  */
 export function useComfyUIModels(): UseComfyUIModelsReturn {
+  const { t: tr } = useTranslation();
+
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const [resources, setResources] = useState<ComfyUIResources | null>(null);
@@ -61,7 +64,7 @@ export function useComfyUIModels(): UseComfyUIModelsReturn {
         schedulers: catalog.schedulers.length,
       });
     } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch ComfyUI resources';
+      const errorMessage = err.message || "Failed to fetch ComfyUI resources";
       setError(errorMessage);
       setComfyUIConnectionStatus('error');
       console.error('[useComfyUIModels] Error:', err);
@@ -78,7 +81,7 @@ export function useComfyUIModels(): UseComfyUIModelsReturn {
   return {
     resources,
     isLoading,
-    error,
+    error: error === "Failed to fetch ComfyUI resources" ? tr('integrations.comfyWorkflow.fetchResourcesFailed') : error,
     refresh: fetchResources,
   };
 }

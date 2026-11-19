@@ -1,3 +1,5 @@
+import { translatePresentationMessage } from '../i18n/presentationMessages';
+import { useTranslation } from '../i18n/useTranslation';
 import { createPortal } from 'react-dom';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, type ListChildComponentProps } from 'react-window';
@@ -143,6 +145,8 @@ const WorkspaceThumbnailButton: React.FC<{
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDragStart: (event: React.DragEvent<HTMLElement>, image: IndexedImage, directoryPath?: string) => void;
 }> = ({ image, isActive, isSelected, directoryPath, onClick, onDoubleClick, onKeyDown, onToggleSelected, onToggleFavorite, onContextMenu, onDragStart }) => {
+  const { t: tr } = useTranslation();
+
   useThumbnail(image);
   const thumbnail = useResolvedThumbnail(image);
   const dimensionsLabel = getImageDimensionsLabel(image);
@@ -157,7 +161,7 @@ const WorkspaceThumbnailButton: React.FC<{
         onContextMenu={onContextMenu}
         className="flex h-full min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline focus-visible:outline-accent"
         title={prompt ? image.name + '\n\n' + prompt : image.name}
-        aria-label={`Inspect ${image.name}; press Enter to open the full viewer`}
+        aria-label={tr('integrations.workspace.inspectImageAria', { name: image.name })}
         aria-current={isActive || undefined}
         draggable={Boolean(directoryPath && window.electronAPI?.startFileDrag)}
         onDragStart={event => onDragStart(event, image, directoryPath)}
@@ -174,14 +178,14 @@ const WorkspaceThumbnailButton: React.FC<{
       </button>
       <button type="button" onClick={onToggleSelected}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent ${isSelected ? 'text-accent' : 'text-gray-400'}`}
-        aria-pressed={isSelected} title={isSelected ? 'Deselect image' : 'Select image'}
-        aria-label={`${isSelected ? 'Deselect' : 'Select'} ${image.name}`}>
+        aria-pressed={isSelected} title={isSelected ? tr('libraryGallery.deselectImage') : tr('libraryGallery.selectImage')}
+        aria-label={tr(isSelected ? 'integrations.workspace.deselectNamed' : 'integrations.workspace.selectNamed', { name: image.name })}>
         {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
       </button>
       <button type="button" onClick={onToggleFavorite}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent ${image.isFavorite ? 'text-pink-400 light:text-pink-700' : 'text-gray-400'}`}
-        aria-pressed={Boolean(image.isFavorite)} title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        aria-label={`${image.isFavorite ? 'Unfavorite' : 'Favorite'} ${image.name}`}>
+        aria-pressed={Boolean(image.isFavorite)} title={image.isFavorite ? tr('libraryGallery.removeFromFavorites') : tr('libraryGallery.addToFavorites')}
+        aria-label={tr(image.isFavorite ? 'integrations.workspace.unfavoriteNamed' : 'integrations.workspace.favoriteNamed', { name: image.name })}>
         <Heart size={14} fill={image.isFavorite ? 'currentColor' : 'none'} />
       </button>
     </div>
@@ -280,6 +284,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   onOpenPromptLibrary = () => {},
   onViewPromptSource = () => {},
 }) => {
+  const { t: tr } = useTranslation();
+
 
   const [hasOverlay, setHasOverlay] = useState(false);
   const { canUseAdvancedPromptLibrary, showProModal } = useFeatureAccess();
@@ -310,9 +316,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     if (!['prompt', 'block'].includes(kind) || typeof text !== 'string' || !text.trim()) return;
     if (kind === 'block' && !canUseAdvancedPromptLibrary) { showProModal('prompt_library_advanced'); return; }
     void useSavedPromptStore.getState().mutate({ action: 'create', kind, item: kind === 'block' ? { text } : { positivePrompt: text } })
-      .then(() => setSaveSelectionStatus(kind === 'block' ? 'Block saved.' : 'Prompt saved.'))
-      .catch(error => setSaveSelectionStatus(error instanceof Error ? error.message : 'Could not save selection.'));
-  }), [canUseAdvancedPromptLibrary, showProModal]);
+      .then(() => setSaveSelectionStatus(kind === 'block' ? tr('promptLibrary.blockSaved') : tr('integrations.inspector.promptSaved')))
+      .catch(error => setSaveSelectionStatus(error instanceof Error ? error.message : tr('integrations.workspace.saveSelectionFailed')));
+  }), [canUseAdvancedPromptLibrary, showProModal, tr]);
   useEffect(() => { if (saveSelectionStatus) { const timer = setTimeout(() => setSaveSelectionStatus(''), 4000); return () => clearTimeout(timer); } }, [saveSelectionStatus]);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isRatingMenuOpen, setIsRatingMenuOpen] = useState(false);
@@ -518,7 +524,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const openExternally = async () => {
     const result = await window.electronAPI?.openExternalUrl?.(targetUrl);
     if (!result?.success) {
-      setConnectionMessage(result?.error || 'Failed to open ComfyUI externally.');
+      setConnectionMessage(result?.error || tr('integrations.workspace.openExternalFailed'));
     }
   };
 
@@ -532,7 +538,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       setViewState(result.state);
     }
     if (!result?.success) {
-      setConnectionMessage(result?.error || 'Failed to reload ComfyUI.');
+      setConnectionMessage(result?.error || tr('integrations.workspace.reloadFailed'));
     }
   };
 
@@ -552,12 +558,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
     handledWorkflowLoadRequestIdRef.current = workflowLoadRequest.id;
     onWorkflowLoadRequestHandled?.(workflowLoadRequest.id);
-    setConnectionMessage('Loading workflow in ComfyUI...');
+    setConnectionMessage(tr('integrations.workspace.loadingWorkflow'));
     setLoadFailure(null);
 
     const loadWorkflow = async () => {
       if (!isElectron || !window.electronAPI?.comfyUIViewLoadWorkflow) {
-        setConnectionMessage('Embedded ComfyUI workflow loading is only available in the desktop app.');
+        setConnectionMessage(tr('integrations.workspace.loadWorkflowDesktopOnly'));
         return;
       }
 
@@ -584,15 +590,15 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           setConnectionMessage(
             result.message ||
             (result.loadedInNewTab
-              ? 'Workflow opened in a new ComfyUI tab.'
-              : 'Workflow loaded into the current ComfyUI canvas.')
+              ? tr('integrations.workspace.workflowOpenedNewTab')
+              : tr('integrations.workspace.workflowLoadedCanvas'))
           );
           return;
         }
 
-        setConnectionMessage(result?.error || 'Failed to load workflow in ComfyUI.');
+        setConnectionMessage(result?.error || tr('integrations.workspace.loadWorkflowFailed'));
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.';
+        const message = error instanceof Error ? error.message : tr('integrations.workspace.loadWorkflowFailed');
         setConnectionMessage(message);
         useImageStore.getState().setError(message);
       }
@@ -609,6 +615,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     onWorkflowLoadRequestHandled,
     targetUrl,
     workflowLoadRequest,
+    tr,
   ]);
 
   const setSidebarWidth = (width: number) => {
@@ -658,26 +665,26 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   const copyAssetValue = useCallback((label: string, value: string) => {
     const text = value.trim();
-    if (!text || text === 'Not found') {
+    if (!text) {
       return;
     }
 
     copyTextToClipboard(text)
       .then((result) => {
         if (result.success) {
-          setAssetActionMessage(`${label} copied.`);
+          setAssetActionMessage(tr('integrations.workspace.fieldCopied', { label: label }));
         } else {
           console.error(`Failed to copy ${label}:`, result.error);
-          setAssetActionMessage(`Failed to copy ${label}.`);
+          setAssetActionMessage(tr('imageViewer.actions.copyFailed', { label: label }));
         }
       });
-  }, []);
+  }, [tr]);
 
   const copyAssetPrompt = useCallback((contextImage: IndexedImage) => {
     const prompt = getImagePrompt(contextImage);
     setAssetContextMenu(null);
-    copyAssetValue('Prompt', prompt);
-  }, [copyAssetValue]);
+    copyAssetValue(tr('libraryGallery.prompt'), prompt);
+  }, [copyAssetValue, tr]);
 
   const toggleSidebarCollapsed = useCallback(() => {
     setIsSidebarCollapsed((current) => {
@@ -763,12 +770,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   const openCompareMode = useCallback((targetImages: IndexedImage[]) => {
     if (targetImages.length < 2 || targetImages.length > 4) {
-      setAssetActionMessage('Select 2 to 4 images to compare.');
+      setAssetActionMessage(tr('integrations.workspace.compareRangeError'));
       return;
     }
     onOpenCompare?.(targetImages);
     setAssetContextMenu(null);
-  }, [onOpenCompare]);
+  }, [onOpenCompare, tr]);
 
   const exportImages = useCallback((targetImages: IndexedImage[]) => {
     const imageIds = targetImages.map((candidate) => candidate.id);
@@ -793,8 +800,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     if (!skipDeleteConfirmation) {
       const confirmed = window.confirm(
         targetImages.length === 1
-          ? `Delete "${targetImages[0].name}"? This sends the file to the recycle bin.`
-          : `Delete ${targetImages.length} selected images? This sends the files to the recycle bin.`,
+          ? tr('integrations.workspace.deleteSingleConfirm', { name: targetImages[0].name })
+          : tr('integrations.workspace.deleteMultipleConfirm', { count: targetImages.length }),
       );
       if (!confirmed) {
         return;
@@ -814,9 +821,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     }
 
     const failedCount = results.length - deletedIds.length;
-    setAssetActionMessage(failedCount > 0 ? `Deleted ${deletedIds.length}; ${failedCount} failed.` : `Deleted ${deletedIds.length} image${deletedIds.length === 1 ? '' : 's'}.`);
+    setAssetActionMessage(failedCount > 0 ? tr('integrations.workspace.deletedWithFailures', { deleted: deletedIds.length, failed: failedCount }) : tr('integrations.workspace.deletedImages', { count: deletedIds.length }));
     setAssetContextMenu(null);
-  }, [removeImages]);
+  }, [removeImages, tr]);
 
   const setSelectedRating = useCallback((rating: ImageRating | null) => {
     if (selectedWorkspaceIds.length === 0) {
@@ -850,11 +857,11 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const openWorkflowInComfyUI = useCallback(async (contextImage: IndexedImage) => {
     setAssetContextMenu(null);
     inspectWorkspaceImage(contextImage);
-    setConnectionMessage('Loading workflow in ComfyUI...');
+    setConnectionMessage(tr('integrations.workspace.loadingWorkflow'));
     setLoadFailure(null);
 
     if (!isElectron || !window.electronAPI?.comfyUIViewLoadWorkflow) {
-      setConnectionMessage('Embedded ComfyUI workflow loading is only available in the desktop app.');
+      setConnectionMessage(tr('integrations.workspace.loadWorkflowDesktopOnly'));
       return;
     }
 
@@ -881,19 +888,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
         setConnectionMessage(
           result.message ||
           (result.loadedInNewTab
-            ? 'Workflow opened in a new ComfyUI tab.'
-            : 'Workflow loaded into the current ComfyUI canvas.')
+            ? tr('integrations.workspace.workflowOpenedNewTab')
+            : tr('integrations.workspace.workflowLoadedCanvas'))
         );
         return;
       }
 
-      setConnectionMessage(result?.error || 'Failed to load workflow in ComfyUI.');
+      setConnectionMessage(result?.error || tr('integrations.workspace.loadWorkflowFailed'));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load workflow in ComfyUI.';
+      const message = error instanceof Error ? error.message : tr('integrations.workspace.loadWorkflowFailed');
       setConnectionMessage(message);
       useImageStore.getState().setError(message);
     }
-  }, [directoryPath, directoryPathByImageId, image?.id, inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl]);
+  }, [directoryPath, directoryPathByImageId, image?.id, inspectWorkspaceImage, isElectron, setComfyUIConnectionStatus, targetUrl, tr]);
 
   const exportAssetImage = useCallback((contextImage: IndexedImage) => {
     exportImages(getContextTargetImages(contextImage));
@@ -902,16 +909,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const exportAssetWorkflow = useCallback(async (contextImage: IndexedImage) => {
     setAssetContextMenu(null);
     if (!window.electronAPI?.showSaveDialog || !window.electronAPI?.writeFile) {
-      setAssetActionMessage('Workflow export is only available in the desktop app.');
+      setAssetActionMessage(tr('integrations.workspace.exportWorkflowDesktopOnly'));
       return;
     }
 
     try {
       const defaultName = `${contextImage.name.replace(/\.[^.]+$/, '') || 'workflow'}.json`;
       const saveResult = await window.electronAPI.showSaveDialog({
-        title: 'Export ComfyUI workflow',
+        title: tr('integrations.workspace.exportWorkflowDialogTitle'),
         defaultPath: defaultName,
-        filters: [{ name: 'ComfyUI workflow', extensions: ['json'] }],
+        filters: [{ name: tr('integrations.workspace.workflowFilterName'), extensions: ['json'] }],
       });
       if (!saveResult.success || saveResult.canceled || !saveResult.path) {
         return;
@@ -919,11 +926,11 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
       const workflowJson = formatImageForComfyUI(contextImage);
       const writeResult = await window.electronAPI.writeFile(saveResult.path, workflowJson);
-      setAssetActionMessage(writeResult.success ? 'Workflow exported.' : writeResult.error || 'Failed to export workflow.');
+      setAssetActionMessage(writeResult.success ? tr('integrations.workspace.workflowExported') : writeResult.error || tr('integrations.workspace.exportWorkflowFailed'));
     } catch (error) {
       setAssetActionMessage(error instanceof Error ? error.message : String(error));
     }
-  }, []);
+  }, [tr]);
 
   const deleteAsset = useCallback(async (contextImage: IndexedImage) => {
     await deleteImages(getContextTargetImages(contextImage));
@@ -968,16 +975,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-gray-800 bg-gray-950 p-8 text-center">
         <div className="max-w-md">
           <Rocket className="mx-auto h-10 w-10 text-purple-300 light:text-purple-800" />
-          <h2 className="mt-4 text-lg font-semibold text-gray-100">ComfyUI workspace is desktop-only</h2>
+          <h2 className="mt-4 text-lg font-semibold text-gray-100">{tr('integrations.workspace.desktopOnlyTitle')}</h2>
           <p className="mt-2 text-sm text-gray-400">
-            The embedded ComfyUI browser uses Electron. In the browser build, use the external ComfyUI window.
-          </p>
+            {tr('integrations.workspace.desktopOnlyDescription')}</p>
           <button
             onClick={() => window.open(targetUrl, '_blank', 'noopener,noreferrer')}
             className="mt-5 rounded-md border border-purple-500/40 bg-purple-500/15 px-4 py-2 text-sm font-semibold text-purple-100 light:text-purple-900 hover:bg-purple-500/25"
           >
-            Open ComfyUI externally
-          </button>
+            {tr('integrations.workspace.openComfyExternally')}</button>
         </div>
       </div>
     );
@@ -987,26 +992,26 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-950">
       {saveSelectionStatus && <p role="status" className="shrink-0 border-b border-gray-800 px-3 py-2 text-xs text-accent">{saveSelectionStatus}</p>}
       {toolbarHost && createPortal(
-        <div className="flex items-center gap-1" role="toolbar" aria-label="ComfyUI navigation">
-          <span className={`inline-flex h-5 w-5 items-center justify-center rounded border ${connectionClasses}`} title={connectionMessage || `ComfyUI: ${comfyUILastConnectionStatus}`}>
+        <div className="flex items-center gap-1" role="toolbar" aria-label={tr('integrations.workspace.navigationLabel')}>
+          <span className={`inline-flex h-5 w-5 items-center justify-center rounded border ${connectionClasses}`} title={connectionMessage ? translatePresentationMessage(connectionMessage, tr) : tr('shell.connection', { status: tr(comfyUILastConnectionStatus === 'connected' ? 'settings.integrations.connected' : comfyUILastConnectionStatus === 'error' ? 'shell.errorStatus' : 'libraryGallery.unknown') })}>
             {viewState.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : loadFailure || comfyUILastConnectionStatus === 'error' ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
           </span>
-          <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back" aria-label="Back">
+          <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title={tr('libraryGallery.back')} aria-label={tr('libraryGallery.back')}>
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward" aria-label="Forward">
+          <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title={tr('integrations.workspace.forward')} aria-label={tr('integrations.workspace.forward')}>
             <ArrowRight className="h-4 w-4" />
           </button>
-          <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally" aria-label="Open externally">
+          <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title={tr('integrations.workspace.openExternally')} aria-label={tr('integrations.workspace.openExternally')}>
             <ExternalLink className="h-4 w-4" />
           </button>
-          <button onClick={reloadEmbeddedView} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Refresh ComfyUI" aria-label="Refresh ComfyUI">
+          <button onClick={reloadEmbeddedView} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title={tr('integrations.workspace.refreshComfy')} aria-label={tr('integrations.workspace.refreshComfy')}>
             <RefreshCw className="h-4 w-4" />
           </button>
-          <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings" aria-label="Open integration settings">
+          <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title={tr('integrations.workspace.openIntegrationSettings')} aria-label={tr('integrations.workspace.openIntegrationSettings')}>
             <SlidersHorizontal className="h-4 w-4" />
           </button>
-          <button onClick={onOpenQueue} className="relative rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open generation queue" aria-label="Open generation queue">
+          <button onClick={onOpenQueue} className="relative rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title={tr('integrations.inspector.openGenerationQueue')} aria-label={tr('integrations.inspector.openGenerationQueue')}>
             <ListChecks className="h-4 w-4" />
             {queueCount > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold text-gray-950">{queueCount}</span>}
           </button>
@@ -1026,16 +1031,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             libraryPanel={visible => (
               <div className="flex h-full min-h-0 flex-col">
                 <div className="shrink-0 space-y-2 border-b border-gray-800 p-2">
-                  <WorkspaceSearch label="Search library" query={librarySearch} onChange={setLibrarySearch} />
+                  <WorkspaceSearch label={tr('integrations.workspace.searchLibrary')} query={librarySearch} onChange={setLibrarySearch} />
                   <div className={workspaceFieldClass + ' flex items-center gap-1.5 focus-within:border-accent'}>
                     <Folder size={14} className="shrink-0 text-gray-400" />
                     <select
                       value={selectedDirectoryId || ''}
                       onChange={event => onSelectDirectory?.(event.target.value || null)}
                       className="min-w-0 flex-1 bg-transparent text-xs text-gray-200 outline-none"
-                      aria-label="Change workspace folder"
+                      aria-label={tr('integrations.workspace.changeFolder')}
                     >
-                      <option value="" className="bg-gray-900">All folders</option>
+                      <option value="" className="bg-gray-900">{tr('canvas.allFolders')}</option>
                       {directories.map(directory => (
                         <option key={directory.id} value={directory.id} className="bg-gray-900">{directory.name}</option>
                       ))}
@@ -1043,9 +1048,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   </div>
                   <label
                     className={workspaceFieldClass + ' flex cursor-pointer items-center justify-between gap-2 text-gray-400 focus-within:border-accent'}
-                    title="Use the current Library filters for this workspace"
+                    title={tr('integrations.workspace.applyLibraryFiltersTooltip')}
                   >
-                    <span className="truncate">Apply Library Filters</span>
+                    <span className="truncate">{tr('integrations.workspace.applyLibraryFilters')}</span>
                     <input
                       type="checkbox"
                       checked={applyLibraryFilters}
@@ -1054,31 +1059,31 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                     />
                   </label>
                   <div className="flex min-h-7 items-center justify-between gap-1 text-xs tabular-nums text-gray-400">
-                    <span role="status">{visibleNavigationImages.length.toLocaleString()} {visibleNavigationImages.length === 1 ? 'image' : 'images'}</span>
-                    {selectedWorkspaceCount > 0 && <span>{selectedWorkspaceCount} selected</span>}
+                    <span role="status">{tr('libraryGallery.imageCount', { count: visibleNavigationImages.length })}</span>
+                    {selectedWorkspaceCount > 0 && <span>{tr('libraryGallery.selectedCount', { count: selectedWorkspaceCount })}</span>}
                   </div>
-                  {selectedWorkspaceCount > 0 && <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Selected image actions">
+                  {selectedWorkspaceCount > 0 && <div className="flex flex-wrap items-center gap-1" role="group" aria-label={tr('integrations.workspace.selectedImageActions')}>
                     <button
                       onClick={handleBulkExport}
                       className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
-                      title="Export selected"
-                      aria-label="Export selected"
+                      title={tr('promptLibrary.exportSelected')}
+                      aria-label={tr('promptLibrary.exportSelected')}
                     >
                       <Package className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={handleBulkFavorite}
                       className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-pink-300 light:hover:text-pink-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                      title={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
-                      aria-label={allSelectedWorkspaceFavorites ? 'Remove selected from favorites' : 'Favorite selected'}
+                      title={allSelectedWorkspaceFavorites ? tr('integrations.workspace.removeSelectedFavorites') : tr('integrations.workspace.favoriteSelected')}
+                      aria-label={allSelectedWorkspaceFavorites ? tr('integrations.workspace.removeSelectedFavorites') : tr('integrations.workspace.favoriteSelected')}
                     >
                       <Heart className={`h-3.5 w-3.5 ${allSelectedWorkspaceFavorites ? 'fill-current text-pink-300 light:text-pink-800' : ''}`} />
                     </button>
                     <button
                       onClick={handleBulkTag}
                       className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-blue-300 light:hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                      title="Tag selected"
-                      aria-label="Tag selected"
+                      title={tr('integrations.workspace.tagSelected')}
+                      aria-label={tr('integrations.workspace.tagSelected')}
                     >
                       <Tag className="h-3.5 w-3.5" />
                     </button>
@@ -1086,8 +1091,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                       <button
                         onClick={() => setIsRatingMenuOpen((open) => !open)}
                         className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-yellow-300 light:hover:text-yellow-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                        title="Rate selected"
-                        aria-label="Rate selected"
+                        title={tr('integrations.workspace.rateSelected')}
+                        aria-label={tr('integrations.workspace.rateSelected')}
                       >
                         <Star className="h-3.5 w-3.5" />
                       </button>
@@ -1099,7 +1104,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                               onClick={() => setSelectedRating(rating === 0 ? null : (rating as ImageRating))}
                               className="block w-full px-2 py-1 text-left text-xs text-gray-200 hover:bg-gray-800"
                             >
-                              {rating === 0 ? 'Clear' : `${rating} star${rating === 1 ? '' : 's'}`}
+                              {rating === 0 ? tr('libraryGallery.clear') : tr('librarySearch.starCount', { count: rating })}
                             </button>
                           ))}
                         </div>
@@ -1109,32 +1114,32 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                       onClick={handleBulkCompare}
                       disabled={selectedWorkspaceCount < 2 || selectedWorkspaceCount > 4}
                       className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-purple-300 light:hover:text-purple-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                      title={selectedWorkspaceCount < 2 ? 'Select at least 2 images to compare' : selectedWorkspaceCount > 4 ? 'Select at most 4 images to compare' : 'Compare selected'}
-                      aria-label="Compare selected"
+                      title={selectedWorkspaceCount < 2 ? tr('integrations.workspace.compareMinError') : selectedWorkspaceCount > 4 ? tr('integrations.workspace.compareMaxError') : tr('integrations.workspace.compareSelected')}
+                      aria-label={tr('integrations.workspace.compareSelected')}
                     >
                       <GitCompare className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={handleBulkDelete}
                       className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-red-300 light:hover:text-red-800 disabled:cursor-not-allowed disabled:text-gray-700"
-                      title="Delete selected"
-                      aria-label="Delete selected"
+                      title={tr('integrations.workspace.deleteSelected')}
+                      aria-label={tr('integrations.workspace.deleteSelected')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={clearWorkspaceSelection}
                       className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:text-gray-700"
-                      title="Clear selection"
-                      aria-label="Clear selection"
+                      title={tr('libraryGallery.clearSelection')}
+                      aria-label={tr('libraryGallery.clearSelection')}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>}
-                  {assetActionMessage && <p role="status" className="text-xs text-gray-400">{assetActionMessage}</p>}
+                  {assetActionMessage && <p role="status" className="text-xs text-gray-400">{translatePresentationMessage(assetActionMessage, tr)}</p>}
                 </div>
                 {visible && (visibleNavigationImages.length === 0 ? (
-                  <p className="p-3 text-xs text-gray-400">{librarySearch.trim() ? 'No matching images.' : 'No images in this view.'}</p>
+                  <p className="p-3 text-xs text-gray-400">{librarySearch.trim() ? tr('promptLibrary.noMatchingImages') : tr('integrations.workspace.noImagesInView')}</p>
                 ) : (
                   <div className="min-h-0 flex-1">
                     <AutoSizer disableWidth>{({ height }) => (
@@ -1180,7 +1185,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           onPointerUp={endSidebarResize}
           onPointerCancel={endSidebarResize}
           role="separator"
-          aria-label="Resize workspace sidebar"
+          aria-label={tr('integrations.workspace.resizeSidebar')}
           aria-orientation="vertical"
           aria-valuemin={MIN_SIDEBAR_WIDTH}
           aria-valuemax={MAX_SIDEBAR_WIDTH}
@@ -1205,12 +1210,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                   <AlertTriangle className="mx-auto h-9 w-9 text-amber-300 light:text-amber-800" />
                 )}
                 <h3 className="mt-3 text-base font-semibold text-gray-100">
-                  {suspendBrowser ? 'ComfyUI browser paused during generation' : 'ComfyUI is not visible yet'}
+                  {suspendBrowser ? tr('integrations.workspace.pausedDuringGeneration') : tr('integrations.workspace.notVisibleYet')}
                 </h3>
                 <p className="mt-2 text-sm text-gray-400">
                   {suspendBrowser
-                    ? 'Image MetaHub is generating through the API and temporarily hides the embedded ComfyUI UI to reduce memory pressure.'
-                    : `Start ComfyUI and make sure it is reachable at ${targetUrl || 'the configured server URL'}.`}
+                    ? tr('integrations.workspace.pausedDuringGenerationHelp')
+                    : targetUrl ? tr('integrations.workspace.startComfyAtUrl', { url: targetUrl }) : tr('integrations.workspace.startComfyConfiguredUrl')}
                 </p>
                 {!suspendBrowser && (
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -1219,22 +1224,19 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                       className="inline-flex items-center gap-2 rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-sm font-semibold text-purple-100 light:text-purple-900 hover:bg-purple-500/25"
                     >
                       <RefreshCw className="h-4 w-4" />
-                      Refresh
-                    </button>
+                      {tr('integrations.workspace.refresh')}</button>
                     <button
                       onClick={onOpenSettings}
                       className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800"
                     >
                       <SlidersHorizontal className="h-4 w-4" />
-                      Settings
-                    </button>
+                      {tr('settings.navigation.settings')}</button>
                     <button
                       onClick={openExternally}
                       className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      Open externally
-                    </button>
+                      {tr('integrations.workspace.openExternally')}</button>
                   </div>
                 )}
               </div>
@@ -1259,8 +1261,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             onClick={() => inspectAsset(assetContextMenu.image)}
           >
             <Info className="h-3.5 w-3.5" />
-            Inspect Asset
-          </button>
+            {tr('integrations.workspace.inspectAsset')}</button>
           <button
             className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => {
@@ -1268,8 +1269,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             }}
           >
             <Workflow className="h-3.5 w-3.5" />
-            Open Workflow in ComfyUI
-          </button>
+            {tr('imageViewer.details.openComfy')}</button>
           <button
             className={`flex w-full items-center gap-2 px-2.5 py-2 text-left ${
               getCompareTargetImages(assetContextMenu.image).length >= 2 && getCompareTargetImages(assetContextMenu.image).length <= 4
@@ -1280,8 +1280,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             onClick={() => openCompareMode(getCompareTargetImages(assetContextMenu.image))}
           >
             <GitCompare className="h-3.5 w-3.5" />
-            Compare Mode
-          </button>
+            {tr('integrations.workspace.compareMode')}</button>
           <button
             className={`flex w-full items-center gap-2 px-2.5 py-2 text-left ${
               getImagePrompt(assetContextMenu.image) ? 'hover:bg-gray-800' : 'cursor-not-allowed text-gray-500'
@@ -1290,8 +1289,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
             onClick={() => copyAssetPrompt(assetContextMenu.image)}
           >
             <Copy className="h-3.5 w-3.5" />
-            Copy Prompt
-          </button>
+            {tr('libraryGallery.copyPrompt')}</button>
           <div className="my-1 border-t border-gray-700" />
           <button
             className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
@@ -1302,36 +1300,32 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 directoryPath: directoryPathByImageId[target.id] ?? (image?.id === target.id ? directoryPath : undefined),
                 readAuthoritativeShadow: true,
               }).then(result => {
-                setAssetActionMessage(result.status === 'already-saved' ? 'Prompt already saved.' : 'Prompt saved.');
+                setAssetActionMessage(result.status === 'already-saved' ? tr('integrations.workspace.promptAlreadySaved') : tr('integrations.inspector.promptSaved'));
               }).catch(error => {
-                setAssetActionMessage(error instanceof Error ? error.message : 'Could not save prompt.');
+                setAssetActionMessage(error instanceof Error ? error.message : tr('libraryGallery.couldNotSavePrompt'));
               });
             }}
           >
             <Bookmark size={14} />
-            Save prompt
-          </button>
+            {tr('promptLibrary.savePrompt')}</button>
           <button
             className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => exportAssetImage(assetContextMenu.image)}
           >
             <Download className="h-3.5 w-3.5" />
-            Export Image
-          </button>
+            {tr('libraryGallery.exportImage')}</button>
           <button
             className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-800"
             onClick={() => exportAssetWorkflow(assetContextMenu.image)}
           >
             <Workflow className="h-3.5 w-3.5" />
-            Export Workflow
-          </button>
+            {tr('integrations.workspace.exportWorkflow')}</button>
           <button
             className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-red-300 hover:bg-red-950/40 light:text-red-800 light:hover:bg-red-500/10"
             onClick={() => deleteAsset(assetContextMenu.image)}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </button>
+            {tr('libraryGallery.delete')}</button>
         </div>
       )}
       <TagManagerModal
