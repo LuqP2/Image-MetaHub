@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { Copy, Scissors, CopyPlus, Clipboard, Grid2X2, Frame, Download, Layers, Ungroup, Pencil, Trash2, Scan, MousePointer2, StickyNote, Type, Square, Circle, Diamond, Sparkles, PanelTop, type LucideIcon } from 'lucide-react';
 import { visualGroupingCandidates } from '../../services/boards/visualGroupOperations';
 import { createStack, unstack } from '../../services/boards/stackOperations';
@@ -16,6 +17,9 @@ import { useBoardUIStore } from '../../store/useBoardUIStore';
 export const creationTools = ['sticky', 'text', 'rectangle', 'ellipse', 'diamond', 'frame'] as const;
 export interface BoardMenuPosition { x: number; y: number; point: BoardPoint; kind: 'pane' | 'selection' | 'edge' | 'create' }
 export default function BoardContextMenu({ boardId, menu, close, create, fit, autoGroup, changeBackground }: { boardId: string; menu: BoardMenuPosition; close(): void; create(tool: BoardTool, point: BoardPoint): void; fit(): void; autoGroup?(ids?: string[]): void; changeBackground?(): void }) {
+  const { t } = useTranslation();
+  const menuKeys = { Copy: 'settings.native.copy', Cut: 'settings.native.cut', Duplicate: 'imageViewer.editor.duplicate', Paste: 'settings.native.paste', 'Arrange in grid': 'canvas.arrangeGrid', 'Create frame': 'canvas.createFrame', 'Export selection as PNG': 'canvas.exportSelectionPng', 'Export board as PNG': 'canvas.exportBoardPng', Stack: 'canvas.stack', Unstack: 'canvas.unstack', 'Edit connection': 'canvas.editConnection', Delete: 'libraryGallery.delete', 'Select all': 'canvas.selectAll', 'Fit board': 'canvas.fitBoard', 'Auto-group by visual similarity': 'canvas.autoGroup', 'Change background…': 'canvas.changeBackground', 'Show UI': 'canvas.showUi', 'Hide UI': 'canvas.hideUi' } as const;
+  const toolKeys = { sticky: 'canvas.sticky', text: 'imageViewer.editor.text', rectangle: 'imageViewer.editor.rectangle', ellipse: 'imageViewer.editor.ellipse', diamond: 'canvas.diamond', frame: 'canvas.frame' } as const;
   const editor = useBoardEditor();
   const uiHidden = useBoardUIStore(state => state.uiHidden);
   const root = useRef<HTMLDivElement>(null);
@@ -42,11 +46,11 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
   const commandKey = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
   const icons: Record<string, LucideIcon> = { 'Hide UI': PanelTop, 'Show UI': PanelTop, Copy, Cut: Scissors, Duplicate: CopyPlus, Paste: Clipboard, 'Arrange in grid': Grid2X2, 'Create frame': Frame, 'Export selection as PNG': Download, 'Export board as PNG': Download, Stack: Layers, Unstack: Ungroup, 'Edit connection': Pencil, Delete: Trash2, 'Select all': MousePointer2, 'Fit board': Scan, 'Auto-group by visual similarity': Sparkles };
   const creationIcons = { sticky: StickyNote, text: Type, rectangle: Square, ellipse: Circle, diamond: Diamond, frame: Frame };
-  const button = (label: string, action: () => unknown, disabled = false) => {
+  const button = (label: keyof typeof menuKeys, action: () => unknown, disabled = false) => {
     const Icon = icons[label] ?? Pencil;
-    return <button role="menuitem" aria-label={label} className={`board-menu-item${label === 'Delete' ? ' board-menu-item--danger' : ''}`} disabled={disabled} onClick={() => run(action)}><Icon size={15} aria-hidden="true"/><span>{label}</span>{shortcuts[label] && <kbd>{commandKey}{shortcuts[label]}</kbd>}{label === 'Delete' && <kbd>Delete</kbd>}</button>;
+    return <button role="menuitem" aria-label={t(menuKeys[label])} className={`board-menu-item${label === 'Delete' ? ' board-menu-item--danger' : ''}`} disabled={disabled} onClick={() => run(action)}><Icon size={15} aria-hidden="true"/><span>{t(menuKeys[label])}</span>{shortcuts[label] && <kbd>{commandKey}{shortcuts[label]}</kbd>}{label === 'Delete' && <kbd>Delete</kbd>}</button>;
   };
-  return createPortal(<div ref={root} className="board-context-menu" role="menu" aria-label="Canvas actions" style={position} onKeyDown={event => {
+  return createPortal(<div ref={root} className="board-context-menu" role="menu" aria-label={t('canvas.actions')} style={position} onKeyDown={event => {
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); close(); }
     if (!(event.target as HTMLElement).closest('input, select, textarea') && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
@@ -64,7 +68,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
     {menu.kind === 'edge'  && button('Edit connection', () => { useBoardUIStore.getState().setInspectorOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.board-inspector input')?.focus()); }, !editor.editable)}
     {menu.kind !== 'create' && <hr role="separator"/>}
     {menu.kind !== 'create' && button('Paste', () => pasteBoardSelection(boardId, menu.point), !editor.editable)}
-    {(menu.kind === 'pane' || menu.kind === 'create') && <>{creationTools.map(tool => { const Icon = creationIcons[tool]; return <button role="menuitem" className="board-menu-item" disabled={!editor.editable} key={tool} onClick={() => run(() => create(tool, menu.point))}><Icon size={15} aria-hidden="true"/><span>{tool[0].toUpperCase() + tool.slice(1)}</span></button>; })}<hr role="separator"/>{menu.kind === 'pane' && <>{button('Select all', () => useBoardStore.getState().setSelection(boardId, session.document.objects.map(object => object.id)))}{button('Fit board', fit)}{button('Export board as PNG', () => editor.exportPng?.(false))}</>}</>}
+    {(menu.kind === 'pane' || menu.kind === 'create') && <>{creationTools.map(tool => { const Icon = creationIcons[tool]; return <button role="menuitem" className="board-menu-item" disabled={!editor.editable} key={tool} onClick={() => run(() => create(tool, menu.point))}><Icon size={15} aria-hidden="true"/><span>{t(toolKeys[tool])}</span></button>; })}<hr role="separator"/>{menu.kind === 'pane' && <>{button('Select all', () => useBoardStore.getState().setSelection(boardId, session.document.objects.map(object => object.id)))}{button('Fit board', fit)}{button('Export board as PNG', () => editor.exportPng?.(false))}</>}</>}
     {(menu.kind === 'pane' || menu.kind === 'selection') && autoGroup && button('Auto-group by visual similarity', () => autoGroup(menu.kind === 'selection' ? [...session.selectedObjectIds] : undefined), !editor.editable || visualGroupingCandidates(session.document, menu.kind === 'selection' ? session.selectedObjectIds : undefined).length < 2)}
     {menu.kind === 'pane' && changeBackground && button('Change background…', changeBackground, !editor.editable)}
     {(menu.kind === 'selection' || menu.kind === 'edge') && <><hr role="separator"/>{button('Delete', () => deleteBoardSelection(boardId), !editor.editable)}</>}
