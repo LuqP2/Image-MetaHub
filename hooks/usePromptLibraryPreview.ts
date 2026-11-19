@@ -1,11 +1,13 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { useEffect, useState } from 'react';
 import type { PromptLibraryItem } from '../types';
 import { sessionPreviewFile } from '../services/promptLibrary/sessionPreviews';
 export { linkSessionPreview } from '../services/promptLibrary/sessionPreviews';
 export function usePromptLibraryPreview(item: PromptLibraryItem | null, active = true) {
+  const { t } = useTranslation();
   const [url, setUrl] = useState<string | null>(null);
   const [path, setPath] = useState<string | null>(null);
-  const [status, setStatus] = useState('No preview');
+  const [status, setStatus] = useState<MessageKey | ''>('promptLibrary.noPreview');
   const key = item ? `${item.id}:${item.revision || 1}:${JSON.stringify(item.editor?.preview)}` : '';
   useEffect(() => {
     setUrl(null);
@@ -13,10 +15,10 @@ export function usePromptLibraryPreview(item: PromptLibraryItem | null, active =
     let canceled = false;
     let objectUrl: string | null = null;
     if(!item || !active || item.editor?.preview === 'hidden') {
-      setStatus('No preview');
+      setStatus('promptLibrary.noPreview');
       return;
     }
-    setStatus('Loading preview…');
+    setStatus('promptLibrary.loadingPreview');
     void (async () => {
       try {
         if(!window.electronAPI) {
@@ -29,7 +31,7 @@ export function usePromptLibraryPreview(item: PromptLibraryItem | null, active =
             }
           }
           else if(!canceled)
-            setStatus(item.editor?.preview ? 'Relink image' : 'No preview');
+            setStatus(item.editor?.preview ? 'promptLibrary.relinkImage' : 'promptLibrary.noPreview');
           return;
         }
         const api = window.electronAPI;
@@ -37,7 +39,7 @@ export function usePromptLibraryPreview(item: PromptLibraryItem | null, active =
         if(canceled)
           return;
         if(!response.success || response.data.status !== 'available') {
-          setStatus('Preview unavailable — relink image');
+          setStatus('promptLibrary.unavailableRelink');
           return;
         }
         setPath(response.data.absolutePath);
@@ -47,14 +49,14 @@ export function usePromptLibraryPreview(item: PromptLibraryItem | null, active =
         if(thumbnail.success && thumbnail.data) {
           objectUrl = URL.createObjectURL(new Blob([new Uint8Array(thumbnail.data)], { type: thumbnail.mimeType || 'image/webp' }));
           setUrl(objectUrl);
-          setStatus(response.data.sourceChanged ? 'Source has changed' : '');
+          setStatus(response.data.sourceChanged ? 'promptLibrary.sourceChanged' : '');
         }
         else
-          setStatus('Preview unavailable');
+          setStatus('promptLibrary.previewUnavailable');
       }
       catch {
         if(!canceled)
-          setStatus('Preview unavailable');
+          setStatus('promptLibrary.previewUnavailable');
       }
     })();
     return () => {
@@ -62,5 +64,5 @@ export function usePromptLibraryPreview(item: PromptLibraryItem | null, active =
         URL.revokeObjectURL(objectUrl);
     };
   }, [key, active]);
-  return { url, path, status };
+  return { url, path, status: status ? t(status) : '' };
 }

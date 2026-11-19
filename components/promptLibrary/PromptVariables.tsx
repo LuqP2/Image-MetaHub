@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React, { useId, useState } from 'react';
 import type { PromptVariable } from '../../types';
 import { copyTextToClipboard } from '../../utils/imageUtils';
@@ -83,6 +84,7 @@ export function VariableValues({ variables, values, onChange }: {
   values: Record<string, string>;
   onChange: (values: Record<string, string>) => void;
 }) {
+  const { t } = useTranslation();
   const id = useId();
   return <div className="space-y-2">
     {variables.map(v => {
@@ -93,12 +95,12 @@ export function VariableValues({ variables, values, onChange }: {
         <label htmlFor={inputId} className="block text-xs">{label}{v.required ? ' *' : ''}</label>
         <div className="flex items-center gap-2">
           <input id={inputId} list={options.length ? `${inputId}-suggestions` : undefined} className={fieldClass}
-            placeholder={options.length ? 'Type or choose a value' : 'Type a value'}
+            placeholder={options.length ? t('promptLibrary.typeChoose') : t('promptLibrary.typeValue')}
             value={Object.prototype.hasOwnProperty.call(values, v.name) ? values[v.name] : v.defaultValue}
             onChange={event => onChange({ ...values, [v.name]: event.target.value })} />
-          {!!options.length && <button type="button" className={buttonClass + ' shrink-0'} aria-label={`Randomize ${label}`}
-            title="Choose a random suggested value"
-            onClick={() => onChange({ ...values, [v.name]: options[Math.floor(Math.random() * options.length)] })}>Randomize</button>}
+          {!!options.length && <button type="button" className={buttonClass + ' shrink-0'} aria-label={t('promptLibrary.randomizeNamed', { label })}
+            title={t('promptLibrary.randomSuggested')}
+            onClick={() => onChange({ ...values, [v.name]: options[Math.floor(Math.random() * options.length)] })}>{t('promptLibrary.randomize')}</button>}
         </div>
         {!!options.length && <datalist id={`${inputId}-suggestions`}>{options.map(option => <option key={option} value={option} />)}</datalist>}
       </div>;
