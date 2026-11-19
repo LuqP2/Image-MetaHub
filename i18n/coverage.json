@@ -273,8 +273,12 @@
     "paths": [
       "components/ModelPromptPickerModal.tsx",
       "components/ModelMetadataEditor.tsx",
-      "components/ModelDetailsPanels.tsx"
+      "components/ModelDetailsPanels.tsx",
+      "components/ModelInspectorApp.tsx"
     ],
-    "literalExceptions": []
+    "literalExceptions": [
+      "Civitai",
+      "SHA256"
+    ]
   }
 }
