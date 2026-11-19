@@ -25,6 +25,17 @@ function StoreHost() {
   return <><ComparisonHost isOpen={isOpen} onClose={useImageStore.getState().closeComparisonModal} /><WorkspaceProbe /></>;
 }
 describe('comparison host transfer', () => {
+  it('includes external source directories before removing file handles from the detached snapshot', async () => {
+    const external = ['a.png', 'b.png'].map(name => ({ id: `external-${name}::${name}`, directoryId: `external-${name}`, name, handle: { _filePath: `C:\\references\\${name}`, getFile: vi.fn() } }));
+    useImageStore.setState({ comparisonImages: external as unknown as import('../types').IndexedImage[], directories: [] });
+    render(<ComparisonHost isOpen onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('Detach'));
+    await waitFor(() => expect(mocks.open).toHaveBeenCalledOnce());
+    const snapshot = mocks.open.mock.calls[0][0];
+    expect(snapshot.directories).toEqual(external.map(image => ({ id: image.directoryId, name: 'C:/references/', path: 'C:/references/', transient: true })));
+    expect(snapshot.images.every((image: { handle?: unknown }) => !image.handle)).toBe(true);
+    expect(useImageStore.getState().directories).toEqual([]);
+  });
   it('transfers cloneable records and restores UI changes without clearing the selected files', async () => {
     render(<ComparisonHost isOpen onClose={vi.fn()} />);
     act(() => useComparisonUIStore.setState({ ui: { ...defaultComparisonUI(), viewMode: 'flicker', isMetadataExpanded: true, sharedZoom: { zoom: 3, x: -20, y: -30 } } }));

@@ -10,6 +10,7 @@ import ComparisonOverlayView from './ComparisonOverlayView';
 import { getFieldLabel, getMetadataDifferences } from '../utils/metadataComparison';
 import { isModel3DFileName } from '../utils/mediaTypes.js';
 import { sameModel3DCamera, relativeModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
+import { getComparisonDirectories } from '../services/comparisonDirectories';
 import { VisualComparisonMetrics } from '../utils/visualComparison';
 
 export const getComparisonMetadataReference = (
@@ -100,11 +101,11 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
     // Optimization: Eliminate Array.map() O(N) allocation overhead for Map initialization.
     // Impact: Avoids GC pauses by preventing temporary array of tuples during re-renders.
     const map = new Map<string, string>();
-    for (const directory of directories) {
+    for (const directory of getComparisonDirectories(comparisonImages, directories)) {
       map.set(directory.id, directory.path);
     }
     return map;
-  }, [directories]);
+  }, [directories, comparisonImages]);
 
   const updateSharedZoom = (zoom: number, x: number, y: number) => {
     setSharedZoom((current) => {
