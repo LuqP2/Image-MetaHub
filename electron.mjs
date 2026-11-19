@@ -7848,7 +7848,7 @@ function setupFileOperationHandlers() {
 
       const normalizedFilePath = path.resolve(filePath);
       safeDetails = await getSafeFileDetails(normalizedFilePath);
-      if (!isPathAllowed(normalizedFilePath)) {
+      if (!isReadPathAllowed(normalizedFilePath)) {
         console.error('SECURITY VIOLATION: Attempted to resolve media URL outside of allowed directories.');
         console.error('  [resolve-media-url] Requested path:', filePath);
         console.error('  [resolve-media-url] Normalized path:', normalizedFilePath);
