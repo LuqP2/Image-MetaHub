@@ -307,5 +307,17 @@
       "components/TransferImagesModal.tsx"
     ],
     "literalExceptions": []
+  },
+  "analytics": {
+    "paths": [
+      "components/Analytics.tsx",
+      "components/AnalyticsSummaryStrip.tsx"
+    ],
+    "literalExceptions": [
+      "LoRA",
+      "LoRAs",
+      "GPU",
+      "N/A"
+    ]
   }
 }
