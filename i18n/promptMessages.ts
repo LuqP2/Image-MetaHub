@@ -2,7 +2,7 @@ import { formatMessage } from './messages.mjs';
 import type { Translate } from './useTranslation';
 
 const statusKeys = [
-  'promptLibrary.copied', 'promptLibrary.copyFailed', 'promptLibrary.fillRequired',
+  'promptLibrary.placeholderCopied', 'promptLibrary.placeholderFailed', 'promptLibrary.copied', 'promptLibrary.copyFailed', 'promptLibrary.fillRequired',
   'promptLibrary.alreadySaved', 'promptLibrary.saveFailed', 'promptLibrary.bringChanged',
   'promptLibrary.bringFailed', 'promptLibrary.sourceMissing', 'canvas.addPromptFailed',
   'promptLibrary.variableNames', 'promptLibrary.unknownVariableType', 'promptLibrary.unsupportedDocument',

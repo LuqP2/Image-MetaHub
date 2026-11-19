@@ -64,7 +64,7 @@
     "literalExceptions": ["URL", "px", "Delete"]
   },
   "promptLibrary": {
-    "paths": ["components/boards/BoardPromptInspector.tsx", "components/boards/BoardPromptNode.tsx", "components/boards/BoardImagePromptActions.tsx", "components/boards/PromptCardDialog.tsx", "components/boards/BoardPromptIntegration.tsx", "components/boards/BoardPromptLibrary.tsx", "hooks/usePromptLibraryPreview.ts"],
+    "paths": ["components/boards/BoardPromptInspector.tsx", "components/boards/BoardPromptNode.tsx", "components/boards/BoardImagePromptActions.tsx", "components/boards/PromptCardDialog.tsx", "components/boards/BoardPromptIntegration.tsx", "components/boards/BoardPromptLibrary.tsx", "hooks/usePromptLibraryPreview.ts", "components/promptLibrary/PromptVariables.tsx"],
     "literalExceptions": []
   }
 }

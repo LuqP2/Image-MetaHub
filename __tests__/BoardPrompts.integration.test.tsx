@@ -54,6 +54,8 @@ beforeEach(() => {
 afterEach(async () => { cleanup(); await useBoardStore.getState().flushAll(); vi.restoreAllMocks(); });
 describe('Canvas prompt integration', () => {
   it.each(languages)('preserves prompt copies and save dialog values in %s', async (language) => {
+    vi.spyOn(useSavedPromptStore.getState(), 'loadLibrary').mockResolvedValue();
+    useSavedPromptStore.setState({ prompts: [], folders: [] });
     const copy = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
     const { document } = setup([image('fixture.png')]);
     const original = JSON.stringify(useBoardStore.getState().sessions[document.id].document);
