@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "Votre bibliothèque contient {total, number} images au total",
   "analytics.periodScope": "le périmètre actuel",
   "analytics.periodLibrary": "la bibliothèque",
-  "analytics.period30Days": "les 30 derniers jours"
+  "analytics.period30Days": "les 30 derniers jours",
+  "licensing.choosePlan": "Choisir un forfait Pro",
+  "licensing.chooseYourPlan": "Choisissez votre forfait Pro",
+  "licensing.sameFeatures": "Tous les forfaits débloquent les mêmes fonctionnalités Pro.",
+  "licensing.closePlan": "Fermer la sélection du forfait",
+  "licensing.attributionCheckout": "L’attribution au créateur sera incluse au paiement.",
+  "licensing.clusterFound": "{groups} groupes de doublons trouvés dans vos {images} premières images",
+  "licensing.clusterRemaining": "Il reste {count} images — Passez à Pro pour analyser toute la bibliothèque et trouver plus de doublons.",
+  "licensing.unlockClustering": "Débloquer le regroupement complet",
+  "licensing.clusterTrial": "💡 Démarrez votre essai de {days} jours pour tester le regroupement illimité",
+  "shell.browserNotice": "Avis de compatibilité du navigateur",
+  "shell.browserUnsupported": "Vous utilisez {browser}, qui ne prend pas en charge l’API File System Access nécessaire pour parcourir les fichiers locaux.",
+  "shell.browserUse": "Pour une meilleure expérience, utilisez :",
+  "shell.chromeVivaldi": "Navigateur Chrome ou Vivaldi",
+  "shell.downloadDesktop": "Ou téléchargez l’application de bureau pour toutes les fonctionnalités",
+  "canvas.dragResizeFrame": "Glisser pour redimensionner le cadre",
+  "canvas.dragResizeFrameScale": "Glisser pour redimensionner le cadre · Alt/Option + glisser redimensionne les images",
+  "canvas.scaleSelection": "Redimensionner les images sélectionnées {corner}"
 }

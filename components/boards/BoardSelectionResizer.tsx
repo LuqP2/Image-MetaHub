@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useEffect, useRef } from 'react';
 import { useReactFlow, useViewport } from '@xyflow/react';
 import { useBoardStore } from '../../store/useBoardStore';
@@ -7,6 +8,7 @@ import { updateObjects } from '../../services/boards/operations';
 import { useBoardEditor } from './BoardEditorContext';
 
 export default function BoardSelectionResizer({ boardId }: { boardId: string }) {
+  const { t } = useTranslation();
   const session = useBoardStore(state => state.sessions[boardId]);
   const editor = useBoardEditor();
   const flow = useReactFlow();
@@ -19,7 +21,7 @@ export default function BoardSelectionResizer({ boardId }: { boardId: string }) 
   if (!eligible) return null;
   const bounds = getBoardBounds(selected);
   return <>{selected.map(object => <div key={object.id} data-selected-card={object.id} className="board-selection-resizer" style={{ left: viewport.x + object.x * viewport.zoom, top: viewport.y + object.y * viewport.zoom, width: object.width * viewport.zoom, height: object.height * viewport.zoom }}>
-    {(['nw', 'ne', 'sw', 'se'] as const).map(corner => <button key={corner} className={`board-selection-corner ${corner} nodrag nopan`} aria-label={`Scale selected images ${corner}`} onPointerDown={event => {
+    {(['nw', 'ne', 'sw', 'se'] as const).map(corner => <button key={corner} className={`board-selection-corner ${corner} nodrag nopan`} aria-label={t('canvas.scaleSelection', { corner })} onPointerDown={event => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopPropagation();
       const initial = selected.map(object => ({ ...object }));

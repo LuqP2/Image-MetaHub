@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "Your library contains {total, number} total images",
   "analytics.periodScope": "current scope",
   "analytics.periodLibrary": "library",
-  "analytics.period30Days": "last 30 days"
+  "analytics.period30Days": "last 30 days",
+  "licensing.choosePlan": "Choose a Pro plan",
+  "licensing.chooseYourPlan": "Choose your Pro plan",
+  "licensing.sameFeatures": "Every plan unlocks the same Pro features.",
+  "licensing.closePlan": "Close plan selection",
+  "licensing.attributionCheckout": "Creator attribution will be included at checkout.",
+  "licensing.clusterFound": "Found {groups} duplicate groups in your first {images} images",
+  "licensing.clusterRemaining": "{count} images remaining — Upgrade to Pro to analyze your entire library and find more duplicates.",
+  "licensing.unlockClustering": "Unlock Full Clustering",
+  "licensing.clusterTrial": "💡 Start your {days}-day trial to test unlimited clustering",
+  "shell.browserNotice": "Browser Compatibility Notice",
+  "shell.browserUnsupported": "You're using {browser}, which doesn't support the File System Access API needed for local file browsing.",
+  "shell.browserUse": "For the best experience, please use:",
+  "shell.chromeVivaldi": "Chrome or Vivaldi browser",
+  "shell.downloadDesktop": "Or download the Desktop App for full functionality",
+  "canvas.dragResizeFrame": "Drag to resize frame",
+  "canvas.dragResizeFrameScale": "Drag to resize frame · Alt/Option + drag to scale images",
+  "canvas.scaleSelection": "Scale selected images {corner}"
 }

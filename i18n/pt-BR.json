@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "Sua biblioteca contém {total, number} imagens no total",
   "analytics.periodScope": "o escopo atual",
   "analytics.periodLibrary": "a biblioteca",
-  "analytics.period30Days": "os últimos 30 dias"
+  "analytics.period30Days": "os últimos 30 dias",
+  "licensing.choosePlan": "Escolher um plano Pro",
+  "licensing.chooseYourPlan": "Escolha seu plano Pro",
+  "licensing.sameFeatures": "Todos os planos liberam os mesmos recursos Pro.",
+  "licensing.closePlan": "Fechar seleção de plano",
+  "licensing.attributionCheckout": "A atribuição ao criador será incluída no checkout.",
+  "licensing.clusterFound": "Foram encontrados {groups} grupos de duplicatas nas primeiras {images} imagens",
+  "licensing.clusterRemaining": "Restam {count} imagens — Assine o Pro para analisar toda a biblioteca e encontrar mais duplicatas.",
+  "licensing.unlockClustering": "Liberar agrupamento completo",
+  "licensing.clusterTrial": "💡 Inicie seu teste de {days} dias para experimentar o agrupamento ilimitado",
+  "shell.browserNotice": "Aviso de compatibilidade do navegador",
+  "shell.browserUnsupported": "Você está usando {browser}, que não oferece suporte à API File System Access necessária para navegar em arquivos locais.",
+  "shell.browserUse": "Para uma experiência melhor, use:",
+  "shell.chromeVivaldi": "Navegador Chrome ou Vivaldi",
+  "shell.downloadDesktop": "Ou baixe o aplicativo desktop para ter todos os recursos",
+  "canvas.dragResizeFrame": "Arraste para redimensionar a moldura",
+  "canvas.dragResizeFrameScale": "Arraste para redimensionar a moldura · Alt/Option + arrastar redimensiona as imagens",
+  "canvas.scaleSelection": "Redimensionar imagens selecionadas {corner}"
 }

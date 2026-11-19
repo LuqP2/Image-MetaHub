@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "Die Bibliothek enthält insgesamt {total, number} Bilder",
   "analytics.periodScope": "aktueller Bereich",
   "analytics.periodLibrary": "Bibliothek",
-  "analytics.period30Days": "letzte 30 Tage"
+  "analytics.period30Days": "letzte 30 Tage",
+  "licensing.choosePlan": "Pro-Tarif auswählen",
+  "licensing.chooseYourPlan": "Pro-Tarif wählen",
+  "licensing.sameFeatures": "Jeder Tarif schaltet dieselben Pro-Funktionen frei.",
+  "licensing.closePlan": "Tarifauswahl schließen",
+  "licensing.attributionCheckout": "Die Creator-Zuordnung wird beim Bezahlen berücksichtigt.",
+  "licensing.clusterFound": "{groups} Duplikatgruppen in den ersten {images} Bildern gefunden",
+  "licensing.clusterRemaining": "{count} Bilder verbleiben — Mit Pro die gesamte Bibliothek analysieren und weitere Duplikate finden.",
+  "licensing.unlockClustering": "Vollständiges Clustering freischalten",
+  "licensing.clusterTrial": "💡 {days}-Tage-Test starten und unbegrenztes Clustering ausprobieren",
+  "shell.browserNotice": "Hinweis zur Browserkompatibilität",
+  "shell.browserUnsupported": "Sie verwenden {browser}, der die für lokale Dateien erforderliche File System Access API nicht unterstützt.",
+  "shell.browserUse": "Für das beste Erlebnis verwenden:",
+  "shell.chromeVivaldi": "Chrome oder Vivaldi",
+  "shell.downloadDesktop": "Oder die Desktop-App für den vollen Funktionsumfang herunterladen",
+  "canvas.dragResizeFrame": "Zum Ändern der Rahmengröße ziehen",
+  "canvas.dragResizeFrameScale": "Ziehen zum Ändern der Rahmengröße · Alt/Option + Ziehen skaliert Bilder",
+  "canvas.scaleSelection": "Ausgewählte Bilder skalieren {corner}"
 }

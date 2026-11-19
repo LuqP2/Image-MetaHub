@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "您的圖庫共有 {total, number} 張影像",
   "analytics.periodScope": "目前範圍",
   "analytics.periodLibrary": "圖庫",
-  "analytics.period30Days": "過去 30 天"
+  "analytics.period30Days": "過去 30 天",
+  "licensing.choosePlan": "選擇 Pro 方案",
+  "licensing.chooseYourPlan": "選擇您的 Pro 方案",
+  "licensing.sameFeatures": "所有方案皆解鎖相同的 Pro 功能。",
+  "licensing.closePlan": "關閉方案選擇",
+  "licensing.attributionCheckout": "結帳時將包含創作者歸屬資訊。",
+  "licensing.clusterFound": "在前 {images} 張影像中發現 {groups} 組重複項目",
+  "licensing.clusterRemaining": "還剩 {count} 張影像 — 升級至 Pro，分析整個圖庫並尋找更多重複項目。",
+  "licensing.unlockClustering": "解鎖完整分群",
+  "licensing.clusterTrial": "💡 開始 {days} 天試用，體驗無限制分群",
+  "shell.browserNotice": "瀏覽器相容性提示",
+  "shell.browserUnsupported": "您正在使用 {browser}，它不支援瀏覽本機檔案所需的 File System Access API。",
+  "shell.browserUse": "為獲得最佳體驗，請使用：",
+  "shell.chromeVivaldi": "Chrome 或 Vivaldi 瀏覽器",
+  "shell.downloadDesktop": "或下載桌面應用程式以使用完整功能",
+  "canvas.dragResizeFrame": "拖曳以調整框架大小",
+  "canvas.dragResizeFrameScale": "拖曳以調整框架大小 · Alt/Option + 拖曳縮放影像",
+  "canvas.scaleSelection": "縮放所選影像 {corner}"
 }

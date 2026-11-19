@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "您的图库共有 {total, number} 张图像",
   "analytics.periodScope": "当前范围",
   "analytics.periodLibrary": "图库",
-  "analytics.period30Days": "过去 30 天"
+  "analytics.period30Days": "过去 30 天",
+  "licensing.choosePlan": "选择 Pro 套餐",
+  "licensing.chooseYourPlan": "选择您的 Pro 套餐",
+  "licensing.sameFeatures": "所有套餐均解锁相同的 Pro 功能。",
+  "licensing.closePlan": "关闭套餐选择",
+  "licensing.attributionCheckout": "结账时将包含创作者归属信息。",
+  "licensing.clusterFound": "在前 {images} 张图像中发现 {groups} 组重复项",
+  "licensing.clusterRemaining": "还剩 {count} 张图像 — 升级到 Pro，分析整个图库并查找更多重复项。",
+  "licensing.unlockClustering": "解锁完整聚类",
+  "licensing.clusterTrial": "💡 开始 {days} 天试用，体验无限制聚类",
+  "shell.browserNotice": "浏览器兼容性提示",
+  "shell.browserUnsupported": "您正在使用 {browser}，它不支持浏览本地文件所需的 File System Access API。",
+  "shell.browserUse": "为获得最佳体验，请使用：",
+  "shell.chromeVivaldi": "Chrome 或 Vivaldi 浏览器",
+  "shell.downloadDesktop": "或下载桌面应用以使用完整功能",
+  "canvas.dragResizeFrame": "拖动以调整框架大小",
+  "canvas.dragResizeFrameScale": "拖动以调整框架大小 · Alt/Option + 拖动缩放图像",
+  "canvas.scaleSelection": "缩放所选图像 {corner}"
 }

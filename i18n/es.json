@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "Tu biblioteca contiene {total, number} imágenes en total",
   "analytics.periodScope": "el ámbito actual",
   "analytics.periodLibrary": "la biblioteca",
-  "analytics.period30Days": "los últimos 30 días"
+  "analytics.period30Days": "los últimos 30 días",
+  "licensing.choosePlan": "Elegir un plan Pro",
+  "licensing.chooseYourPlan": "Elige tu plan Pro",
+  "licensing.sameFeatures": "Todos los planes desbloquean las mismas funciones Pro.",
+  "licensing.closePlan": "Cerrar selección de plan",
+  "licensing.attributionCheckout": "La atribución al creador se incluirá al pagar.",
+  "licensing.clusterFound": "Se encontraron {groups} grupos de duplicados en tus primeras {images} imágenes",
+  "licensing.clusterRemaining": "Quedan {count} imágenes — Mejora a Pro para analizar toda la biblioteca y encontrar más duplicados.",
+  "licensing.unlockClustering": "Desbloquear agrupación completa",
+  "licensing.clusterTrial": "💡 Inicia tu prueba de {days} días para probar la agrupación sin límites",
+  "shell.browserNotice": "Aviso de compatibilidad del navegador",
+  "shell.browserUnsupported": "Estás usando {browser}, que no admite la API File System Access necesaria para explorar archivos locales.",
+  "shell.browserUse": "Para una mejor experiencia, usa:",
+  "shell.chromeVivaldi": "Navegador Chrome o Vivaldi",
+  "shell.downloadDesktop": "O descarga la aplicación de escritorio para todas las funciones",
+  "canvas.dragResizeFrame": "Arrastra para cambiar tamaño del marco",
+  "canvas.dragResizeFrameScale": "Arrastra para cambiar tamaño del marco · Alt/Option + arrastrar escala las imágenes",
+  "canvas.scaleSelection": "Escalar imágenes seleccionadas {corner}"
 }

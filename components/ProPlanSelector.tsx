@@ -81,6 +81,7 @@ export const ProPlanSelectorModal: React.FC<ProPlanSelectorModalProps> = ({
   ctx,
   feature,
 }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -88,7 +89,7 @@ export const ProPlanSelectorModal: React.FC<ProPlanSelectorModalProps> = ({
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Choose a Pro plan"
+      aria-label={t('licensing.choosePlan')}
       onClick={onClose}
     >
       <div
@@ -100,14 +101,14 @@ export const ProPlanSelectorModal: React.FC<ProPlanSelectorModalProps> = ({
             <div className="mb-2 inline-flex rounded-lg bg-purple-600/20 p-2">
               <Crown className="h-5 w-5 text-purple-400" />
             </div>
-            <h2 className="text-xl font-bold text-white">Choose your Pro plan</h2>
-            <p className="mt-1 text-sm text-gray-400">Every plan unlocks the same Pro features.</p>
+            <h2 className="text-xl font-bold text-white">{t('licensing.chooseYourPlan')}</h2>
+            <p className="mt-1 text-sm text-gray-400">{t('licensing.sameFeatures')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-            aria-label="Close plan selection"
+            aria-label={t('licensing.closePlan')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -115,7 +116,7 @@ export const ProPlanSelectorModal: React.FC<ProPlanSelectorModalProps> = ({
         <div className="p-5">
           <ProPlanCheckoutOptions token={token} ctx={ctx} feature={feature} />
           {token ? (
-            <p className="mt-3 text-center text-xs text-gray-500">Creator attribution will be included at checkout.</p>
+            <p className="mt-3 text-center text-xs text-gray-500">{t('licensing.attributionCheckout')}</p>
           ) : null}
         </div>
       </div>

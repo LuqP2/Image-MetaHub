@@ -3099,5 +3099,22 @@
   "analytics.insightLibrary": "ライブラリには全 {total, number} 枚の画像があります",
   "analytics.periodScope": "現在の範囲",
   "analytics.periodLibrary": "ライブラリ",
-  "analytics.period30Days": "過去30日間"
+  "analytics.period30Days": "過去30日間",
+  "licensing.choosePlan": "Pro プランを選択",
+  "licensing.chooseYourPlan": "Pro プランを選んでください",
+  "licensing.sameFeatures": "どのプランでも同じ Pro 機能を利用できます。",
+  "licensing.closePlan": "プラン選択を閉じる",
+  "licensing.attributionCheckout": "購入手続きにクリエイターの紹介情報が含まれます。",
+  "licensing.clusterFound": "最初の {images} 枚の画像に {groups} 件の重複グループが見つかりました",
+  "licensing.clusterRemaining": "残り {count} 枚 — Pro にアップグレードすると、ライブラリ全体を分析してさらに重複を見つけられます。",
+  "licensing.unlockClustering": "すべてのクラスタリングを利用",
+  "licensing.clusterTrial": "💡 {days} 日間の体験版で無制限のクラスタリングを試せます",
+  "shell.browserNotice": "ブラウザーの互換性について",
+  "shell.browserUnsupported": "お使いの {browser} は、ローカルファイルの参照に必要な File System Access API に対応していません。",
+  "shell.browserUse": "快適にご利用いただくには、次のいずれかをご使用ください：",
+  "shell.chromeVivaldi": "Chrome または Vivaldi ブラウザー",
+  "shell.downloadDesktop": "またはデスクトップアプリをダウンロードすると、すべての機能を利用できます",
+  "canvas.dragResizeFrame": "ドラッグしてフレームのサイズを変更",
+  "canvas.dragResizeFrameScale": "ドラッグでフレームのサイズを変更 · Alt/Option+ドラッグで画像を拡大縮小",
+  "canvas.scaleSelection": "選択した画像を拡大縮小 {corner}"
 }

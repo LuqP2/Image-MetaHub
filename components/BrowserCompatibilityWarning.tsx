@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 
 interface BrowserCompatibilityWarningProps {
@@ -5,6 +6,7 @@ interface BrowserCompatibilityWarningProps {
 }
 
 const BrowserCompatibilityWarning: React.FC<BrowserCompatibilityWarningProps> = ({ className = '' }) => {
+  const { t } = useTranslation();
   // Detect File System Access API availability
   const hasFileSystemAccessAPI = 'showDirectoryPicker' in window;
 
@@ -52,19 +54,17 @@ const BrowserCompatibilityWarning: React.FC<BrowserCompatibilityWarningProps> = 
         </div>
         <div className="ml-3">
           <h3 className="text-sm font-medium text-yellow-800">
-            Browser Compatibility Notice
-          </h3>
+            {t('shell.browserNotice')}</h3>
           <div className="mt-2 text-sm text-yellow-700">
             <p>
-              You're using {browserInfo.name}, which doesn't support the File System Access API needed for local file browsing.
+              {t('shell.browserUnsupported', { browser: browserInfo.name })}
             </p>
             <p className="mt-2">
-              For the best experience, please use:
-            </p>
+              {t('shell.browserUse')}</p>
             <ul className="mt-1 list-disc list-inside space-y-1">
-              <li><strong>Chrome</strong> or <strong>Vivaldi</strong> browser</li>
+              <li>{t('shell.chromeVivaldi')}</li>
               <li><strong>Microsoft Edge</strong></li>
-              <li>Or download the <strong>Desktop App</strong> for full functionality</li>
+              <li>{t('shell.downloadDesktop')}</li>
             </ul>
           </div>
         </div>

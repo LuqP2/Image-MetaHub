@@ -103,7 +103,8 @@
       "components/ImageAdjustmentPanel.tsx",
       "components/FindSimilarModal.tsx",
       "components/ProvenanceSection.tsx",
-      "components/CollectionFormModal.tsx"
+      "components/CollectionFormModal.tsx",
+      "components/Model3DThumbnail.tsx"
     ],
     "literalExceptions": [
       "Arial",
@@ -131,7 +132,8 @@
       "X",
       "Y",
       "Z",
-      "SHA-256"
+      "SHA-256",
+      "3D"
     ]
   },
   "metadataEditor": {
@@ -156,13 +158,15 @@
       "components/CommandPalette.tsx",
       "components/HotkeyHelp.tsx",
       "components/CivitaiResourceLink.tsx",
-      "components/ComparisonHost.tsx"
+      "components/ComparisonHost.tsx",
+      "components/BrowserCompatibilityWarning.tsx"
     ],
     "literalExceptions": [
       "ComfyUI",
       "Image MetaHub",
       "Image MetaHub Pro",
-      "v0.23.1"
+      "v0.23.1",
+      "Microsoft Edge"
     ]
   },
   "libraryTags": {
@@ -197,7 +201,9 @@
     "paths": [
       "components/TrialExpiredBanner.tsx",
       "components/ReleaseTrialExtensionNotice.tsx",
-      "components/TrialExtensionModal.tsx"
+      "components/TrialExtensionModal.tsx",
+      "components/ProPlanSelector.tsx",
+      "components/ClusterUpgradeBanner.tsx"
     ],
     "literalExceptions": []
   },
@@ -250,7 +256,9 @@
       "components/boards/LibraryCanvasDestination.tsx",
       "components/boards/BoardCanvas.tsx",
       "components/boards/BoardContextMenu.tsx",
-      "components/boards/BoardVisualGroupingDialog.tsx"
+      "components/boards/BoardVisualGroupingDialog.tsx",
+      "components/boards/BoardFrameResizer.tsx",
+      "components/boards/BoardSelectionResizer.tsx"
     ],
     "literalExceptions": [
       "URL",
