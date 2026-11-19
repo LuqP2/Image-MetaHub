@@ -9,6 +9,8 @@ describe('localized prompt diagnostics', () => {
     const t = (key, values?) => formatMessage(language, key, values);
     expect(translatePromptMessage(`Define variable ${variable}.`, t)).toBe(t('promptLibrary.defineVariable', { variable }));
     expect(translatePromptMessage(`Fill ${field}.`, t)).toBe(t('promptLibrary.fillField', { field }));
+    expect(translatePromptMessage('CSV row 12 has the wrong number of columns.', t)).toBe(t('promptLibrary.csvRowColumns', { row: '12' }));
+    expect(translatePromptMessage(`${field}: fill template fields before exporting resolved text.`, t)).toBe(t('promptLibrary.fillExportFields', { title: field }));
     expect(translatePromptMessage(`Error: Conflicting definitions for ${variable}. Rename the variable before inserting this block.`, t)).toBe(t('promptLibrary.conflictingVariable', { variable }));
     const detail = 'External detail: original {value} 海';
     expect(translatePromptMessage(detail, t)).toBe(detail);

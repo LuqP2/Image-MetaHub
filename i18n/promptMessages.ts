@@ -19,6 +19,15 @@ const statusKeys = [
   'promptLibrary.addBlockFailed',
   'promptLibrary.favoriteFailed',
   'promptLibrary.promptMissing',
+  'promptLibrary.exportFailed',
+  'promptLibrary.importFailed',
+  'promptLibrary.csvTrailingText',
+  'promptLibrary.csvUnclosedQuote',
+  'promptLibrary.unsupportedJson',
+  'promptLibrary.invalidJsonFolders',
+  'promptLibrary.unknownImportFolder',
+  'promptLibrary.csvHeaders',
+  'promptLibrary.extraVariables',
   'promptLibrary.folderFailed', 'promptLibrary.folderNameInvalid', 'promptLibrary.folderExists', 'promptLibrary.folderMissing',
   'promptLibrary.variableNames', 'promptLibrary.unknownVariableType', 'promptLibrary.unsupportedDocument',
   'promptLibrary.partsList', 'promptLibrary.invalidPart', 'promptLibrary.unsupportedEditor', 'promptLibrary.promptRequired',
@@ -31,6 +40,8 @@ export function translatePromptMessage(message: string, t: Translate): string {
     if (detail === key || detail === formatMessage('en', key)) return t(key);
   }
   const patterns = [
+    [/^CSV row (\d+) has the wrong number of columns\.$/, 'promptLibrary.csvRowColumns', 'row'],
+    [/^([\s\S]+): fill template fields before exporting resolved text\.$/, 'promptLibrary.fillExportFields', 'title'],
     [/^Define variable ([\s\S]+)\.$/, 'promptLibrary.defineVariable', 'variable'],
     [/^Fill ([\s\S]+)\.$/, 'promptLibrary.fillField', 'field'],
     [/^Conflicting definitions for ([\s\S]+)\. Rename the variable before inserting this block\.$/, 'promptLibrary.conflictingVariable', 'variable'],

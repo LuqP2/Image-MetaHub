@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import PromptLibraryBrowser from '../components/promptLibrary/PromptLibraryBrowser';
 import PromptFolders from '../components/promptLibrary/PromptFolders';
+import PromptImportExportDialog from '../components/promptLibrary/PromptImportExportDialog';
+import PromptLibraryFiltersPanel from '../components/promptLibrary/PromptLibraryFilters';
+import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { emptyEditor } from '../services/promptLibrary/core.mjs';
 import { emptyFilters } from '../services/promptLibrary/search';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -12,9 +15,32 @@ import type { SavedPrompt } from '../types';
 vi.mock('../hooks/usePromptLibraryPreview', () => ({ usePromptLibraryPreview: () => ({ url: null }) }));
 vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) => children({ width: 500, height: 500 }) }));
 
-afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); });
+const originalMutate = useSavedPromptStore.getState().mutate;
+afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); useSavedPromptStore.setState({ mutate: originalMutate }); });
 
 describe('Prompt Library localized cards and folder forms', () => {
+  it.each(languages)('imports the same CSV payload and retains filter enums in %s', async language => {
+    useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
+    const mutate = vi.fn().mockResolvedValue(undefined), onClose = vi.fn();
+    useSavedPromptStore.setState({ prompts: [], blocks: [], mutate });
+    const view = render(<PromptImportExportDialog snapshot={{ prompts: [], blocks: [] }} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: t('promptLibrary.import'), exact: true }));
+    const file = new File([], 'styles.csv', { type: 'text/csv' });
+    Object.defineProperty(file, 'text', { value: async () => 'name,prompt,negative_prompt\nOriginal 海,cat {prompt},blur' });
+    fireEvent.change(screen.getByLabelText(t('promptLibrary.importFile')), { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole('button', { name: t('promptLibrary.confirmImport') }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ action: 'import', keepDuplicates: false, prompts: [expect.objectContaining({ positivePrompt: 'cat {{prompt}}', negativePrompt: 'blur', editor: expect.objectContaining({ title: 'Original 海' }) })] }));
+    view.unmount();
+    const onChange = vi.fn();
+    render(<PromptLibraryFiltersPanel all={[]} kind="prompt" filters={emptyFilters} onChange={onChange} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole('combobox', { name: t('promptLibrary.filterType') }), { target: { value: 'template' } });
+    expect(onChange).toHaveBeenLastCalledWith({ ...emptyFilters, type: 'template' });
+    fireEvent.change(screen.getByRole('combobox', { name: t('promptLibrary.dateField') }), { target: { value: 'source' } });
+    expect(onChange).toHaveBeenLastCalledWith({ ...emptyFilters, dateField: 'source' });
+  });
+
   it.each(languages)('keeps card payloads and node action contracts in %s', language => {
     useSettingsStore.setState({ language });
     const t = (key, values?) => formatMessage(language, key, values);

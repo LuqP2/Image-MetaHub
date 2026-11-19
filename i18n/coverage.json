@@ -264,8 +264,12 @@
       "components/promptLibrary/PromptDuplicatesPanel.tsx",
       "components/promptLibrary/PromptPreviewPicker.tsx",
       "components/promptLibrary/PromptFolders.tsx",
-      "components/PromptLibrary.tsx"
+      "components/PromptLibrary.tsx",
+      "components/promptLibrary/PromptImportExportDialog.tsx",
+      "components/promptLibrary/PromptLibraryFilters.tsx"
     ],
-    "literalExceptions": []
+    "literalExceptions": [
+      "styles.csv"
+    ]
   }
 }
