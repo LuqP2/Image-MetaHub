@@ -1,9 +1,11 @@
 import { BoardPromptContext } from '../components/boards/BoardPromptContext';
 import { PROMPT_DRAG_TYPE } from '../services/boards/prompts';
 import { useBoardHotkeys } from '../hooks/useBoardHotkeys';
-import { addText } from '../services/boards/operations';
+import { addText, addAssets, addConnection } from '../services/boards/operations';
+import { createStack, unstack } from '../services/boards/stackOperations';
+import { boardToFlow } from '../services/boards/reactFlowAdapter';
 import React from 'react';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BoardCanvas from '../components/boards/BoardCanvas';
 vi.mock('../components/boards/BoardMiniMap', () => ({ default: () => null }));
@@ -11,8 +13,8 @@ import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { createBoardDocument } from '../services/boards/document.mjs';
 import { clearInternalImageDragData, INTERNAL_IMAGE_DRAG_TYPE, setNativeGalleryDrag } from '../utils/internalImageDrag';
-const flow = vi.hoisted(() => ({ screenToFlowPosition: vi.fn().mockReturnValue({ x: 75, y: -20 }), getViewport: vi.fn(), fitView: vi.fn() }));
-vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), ReactFlow: ({ children }) => <div>{children}</div>, Background: () => null, MiniMap: () => null, Panel: ({ children }) => <div>{children}</div>, useReactFlow: () => flow, useViewport: () => ({ x: 0, y: 0, zoom: 1 }) }));
+const flow = vi.hoisted(() => ({ screenToFlowPosition: vi.fn().mockReturnValue({ x: 75, y: -20 }), getViewport: vi.fn(), fitView: vi.fn(), reconnect: vi.fn() }));
+vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), ReactFlow: ({ children, onReconnect }) => { flow.reconnect.mockImplementation(onReconnect); return <div>{children}</div>; }, Background: () => null, MiniMap: () => null, Panel: ({ children }) => <div>{children}</div>, useReactFlow: () => flow, useViewport: () => ({ x: 0, y: 0, zoom: 1 }) }));
 afterEach(() => { vi.unstubAllGlobals(); cleanup(); clearInternalImageDragData(); });
 describe('Canvas asset drop', () => {
   it('draws a frame in either direction at converted coordinates and selects it', () => {
@@ -142,4 +144,22 @@ it('accepts Finder files on the canvas at the transformed drop position', () => 
   expect(fireEvent.dragOver(stage, { dataTransfer })).toBe(false);
   fireEvent.drop(stage, { dataTransfer, clientX: 100, clientY: 100 });
   expect(dropFiles).toHaveBeenCalledWith([file], { x: 75, y: -20 });
+});
+
+it.each(['source', 'target'] as const)('preserves a stacked image at the unchanged %s endpoint when reconnecting the opposite end', unchanged => {
+  let board = addAssets(createBoardDocument(), ['a', 'b', 'c', 'd'].map(name => ({ name: `${name}.png`, mediaType: 'image' as const, reference: { kind: 'path' as const, locator: { imageId: name, directoryPath: '/synthetic', relativePath: `${name}.png` } } })), { x: 0, y: 0 });
+  const [member, sibling, oldEndpoint, newEndpoint] = board.objects;
+  board = addConnection(board, { sourceObjectId: unchanged === 'source' ? member.id : oldEndpoint.id, targetObjectId: unchanged === 'target' ? member.id : oldEndpoint.id, sourceSide: 'right', targetSide: 'left', color: '#ffffff', label: 'Keep member' });
+  board = createStack(board, [member.id, sibling.id]);
+  const stack = board.objects.find(object => object.type === 'stack')!;
+  const edge = boardToFlow(board, [], [], true).edges[0];
+  expect(edge[unchanged]).toBe(stack.id);
+  useBoardStore.getState().adoptBoard(board);
+  render(<BoardEditorContext.Provider value={{ editable: true, connecting: false, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={board.id} /></BoardEditorContext.Provider>);
+  act(() => flow.reconnect(edge, { source: unchanged === 'source' ? edge.source : newEndpoint.id, target: unchanged === 'target' ? edge.target : newEndpoint.id, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle }));
+  const reconnected = useBoardStore.getState().sessions[board.id].document;
+  const expected = { sourceObjectId: unchanged === 'source' ? member.id : newEndpoint.id, targetObjectId: unchanged === 'target' ? member.id : newEndpoint.id };
+  expect(reconnected.connections[0]).toMatchObject(expected);
+  expect(unstack(reconnected, stack.id).connections).toHaveLength(1);
+  expect(unstack(reconnected, stack.id).connections[0]).toMatchObject(expected);
 });

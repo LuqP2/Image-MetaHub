@@ -184,7 +184,14 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     <ReactFlow<BoardFlowNode> key={boardId} nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} style={{ background: boardBackground(session.document.backgroundColor) }}
       onReconnect={(edge, connection) => {
         if (!editor.editable || !connection.source || !connection.target || connection.source === connection.target) return;
-        useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, edge.id, { sourceObjectId: connection.source, targetObjectId: connection.target, sourceSide: (connection.sourceHandle || 'right') as BoardSide, targetSide: (connection.targetHandle || 'left') as BoardSide, anchoring: 'manual' }));
+        const sourceChanged = connection.source !== edge.source || connection.sourceHandle !== edge.sourceHandle;
+        const targetChanged = connection.target !== edge.target || connection.targetHandle !== edge.targetHandle;
+        if (!sourceChanged && !targetChanged) return;
+        useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, edge.id, {
+          ...(sourceChanged ? { sourceObjectId: connection.source, sourceSide: (connection.sourceHandle || 'right') as BoardSide } : {}),
+          ...(targetChanged ? { targetObjectId: connection.target, targetSide: (connection.targetHandle || 'left') as BoardSide } : {}),
+          anchoring: 'manual',
+        }));
       }}
       onSelectionStart={() => { if (marquee.current) marquee.current.active = true; }}
       onSelectionEnd={event => {
