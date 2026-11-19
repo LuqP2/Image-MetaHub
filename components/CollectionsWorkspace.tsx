@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useMemo, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowUp, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import { IndexedImage, SmartCollection } from '../types';
@@ -62,6 +63,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
   totalImages,
   children,
 }) => {
+  const { t: tr } = useTranslation();
+
   const images = useImageStore((state) => state.images);
   const collections = useImageStore((state) => state.collections);
   const activeCollectionId = useImageStore((state) => state.activeCollectionId);
@@ -174,7 +177,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
   };
 
   const handleDeleteCollection = async (collectionId: string) => {
-    const confirmed = window.confirm('Delete this collection? This will not delete the underlying images.');
+    const confirmed = window.confirm(tr('collections.deleteConfirm'));
     if (!confirmed) {
       return;
     }
@@ -188,7 +191,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
         <div className="border-b border-gray-800 px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-white">Collections</h2>
+              <h2 className="text-base font-semibold text-white">{tr('libraryGallery.collections')}</h2>
             </div>
             <button
               type="button"
@@ -196,15 +199,14 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
               className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950"
             >
               <Plus className="h-4 w-4" />
-              New
-            </button>
+              {tr('collections.newButton')}</button>
           </div>
 
           <input
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search collections..."
+            placeholder={tr('collections.searchPlaceholder')}
             className="mt-3 w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -212,8 +214,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
         <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
           {filteredCollections.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-700 bg-gray-900/50 px-4 py-5 text-center text-sm text-gray-500">
-              No collections yet.
-            </div>
+              {tr('collections.emptySidebar')}</div>
           ) : (
             filteredCollections.map((collection) => {
               const isActive = collection.id === selectedCollection?.id;
@@ -222,7 +223,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                 <div
                   key={collection.id}
                   role="button"
-                  aria-label={`Select collection ${collection.name}`}
+                  aria-label={tr('collections.selectCollection', { name: collection.name })}
                   tabIndex={0}
                   onClick={() => setActiveCollectionId(collection.id)}
                   onKeyDown={(event) => {
@@ -243,8 +244,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       {collection.sourceTag && (
                         <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-500">
                           {collection.autoUpdate !== false
-                            ? `Auto-add · ${collection.sourceTag}`
-                            : `Tag link · ${collection.sourceTag}`}
+                            ? tr('collections.autoAddTagBullet', { tag: collection.sourceTag })
+                            : tr('collections.tagLinkBullet', { tag: collection.sourceTag })}
                         </div>
                       )}
                     </div>
@@ -262,8 +263,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       }}
                       disabled={globalIndex <= 0}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Move up"
-                      aria-label="Move up"
+                      title={tr('collections.moveUp')}
+                      aria-label={tr('collections.moveUp')}
                     >
                       <ArrowUp className="h-3.5 w-3.5" />
                     </button>
@@ -275,8 +276,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       }}
                       disabled={globalIndex === -1 || globalIndex >= collections.length - 1}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Move down"
-                      aria-label="Move down"
+                      title={tr('collections.moveDown')}
+                      aria-label={tr('collections.moveDown')}
                     >
                       <ArrowDown className="h-3.5 w-3.5" />
                     </button>
@@ -287,8 +288,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                         setEditingCollection(collection);
                       }}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800"
-                      title="Collection settings"
-                      aria-label="Collection settings"
+                      title={tr('collections.collectionSettings')}
+                      aria-label={tr('collections.collectionSettings')}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -299,8 +300,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                         void handleDeleteCollection(collection.id);
                       }}
                       className="rounded-md border border-red-900/40 p-1.5 text-red-300 transition-colors hover:bg-red-900/20"
-                      title="Delete collection"
-                      aria-label="Delete collection"
+                      title={tr('collections.deleteCollection')}
+                      aria-label={tr('collections.deleteCollection')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -323,8 +324,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900/70 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  All Collections
-                </button>
+                  {tr('collections.allCollections')}</button>
               </div>
 
               <div className="flex items-start gap-4">
@@ -347,18 +347,17 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                     <h2 className="text-lg font-semibold text-white">{selectedCollection.name}</h2>
                     {selectedCollection.sourceTag && selectedCollection.autoUpdate !== false && (
                       <span className="rounded-full border border-emerald-600/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] uppercase tracking-wide text-emerald-300">
-                        Auto
-                      </span>
+                        {tr('collections.autoBadge')}</span>
                     )}
                   </div>
                   {selectedCollection.description && (
                     <p className="mt-2 text-sm text-gray-300">{selectedCollection.description}</p>
                   )}
                   <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-400">
-                    <span>{totalImages.length} total in collection</span>
-                    <span>{filteredImages.length} after current filters</span>
+                    <span>{tr('collections.totalInCollection', { count: totalImages.length })}</span>
+                    <span>{tr('collections.afterCurrentFilters', { count: filteredImages.length })}</span>
                     {selectedCollection.sourceTag && (
-                      <span>Auto-add tag: {selectedCollection.sourceTag}</span>
+                      <span>{tr('collections.autoAddTagLabel', { tag: selectedCollection.sourceTag })}</span>
                     )}
                   </div>
                 </div>
@@ -371,17 +370,17 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
           <div className="flex min-h-0 flex-1 flex-col p-5">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-white">Collections</h2>
+                <h2 className="text-lg font-semibold text-white">{tr('libraryGallery.collections')}</h2>
               </div>
               <div className="rounded-full border border-gray-700 bg-gray-900 px-3 py-1 text-xs text-gray-300">
-                {filteredCollections.length} visible
+                {tr('collections.visibleCount', { count: filteredCollections.length })}
               </div>
             </div>
 
             {filteredCollections.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-gray-400">
                 <FolderOpen className="mb-4 h-10 w-10 text-gray-600" />
-                <h3 className="text-base font-semibold text-gray-200">No collections found</h3>
+                <h3 className="text-base font-semibold text-gray-200">{tr('collections.noneFound')}</h3>
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-auto pr-1">
@@ -404,7 +403,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
 
       <CollectionFormModal
         isOpen={isCreateModalOpen}
-        title="Create Collection"
+        title={tr('libraryGallery.createCollection')}
         submitLabel="Create Collection"
         initialValues={{
           name: '',
@@ -420,7 +419,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
 
       <CollectionFormModal
         isOpen={editingCollection !== null}
-        title="Collection Settings"
+        title={tr('collections.collectionSettingsTitle')}
         submitLabel="Save Changes"
         initialValues={{
           name: editingCollection?.name ?? '',
@@ -439,7 +438,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
         isOpen={automationRuleCollection !== null}
         onClose={() => setAutomationRuleCollection(null)}
         initialCollectionId={automationRuleCollection?.id ?? null}
-        initialRuleName={automationRuleCollection ? `Add to ${automationRuleCollection.name}` : undefined}
+        initialRuleName={automationRuleCollection ? tr('collections.defaultAutomationRuleName', { collectionName: automationRuleCollection.name }) : undefined}
       />
     </div>
   );

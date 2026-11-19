@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useMemo, useRef, useState } from 'react';
 import { Eye, Maximize2, Minimize2, Move, RotateCcw, WandSparkles, ZoomIn, ZoomOut } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
@@ -144,6 +145,8 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
   onSelectNode,
   onFieldChange,
 }) => {
+  const { t: tr } = useTranslation();
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [isOrganized, setIsOrganized] = useState(false);
   const [nodeOffsets, setNodeOffsets] = useState<Record<string, { x: number; y: number }>>({});
@@ -269,8 +272,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
   if (!graph || !scene) {
     return (
       <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
-        Visual workflow is unavailable for this image.
-      </div>
+        {tr('integrations.visualWorkflow.unavailable')}</div>
     );
   }
 
@@ -286,10 +288,9 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
         <div className="rounded-lg border border-gray-700 bg-gray-900/60 overflow-hidden">
         <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
           <div>
-            <div className="text-sm font-semibold text-gray-100">Workflow Overview</div>
+            <div className="text-sm font-semibold text-gray-100">{tr('integrations.visualWorkflow.overview')}</div>
             <div className="text-xs text-gray-400">
-              {graph.nodes.length} nodes, {graph.edges.length} connections
-              {isOrganized ? ' • using organized layout' : graph.hasStoredLayout ? ' • using embedded layout' : ' • using auto-layout'}
+              {tr('integrations.visualWorkflow.graphSummary', { nodes: graph.nodes.length, connections: graph.edges.length, layout: isOrganized ? 'organized' : graph.hasStoredLayout ? 'embedded' : 'auto' })}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -297,32 +298,31 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
               type="button"
               onClick={() => { setIsOrganized(true); setNodeOffsets({}); }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-2 text-xs text-gray-200 transition-colors hover:bg-gray-700"
-              title="Arrange nodes into a compact layout without changing the embedded workflow"
+              title={tr('integrations.visualWorkflow.organizeNodesTooltip')}
             >
               <WandSparkles size={14} />
-              <span>Organize nodes</span>
+              <span>{tr('integrations.visualWorkflow.organizeNodes')}</span>
             </button>
             <button
               type="button"
               onClick={() => { setIsOrganized(false); setNodeOffsets({}); }}
               disabled={!isOrganized && Object.keys(nodeOffsets).length === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-2 text-xs text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Restore the workflow preview layout"
+              title={tr('integrations.visualWorkflow.restoreLayoutTooltip')}
             >
               <RotateCcw size={14} />
-              <span className="hidden sm:inline">Restore layout</span>
+              <span className="hidden sm:inline">{tr('integrations.visualWorkflow.restoreLayout')}</span>
             </button>
             <div className="hidden rounded-full border border-gray-700 bg-gray-800 px-3 py-1 text-[11px] text-gray-300 sm:block">
               <span className="inline-flex items-center gap-1">
                 <Move size={12} />
-                Drag background to pan · drag nodes to arrange
-              </span>
+                {tr('integrations.visualWorkflow.panArrangeHint')}</span>
             </div>
             <button
               type="button"
               onClick={() => setIsExpanded((current) => !current)}
               className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-200 transition-colors hover:bg-gray-700"
-              title={isExpanded ? 'Exit expanded workflow' : 'Expand workflow'}
+              title={isExpanded ? tr('integrations.visualWorkflow.exitExpanded') : tr('integrations.visualWorkflow.expand')}
             >
               {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
@@ -452,11 +452,10 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                                 ))
                               ) : (
                                 <div className="rounded-md border border-dashed border-gray-700 px-2 py-3 text-xs text-gray-500">
-                                  No safe literal fields exposed here.
-                                </div>
+                                  {tr('integrations.visualWorkflow.noLiteralFields')}</div>
                               )}
                               {node.fields.length > 3 && (
-                                <div className="text-[11px] text-gray-400">+{node.fields.length - 3} more editable fields</div>
+                                <div className="text-[11px] text-gray-400">{tr('integrations.visualWorkflow.moreEditableFields', { count: node.fields.length - 3 })}</div>
                               )}
                             </div>
                           </div>
@@ -471,7 +470,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                     type="button"
                     onClick={() => zoomIn()}
                     className="rounded-lg border border-gray-700 bg-gray-900/80 p-2 text-gray-200 transition-colors hover:bg-gray-800"
-                    title="Zoom in"
+                    title={tr('canvas.zoomIn')}
                   >
                     <ZoomIn size={16} />
                   </button>
@@ -479,7 +478,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                     type="button"
                     onClick={() => zoomOut()}
                     className="rounded-lg border border-gray-700 bg-gray-900/80 p-2 text-gray-200 transition-colors hover:bg-gray-800"
-                    title="Zoom out"
+                    title={tr('canvas.zoomOut')}
                   >
                     <ZoomOut size={16} />
                   </button>
@@ -487,7 +486,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                     type="button"
                     onClick={() => resetTransform()}
                     className="rounded-lg border border-gray-700 bg-gray-900/80 p-2 text-gray-200 transition-colors hover:bg-gray-800"
-                    title="Reset zoom and pan"
+                    title={tr('integrations.visualWorkflow.resetZoomPan')}
                   >
                     <RotateCcw size={16} />
                   </button>
@@ -502,18 +501,18 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
         {selectedNode ? (
           <div className="space-y-4">
             <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-gray-500">Inspector</div>
+              <div className="text-xs uppercase tracking-[0.18em] text-gray-500">{tr('imageViewer.editor.inspector')}</div>
               <div className="mt-1 text-lg font-semibold text-gray-100">{selectedNode.label}</div>
               <div className="mt-1 text-xs text-gray-400">{selectedNode.classType}</div>
             </div>
 
             <div className="rounded-lg border border-gray-700 bg-gray-950/60 px-3 py-2 text-xs text-gray-300">
               <div className="flex items-center justify-between">
-                <span className="text-gray-500">Category</span>
+                <span className="text-gray-500">{tr('promptLibrary.category')}</span>
                 <span className="uppercase tracking-[0.18em] text-gray-100">{selectedNode.category}</span>
               </div>
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-gray-500">Editable fields</span>
+                <span className="text-gray-500">{tr('integrations.visualWorkflow.editableFields')}</span>
                 <span className="text-gray-100">{selectedNode.fields.length}</span>
               </div>
             </div>
@@ -533,16 +532,14 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-gray-700 bg-gray-950/40 p-4 text-sm text-gray-400">
-                This node is shown for context, but the app is not exposing editable literal inputs for it in v1.
-              </div>
+                {tr('integrations.visualWorkflow.contextOnlyNode')}</div>
             )}
           </div>
         ) : (
           <div className="flex h-full min-h-[260px] items-center justify-center rounded-lg border border-dashed border-gray-700 bg-gray-950/40 p-6 text-center text-sm text-gray-400">
             <div>
               <Eye className="mx-auto mb-3 text-gray-500" size={22} />
-              Select a node to inspect and edit its safe literal inputs.
-            </div>
+              {tr('integrations.visualWorkflow.selectNodePrompt')}</div>
           </div>
         )}
         </aside>

@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 /**
  * A1111 Models Hook
  * Fetches available models and LoRAs from A1111 API
@@ -21,6 +22,8 @@ interface UseA1111ModelsReturn {
 }
 
 export function useA1111Models(): UseA1111ModelsReturn {
+  const { t: tr } = useTranslation();
+
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
   const [resources, setResources] = useState<A1111Resources | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -40,7 +43,7 @@ export function useA1111Models(): UseA1111ModelsReturn {
 
       setResources({ models, loras, samplers });
     } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch A1111 resources';
+      const errorMessage = err.message || "Failed to fetch A1111 resources";
       setError(errorMessage);
       console.error('[useA1111Models] Error:', err);
     } finally {
@@ -55,7 +58,7 @@ export function useA1111Models(): UseA1111ModelsReturn {
   return {
     resources,
     isLoading,
-    error,
+    error: error === "Failed to fetch A1111 resources" ? tr('integrations.a1111.fetchResourcesFailed') : error,
     refresh: fetchResources,
   };
 }

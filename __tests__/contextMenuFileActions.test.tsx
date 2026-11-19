@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { formatMessage } from '../i18n/messages.mjs';
 import {
   ShowInFolderContextAction,
   buildFileMenuItems,
@@ -19,6 +20,7 @@ describe('context-menu file actions', () => {
   it('does not duplicate Show in Folder inside the File submenu', () => {
     const noop = () => undefined;
     const labels = buildFileMenuItems({
+      t: (key, values) => formatMessage('en', key, values),
       onRename: noop,
       onCopyTo: noop,
       onMoveTo: noop,

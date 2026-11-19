@@ -176,10 +176,10 @@ const Footer: React.FC<FooterProps> = ({
     : 0;
   const hasSemanticJob = semanticModelDownloading || semanticBackfilling;
   const semanticJobLabel = semanticModelDownloading
-    ? `Model ${semanticDownloadPercent}%`
+    ? t('libraryGallery.visualSearchModelProgress', { percent: semanticDownloadPercent })
     : semanticPaused
-      ? 'Index paused'
-      : `Index ${semanticIndexPercent}%`;
+      ? t('libraryGallery.visualSearchIndexPaused')
+      : t('libraryGallery.visualSearchIndexProgress', { percent: semanticIndexPercent });
   const semanticJobPercent = semanticModelDownloading ? semanticDownloadPercent : semanticIndexPercent;
 
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob || hasSemanticJob;
@@ -224,8 +224,7 @@ const Footer: React.FC<FooterProps> = ({
             onMouseLeave={() => setHoveredWindowPreview(null)}
           >
             <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-              Windows
-            </span>
+              {t('libraryGallery.openWindowsLabel')}</span>
             {windowItems.map((windowItem) => (
               <div
                 key={windowItem.id}
@@ -361,7 +360,7 @@ const Footer: React.FC<FooterProps> = ({
               />
             </div>
             <span className="max-w-[220px] truncate text-amber-100/90">
-              {transferProgress!.statusText || (transferProgress!.mode === 'move' ? 'Moving files...' : 'Copying files...')}
+              {transferProgress!.statusText || (transferProgress!.mode === 'move' ? t('fileOperations.movingFiles') : t('fileOperations.copyingFiles'))}
             </span>
           </div>
         )}

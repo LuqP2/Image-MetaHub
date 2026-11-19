@@ -2802,6 +2802,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
           {(() => {
             const fileMenuItems = buildFileMenuItems({
+              t,
               onRename: () => openInlineRename(contextMenu.image),
               onCopyTo: () => openTransferModal('copy'),
               onMoveTo: () => openTransferModal('move'),

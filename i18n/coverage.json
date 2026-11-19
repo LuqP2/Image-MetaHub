@@ -52,10 +52,14 @@
       "components/ImageSizeSlider.tsx",
       "components/ImageTable.tsx",
       "components/RatingStars.tsx",
-      "components/contextMenu/RelatedImagesMenu.tsx"
+      "components/contextMenu/RelatedImagesMenu.tsx",
+      "components/Footer.tsx",
+      "components/contextMenu/ContextMenuPrimitives.tsx"
     ],
     "literalExceptions": [
-      "CFG"
+      "CFG",
+      "A-Z",
+      "Z-A"
     ]
   },
   "comparisonPane": {
@@ -159,7 +163,8 @@
       "components/HotkeyHelp.tsx",
       "components/CivitaiResourceLink.tsx",
       "components/ComparisonHost.tsx",
-      "components/BrowserCompatibilityWarning.tsx"
+      "components/BrowserCompatibilityWarning.tsx",
+      "components/VerticalSplitPanels.tsx"
     ],
     "literalExceptions": [
       "ComfyUI",
@@ -193,7 +198,8 @@
   },
   "updates": {
     "paths": [
-      "components/UpdateNotificationModal.tsx"
+      "components/UpdateNotificationModal.tsx",
+      "components/ChangelogModal.tsx"
     ],
     "literalExceptions": []
   },
@@ -203,9 +209,14 @@
       "components/ReleaseTrialExtensionNotice.tsx",
       "components/TrialExtensionModal.tsx",
       "components/ProPlanSelector.tsx",
-      "components/ClusterUpgradeBanner.tsx"
+      "components/ClusterUpgradeBanner.tsx",
+      "components/ProBadge.tsx",
+      "components/ProOnlyModal.tsx"
     ],
-    "literalExceptions": []
+    "literalExceptions": [
+      "PRO",
+      "Pro"
+    ]
   },
   "canvas": {
     "paths": [
@@ -336,8 +347,50 @@
       "components/comfyui/ComfyTextDrag.tsx",
       "components/comfyui/WorkspaceSearch.tsx",
       "components/comfyui/WorkspaceModels.tsx",
-      "components/comfyui/WorkspacePrompts.tsx"
+      "components/comfyui/WorkspacePrompts.tsx",
+      "components/A1111GenerateModal.tsx",
+      "components/ComfyUIWorkflowVisualEditor.tsx",
+      "components/ComfyUIWorkflowWorkspace.tsx",
+      "components/ComfyUIWorkspace.tsx",
+      "components/comfyui/ComfyUITextActions.tsx",
+      "components/comfyui/WorkspaceImageInspector.tsx",
+      "hooks/useA1111Models.ts",
+      "hooks/useComfyUIModels.ts",
+      "hooks/useComfyTextFeedback.tsx"
+    ],
+    "literalExceptions": [
+      "ComfyUI",
+      "CFG",
+      "UNet",
+      "VAE",
+      "CLIP",
+      "LoRA",
+      "LoRAs",
+      "JSON",
+      "Prompt API JSON",
+      "Workflow UI JSON",
+      "ComfyUI ·"
+    ]
+  },
+  "collections": {
+    "paths": [
+      "components/CollectionCard.tsx",
+      "components/CollectionsWorkspace.tsx"
     ],
     "literalExceptions": []
+  },
+  "explore": {
+    "paths": [
+      "components/ExploreWorkspace.tsx"
+    ],
+    "literalExceptions": []
+  },
+  "automation": {
+    "paths": [
+      "components/AutomationRulesModal.tsx"
+    ],
+    "literalExceptions": [
+      "YYYY-MM-DD"
+    ]
   }
 }

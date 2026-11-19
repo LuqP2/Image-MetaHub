@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, ChevronDown, ChevronUp, Workflow, X } from 'lucide-react';
 import { BaseMetadata, IndexedImage } from '../types';
@@ -61,15 +62,6 @@ interface ComfyUIWorkflowWorkspaceProps {
   generateDisabledReason?: string | null;
   directoryPath?: string;
 }
-
-const MODEL_FAMILY_LABELS: Record<ComfyUIModelFamily, string> = {
-  checkpoint: 'Checkpoint',
-  unet: 'UNet',
-  vae: 'VAE',
-  clip: 'CLIP',
-  lora: 'LoRA',
-  unknown: 'Unknown',
-};
 
 const formatJson = (value: unknown): string => {
   if (!value) {
@@ -231,6 +223,16 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   generateDisabledReason = null,
   directoryPath,
 }) => {
+  const { t: tr } = useTranslation();
+  const MODEL_FAMILY_LABELS: Record<ComfyUIModelFamily, string> = {
+    checkpoint: tr('librarySearch.checkpoint'),
+    unet: 'UNet',
+    vae: 'VAE',
+    clip: 'CLIP',
+    lora: 'LoRA',
+    unknown: tr('libraryGallery.unknown'),
+  };
+
   const { resources, isLoading: isLoadingResources, error: resourcesError } = useComfyUIModels();
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const [workflowSourceImage, setWorkflowSourceImage] = useState<IndexedImage>(image);
@@ -566,11 +568,11 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     }
 
     if (comfyUILastConnectionStatus === 'error' || (!!resourcesError && !resources)) {
-      return 'ComfyUI server is offline or unreachable. You can still inspect and edit the embedded workflow locally.';
+      return tr('integrations.comfyWorkflow.serverOffline');
     }
 
     return null;
-  }, [comfyUILastConnectionStatus, generateDisabledReason, resources, resourcesError]);
+  }, [comfyUILastConnectionStatus, generateDisabledReason, resources, resourcesError, tr]);
 
   const syncParamsFromVisualField = (
     currentParams: GenerationParams,
@@ -717,7 +719,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   const handleGenerate = async () => {
     const effectivePrompt = params.prompt.trim();
     if (!effectivePrompt) {
-      setValidationError('Prompt cannot be empty.');
+      setValidationError(tr('integrations.comfyWorkflow.promptEmpty'));
       return;
     }
 
@@ -727,12 +729,12 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     }
 
     if (params.workflowMode === 'original' && !workflowAnalysis.originalAvailable) {
-      setValidationError('Original workflow mode is not available for this image.');
+      setValidationError(tr('integrations.comfyWorkflow.originalUnavailable'));
       return;
     }
 
     if (params.sourceImagePolicy === 'selected_image_and_mask' && requiresMaskInput && !params.maskFile) {
-      setValidationError('Select a mask file before generating.');
+      setValidationError(tr('integrations.comfyWorkflow.selectMaskFirst'));
       return;
     }
 
@@ -743,7 +745,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       try {
         JSON.parse(manualPromptJson);
       } catch {
-        setValidationError('Prompt API JSON is invalid.');
+        setValidationError(tr('integrations.comfyWorkflow.invalidPromptApiJson'));
         return;
       }
     }
@@ -752,13 +754,13 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       try {
         JSON.parse(manualWorkflowJson);
       } catch {
-        setValidationError('Workflow UI JSON is invalid.');
+        setValidationError(tr('integrations.comfyWorkflow.invalidWorkflowUiJson'));
         return;
       }
     }
 
     if (params.workflowMode === 'original' && !manualPromptJson && !workingPromptGraph) {
-      setValidationError('Original workflow graph is unavailable.');
+      setValidationError(tr('integrations.comfyWorkflow.originalGraphUnavailable'));
       return;
     }
 
@@ -797,8 +799,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
   if (!normalizedMetadata) {
     return (
       <div className="rounded-lg border border-red-700/40 bg-red-500/10 p-4 text-sm text-red-200">
-        This image does not have enough metadata for ComfyUI generation.
-      </div>
+        {tr('integrations.comfyWorkflow.insufficientMetadata')}</div>
     );
   }
 
@@ -823,8 +824,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             <div className="mt-2 flex items-start gap-2 rounded-md border border-gray-700 bg-gray-950/70 px-3 py-2 text-xs text-gray-300">
               <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-300" />
               <span>
-                Resource catalog is unavailable right now. Embedded workflow values stay editable, but dropdown choices may fall back to free-text inputs.
-              </span>
+                {tr('integrations.comfyWorkflow.catalogUnavailable')}</span>
             </div>
           )}
           {effectiveGenerateDisabledReason && (
@@ -839,7 +839,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       {workflowUnavailable && (
         <div className="flex items-start gap-2 rounded-lg border border-blue-700/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-          <span>No executable workflow is embedded. Generation will use the image's normalized metadata.</span>
+          <span>{tr('integrations.comfyWorkflow.noExecutableWorkflow')}</span>
         </div>
       )}
 
@@ -855,8 +855,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             }`}
           >
             <Workflow size={16} />
-            Workflow
-          </button>
+            {tr('integrations.comfyWorkflow.tabWorkflow')}</button>
           <button
             type="button"
             disabled={workflowEditingUnavailable}
@@ -868,8 +867,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             } ${workflowEditingUnavailable ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
           >
             <Boxes size={16} />
-            Nodes
-          </button>
+            {tr('integrations.comfyWorkflow.tabNodes')}</button>
         </div>
       </div>
 
@@ -878,8 +876,8 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           {workflowEditingUnavailable ? (
             <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
               {workflowUnavailable
-                ? 'Visual workflow is unavailable because this image does not contain an executable embedded prompt graph.'
-                : 'Visual workflow editing is disabled while the metadata-only compatibility workflow is active.'}
+                ? tr('integrations.comfyWorkflow.visualUnavailableNoGraph')
+                : tr('integrations.comfyWorkflow.visualDisabledSimpleMode')}
             </div>
           ) : (
             <ComfyUIWorkflowVisualEditor
@@ -894,9 +892,9 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           )}
 
           <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-gray-300">Core</h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-300">{tr('integrations.comfyWorkflow.sectionCore')}</h3>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Prompt</label>
+              <label className="block text-sm font-medium text-gray-300">{tr('libraryGallery.prompt')}</label>
               <textarea
                 rows={8}
                 value={params.prompt}
@@ -905,7 +903,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
               />
             </div>
             <div className="mt-4 space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Negative Prompt</label>
+              <label className="block text-sm font-medium text-gray-300">{tr('libraryGallery.negativePrompt')}</label>
               <textarea
                 rows={5}
                 value={params.negativePrompt}
@@ -916,20 +914,20 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Sampler</label>
+                <label className="block text-sm font-medium text-gray-300">{tr('librarySearch.sampler')}</label>
                 {renderSelectOrTextInput({
                   value: params.sampler || '',
                   options: resources?.samplers || [],
-                  placeholder: 'Type sampler...',
+                  placeholder: tr('integrations.comfyWorkflow.typeSamplerPlaceholder'),
                   onChange: (value) => applyNextParams({ ...params, sampler: value || undefined }),
                 })}
               </div>
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Scheduler</label>
+                <label className="block text-sm font-medium text-gray-300">{tr('librarySearch.scheduler')}</label>
                 {renderSelectOrTextInput({
                   value: params.scheduler || '',
                   options: resources?.schedulers || [],
-                  placeholder: 'Type scheduler...',
+                  placeholder: tr('integrations.comfyWorkflow.typeSchedulerPlaceholder'),
                   onChange: (value) => applyNextParams({ ...params, scheduler: value || undefined }),
                 })}
               </div>
@@ -948,7 +946,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 />
               </label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
-                <span>Steps</span>
+                <span>{tr('libraryGallery.steps')}</span>
                 <input
                   type="number"
                   min="1"
@@ -958,7 +956,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 />
               </label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
-                <span>Width</span>
+                <span>{tr('comparison.width')}</span>
                 <input
                   type="number"
                   min="64"
@@ -969,7 +967,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 />
               </label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
-                <span>Height</span>
+                <span>{tr('comparison.height')}</span>
                 <input
                   type="number"
                   min="64"
@@ -983,7 +981,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
 
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <label className="space-y-2 text-sm font-medium text-gray-300">
-                <span>Seed</span>
+                <span>{tr('libraryGallery.seed')}</span>
                 <input
                   type="number"
                   value={params.randomSeed ? -1 : params.seed}
@@ -998,10 +996,9 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   checked={params.randomSeed}
                   onChange={(event) => applyNextParams({ ...params, randomSeed: event.target.checked })}
                 />
-                Random seed
-              </label>
+                {tr('integrations.a1111.randomSeed')}</label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
-                <span>Images</span>
+                <span>{tr('librarySearch.images')}</span>
                 <input
                   type="number"
                   min="1"
@@ -1019,7 +1016,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
           </div>
 
           <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-gray-300">Modeling</h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-300">{tr('integrations.comfyWorkflow.sectionModeling')}</h3>
             <div className="mb-2 flex flex-wrap gap-2 text-xs text-gray-400">
               {Array.from(compatibleModelFamilies).map((family) => (
                 <span key={family} className="rounded-full border border-gray-700 px-2 py-0.5">
@@ -1028,16 +1025,16 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
               ))}
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Model</label>
+              <label className="block text-sm font-medium text-gray-300">{tr('libraryGallery.model')}</label>
               <input
                 type="text"
                 value={modelSearch}
                 onChange={(event) => setModelSearch(event.target.value)}
-                placeholder="Search model..."
+                placeholder={tr('integrations.a1111.searchModelPlaceholder')}
                 className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
               {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading models...</div>
+                <div className="text-xs text-gray-400">{tr('integrations.a1111.loadingModels')}</div>
               ) : filteredModels.length > 0 ? (
                 <select
                   value={params.model ? `${params.model.family}:${params.model.name}` : ''}
@@ -1048,7 +1045,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   }}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  {!params.model && <option value="">Use current model</option>}
+                  {!params.model && <option value="">{tr('integrations.comfyWorkflow.useCurrentModel')}</option>}
                   {filteredModels.map((model) => (
                     <option key={`${model.family}:${model.name}`} value={`${model.family}:${model.name}`}>
                       [{MODEL_FAMILY_LABELS[model.family]}] {model.name}
@@ -1060,20 +1057,20 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   type="text"
                   value={params.model?.name || ''}
                   onChange={(event) => handleManualModelChange(event.target.value)}
-                  placeholder="Type model name..."
+                  placeholder={tr('integrations.comfyWorkflow.typeModelPlaceholder')}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               )}
             </div>
 
             <div className="mt-4 space-y-2">
-              <label className="block text-sm font-medium text-gray-300">LoRAs</label>
+              <label className="block text-sm font-medium text-gray-300">{tr('comparison.loras')}</label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={loraSearch}
                   onChange={(event) => setLoraSearch(event.target.value)}
-                  placeholder="Search or type LoRA..."
+                  placeholder={tr('integrations.comfyWorkflow.searchLoraPlaceholder')}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
@@ -1087,8 +1084,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   onClick={() => handleAddLora(loraSearch)}
                   className="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
                 >
-                  Add
-                </button>
+                  {tr('automation.addButton')}</button>
               </div>
               {filteredLoras.length > 0 && (
                 <select
@@ -1100,7 +1096,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   }}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="">Add from catalog...</option>
+                  <option value="">{tr('integrations.comfyWorkflow.addFromCatalog')}</option>
                   {filteredLoras.map((lora) => (
                     <option key={lora} value={lora}>{lora}</option>
                   ))}
@@ -1130,16 +1126,16 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   ))}
                 </div>
               ) : (
-                <p className="text-xs italic text-gray-500">No LoRAs selected.</p>
+                <p className="text-xs italic text-gray-500">{tr('integrations.comfyWorkflow.noLorasSelected')}</p>
               )}
             </div>
           </div>
 
           {isTransformation && (
             <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-gray-300">Transform</h3>
+              <h3 className="mb-3 text-sm font-semibold text-gray-300">{tr('imageViewer.editor.transform')}</h3>
               <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-300">Source Image Policy</label>
+                <label className="block text-sm font-medium text-gray-300">{tr('integrations.comfyWorkflow.sourceImagePolicy')}</label>
                 <select
                   value={params.sourceImagePolicy}
                   onChange={(event) =>
@@ -1149,16 +1145,16 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                     })}
                   className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="reuse_original">Reuse original workflow assets</option>
-                  <option value="selected_image">Use selected image</option>
-                  {requiresMaskInput && <option value="selected_image_and_mask">Use selected image + selected mask</option>}
+                  <option value="reuse_original">{tr('integrations.comfyWorkflow.policyReuseOriginal')}</option>
+                  <option value="selected_image">{tr('integrations.comfyWorkflow.policySelectedImage')}</option>
+                  {requiresMaskInput && <option value="selected_image_and_mask">{tr('integrations.comfyWorkflow.policySelectedImageAndMask')}</option>}
                 </select>
                 <div className="text-xs text-gray-400">
-                  Generation type detected: <span className="font-semibold text-gray-200">{visualPromptAnalysis.generationType}</span>
+                  {tr('integrations.comfyWorkflow.generationTypeDetected', { type: visualPromptAnalysis.generationType })}
                 </div>
                 {params.sourceImagePolicy === 'selected_image_and_mask' && requiresMaskInput && (
                   <label className="block space-y-2 text-sm font-medium text-gray-300">
-                    <span>Mask File</span>
+                    <span>{tr('integrations.comfyWorkflow.maskFile')}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -1185,7 +1181,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
               }}
               className="flex w-full items-center justify-between text-left text-sm font-semibold text-gray-300"
             >
-              <span>Advanced / Debug</span>
+              <span>{tr('integrations.comfyWorkflow.advancedDebug')}</span>
               {showAdvancedEditor ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
             {showAdvancedEditor && (
@@ -1204,15 +1200,14 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                       className="mt-0.5"
                     />
                     <span>
-                      <span className="block font-medium text-gray-100">Use metadata-only compatibility workflow</span>
+                      <span className="block font-medium text-gray-100">{tr('integrations.comfyWorkflow.useSimpleCompatibility')}</span>
                       <span className="mt-1 block text-xs text-gray-400">
-                        Rebuilds a basic workflow from normalized metadata when the embedded workflow requires unavailable custom nodes.
-                      </span>
+                        {tr('integrations.comfyWorkflow.useSimpleCompatibilityHelp')}</span>
                     </span>
                   </label>
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
-                  <span>Prompt API JSON is authoritative for execution in original mode.</span>
+                  <span>{tr('integrations.comfyWorkflow.promptApiAuthoritative')}</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -1221,11 +1216,10 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                     }}
                     className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:bg-gray-800"
                   >
-                    Reload current state
-                  </button>
+                    {tr('integrations.comfyWorkflow.reloadCurrentState')}</button>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-300">Prompt API JSON</label>
+                  <label className="block text-sm font-medium text-gray-300">{tr('integrations.comfyWorkflow.promptApiJson')}</label>
                   <textarea
                     rows={10}
                     value={advancedPromptJsonText}
@@ -1234,7 +1228,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-300">Workflow UI JSON</label>
+                  <label className="block text-sm font-medium text-gray-300">{tr('integrations.comfyWorkflow.workflowUiJson')}</label>
                   <textarea
                     rows={8}
                     value={advancedWorkflowJsonText}
@@ -1243,8 +1237,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   />
                 </div>
                 <div className="text-xs text-gray-400">
-                  Use this only for debugging or edge cases. The visual editor is meant to replace direct JSON editing for normal workflow adjustments.
-                </div>
+                  {tr('integrations.comfyWorkflow.debugOnlyHint')}</div>
               </div>
             )}
           </div>
@@ -1263,15 +1256,14 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             onClick={onCancel}
             className="rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
           >
-            Cancel
-          </button>
+            {tr('batchExport.cancel')}</button>
         )}
         <button
           onClick={handleGenerate}
           disabled={isGenerating || Boolean(effectiveGenerateDisabledReason)}
           className="rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isGenerating ? 'Generating...' : 'Generate'}
+          {isGenerating ? tr('imageViewer.preview.generating') : tr('libraryGallery.generate')}
         </button>
       </div>
 

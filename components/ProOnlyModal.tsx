@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag, Box, Image as ImageIcon, LucideIcon } from 'lucide-react';
@@ -28,183 +29,6 @@ type FeatureCopy = {
   freeTierNote?: string;
 };
 
-const featureInfo: Record<ProFeature, FeatureCopy> = {
-  canvas: {
-    contextLine: 'Develop visual ideas with your generations.',
-    headline: 'Arrange references on a creative canvas',
-    featureName: 'Canvas', icon: Sparkles,
-    bullets: ['Organize media, text and frames on saved boards', 'Inspect generation details and compare alternatives', 'Keep references connected to your local library'],
-    alsoUnlocks: 'Existing boards remain viewable and exportable after your trial.',
-  },
-  prompt_library_advanced: {
-    contextLine: 'Reuse the parts of your prompts that work.',
-    headline: 'Build prompts from reusable blocks and templates',
-    featureName: 'Advanced Prompt Library', icon: Sparkles,
-    bullets: ['Extract and organize reusable prompt blocks', 'Compose positive and negative prompts with editable variables', 'Organize selections in bulk and find similar prompts'],
-    alsoUnlocks: 'Your saved prompts remain readable, copyable and exportable after your trial.',
-  },
-  model_manager: {
-    contextLine: 'Keeping track of your checkpoints and LoRAs?',
-    headline: 'Know what you have and what came out next',
-    featureName: 'Model Manager',
-    icon: Box,
-    bullets: [
-      'Browse your local models with covers, favorites, tags and notes',
-      'Track new Civitai releases and compare their base models before choosing a version',
-      'Keep examples and a floating Inspector beside your generation app',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and ComfyUI integration.',
-  },
-  comparison: {
-    contextLine: "Looks like you're comparing generations.",
-    headline: 'Compare 2–4 images, pixel and parameter',
-    featureName: 'Compare View',
-    icon: GitCompare,
-    bullets: [
-      'Diff map, edge overlay, flicker, loupe and slider',
-      'Token-level prompt diff, plus seed, CFG, sampler and LoRA changes highlighted',
-      'Zoom and pan locked across every panel — no lining them up by hand',
-    ],
-    alsoUnlocks: 'Pro also unlocks ComfyUI generation, the image editor, and 6 more.',
-  },
-
-  image_editor: {
-    contextLine: 'Editing this one?',
-    headline: 'Edit and keep the workflow inside the file',
-    featureName: 'Image Editor',
-    icon: ImageIcon,
-    bullets: [
-      'Save As or Overwrite with prompt, seed and workflow intact',
-      'Adjust, crop, transform, resize, enhance, annotate',
-      'Edits return to your library already indexed — no re-scan',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, ComfyUI generation, and 6 more.',
-  },
-
-  file_management: {
-    contextLine: 'Moving this somewhere else?',
-    headline: 'Move files without losing what the app knows about them',
-    featureName: 'File Management',
-    icon: Download,
-    bullets: [
-      "Tags, favorites and notes travel with the file — move it in Explorer and they're gone",
-      'Copy or move dozens between indexed folders in one action, nothing to re-tag afterwards',
-      'Filename conflicts resolved automatically',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and 6 more.',
-  },
-
-  comfyui: {
-    contextLine: 'Want to regenerate this from its own workflow?',
-    headline: 'Send any image back to ComfyUI',
-    featureName: 'ComfyUI Integration',
-    icon: Sparkles,
-    bullets: [
-      'Workflow pulled straight from the image and queued — no rebuilding the graph by hand',
-      'Step-by-step preview in the embedded workspace',
-      'Output saved with full metadata and indexed on arrival',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and 6 more.',
-  },
-
-  a1111: {
-    contextLine: 'Want another round from these parameters?',
-    headline: 'Regenerate with every parameter already filled in',
-    featureName: 'Automatic1111 Integration',
-    icon: Sparkles,
-    bullets: [
-      'Prompt, seed, sampler, CFG and dimensions pulled from this image — nothing retyped',
-      'Queue a batch and track progress without switching windows',
-      'New outputs indexed next to the original',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and 6 more.',
-  },
-
-  analytics: {
-    contextLine: 'Curious what your library actually looks like?',
-    headline: 'See which models and settings you really use',
-    featureName: 'Analytics Explorer',
-    icon: BarChart3,
-    bullets: [
-      'Top checkpoints, LoRAs and samplers, ranked over any period',
-      'Generation habits by day and hour, and output volume over time',
-      'Generation time and VRAM by GPU, from verified telemetry — no spreadsheet needed',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, ComfyUI generation, and 6 more.',
-  },
-
-  clustering: {
-    contextLine: 'Library bigger than the free limit?',
-    headline: 'Cluster your entire library, not the first 300 images',
-    featureName: 'Unlimited Clustering',
-    icon: Sparkles,
-    bullets: [
-      'Prompt-similarity clustering across every indexed image',
-      'TF-IDF auto-tags computed over the full set, not a sample',
-      'Duplicate and near-variation groups surfaced in one pass',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and 6 more.',
-    freeTierNote: `Free clusters up to ${CLUSTERING_FREE_TIER_LIMIT} images.`,
-  },
-
-  batch_export: {
-    contextLine: 'Exporting more than one?',
-    headline: 'Export the whole selection in one pass',
-    featureName: 'Batch Export',
-    icon: Download,
-    bullets: [
-      'Export a selection or an entire filtered result set',
-      'Flattened output with filename conflicts resolved automatically',
-      'ZIP straight out of the app — nothing to zip afterwards',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, the image editor, and 6 more.',
-    freeTierNote: 'Free exports one image at a time.',
-  },
-
-  bulk_tagging: {
-    contextLine: 'Tagging more than one?',
-    headline: 'Tag hundreds of images in a single action',
-    featureName: 'Bulk Tagging',
-    icon: Tag,
-    bullets: [
-      'Apply or remove tags across an entire selection at once',
-      'Autocomplete from tags already in your library, so naming stays consistent',
-      'Works on filtered results — no clicking through images one by one',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, ComfyUI generation, and 6 more.',
-  },
-
-  semantic_search: {
-    contextLine: 'Searching your whole library?',
-    headline: 'Search every image by what it shows',
-    featureName: 'Visual Search',
-    icon: Sparkles,
-    bullets: [
-      'Find images by their content — even screenshots and downloads with no prompt',
-      'Runs entirely on your machine; nothing is ever uploaded',
-      'Free indexes your 2,000 newest images — Pro indexes the whole library',
-    ],
-    alsoUnlocks: 'Pro also unlocks Compare View, ComfyUI generation, and 6 more.',
-    freeTierNote: `Free indexes your ${SEMANTIC_FREE_TIER_LIMIT.toLocaleString()} most recent images.`,
-  },
-};
-
-const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
-  canvas: (n) => `You've tried to edit Canvas boards ${n} times.`,
-  prompt_library_advanced: (n) => `You've tried advanced prompt creation ${n} times.`,
-  model_manager: (n) => `You've tried to open Model Manager ${n} times.`,
-  comparison: (n) => `You've tried to compare images ${n} times.`,
-  image_editor: (n) => `You've tried to edit an image ${n} times.`,
-  file_management: (n) => `You've tried to move or copy files ${n} times.`,
-  comfyui: (n) => `You've tried to send images to ComfyUI ${n} times.`,
-  a1111: (n) => `You've tried to generate with Automatic1111 ${n} times.`,
-  analytics: (n) => `You've opened Analytics ${n} times.`,
-  clustering: (n) => `You've hit the clustering limit ${n} times.`,
-  batch_export: (n) => `You've tried to export in bulk ${n} times.`,
-  bulk_tagging: (n) => `You've tried to tag in bulk ${n} times.`,
-  semantic_search: (n) => `You've reached the visual search limit ${n} times.`,
-};
-
 const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
   isOpen,
   onClose,
@@ -212,18 +36,196 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
   canStartTrial,
   onStartTrial,
 }) => {
+  const { t: tr } = useTranslation();
+  const featureInfo: Record<ProFeature, FeatureCopy> = {
+    canvas: {
+      contextLine: tr('licensing.locked.canvas.context'),
+      headline: tr('licensing.locked.canvas.headline'),
+      featureName: tr('licensing.locked.canvas.name'), icon: Sparkles,
+      bullets: [tr('licensing.locked.canvas.bulletBoards'), tr('licensing.locked.canvas.bulletInspect'), tr('licensing.locked.canvas.bulletLibrary')],
+      alsoUnlocks: tr('licensing.locked.canvas.afterTrial'),
+    },
+    prompt_library_advanced: {
+      contextLine: tr('licensing.locked.promptLibrary.context'),
+      headline: tr('licensing.locked.promptLibrary.headline'),
+      featureName: tr('licensing.locked.promptLibrary.name'), icon: Sparkles,
+      bullets: [tr('licensing.locked.promptLibrary.bulletExtract'), tr('licensing.locked.promptLibrary.bulletCompose'), tr('licensing.locked.promptLibrary.bulletBulk')],
+      alsoUnlocks: tr('licensing.locked.promptLibrary.afterTrial'),
+    },
+    model_manager: {
+      contextLine: tr('licensing.locked.modelManager.context'),
+      headline: tr('licensing.locked.modelManager.headline'),
+      featureName: tr('licensing.locked.modelManager.name'),
+      icon: Box,
+      bullets: [
+        tr('licensing.locked.modelManager.bulletBrowse'),
+        tr('licensing.locked.modelManager.bulletCivitai'),
+        tr('licensing.locked.modelManager.bulletInspector'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareEditorComfy'),
+    },
+    comparison: {
+      contextLine: tr('licensing.locked.comparison.context'),
+      headline: tr('licensing.locked.comparison.headline'),
+      featureName: tr('licensing.locked.comparison.name'),
+      icon: GitCompare,
+      bullets: [
+        tr('licensing.locked.comparison.bulletModes'),
+        tr('licensing.locked.comparison.bulletDiff'),
+        tr('licensing.locked.comparison.bulletSync'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksComfyEditorMore'),
+    },
+
+    image_editor: {
+      contextLine: tr('licensing.locked.imageEditor.context'),
+      headline: tr('licensing.locked.imageEditor.headline'),
+      featureName: tr('shell.editor'),
+      icon: ImageIcon,
+      bullets: [
+        tr('licensing.locked.imageEditor.bulletSave'),
+        tr('licensing.locked.imageEditor.bulletTools'),
+        tr('licensing.locked.imageEditor.bulletIndexed'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareComfyMore'),
+    },
+
+    file_management: {
+      contextLine: tr('licensing.locked.fileManagement.context'),
+      headline: tr('licensing.locked.fileManagement.headline'),
+      featureName: tr('licensing.locked.fileManagement.name'),
+      icon: Download,
+      bullets: [
+        tr('licensing.locked.fileManagement.bulletTravel'),
+        tr('licensing.locked.fileManagement.bulletBatch'),
+        tr('licensing.locked.fileManagement.bulletConflicts'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareEditorMore'),
+    },
+
+    comfyui: {
+      contextLine: tr('licensing.locked.comfyui.context'),
+      headline: tr('licensing.locked.comfyui.headline'),
+      featureName: tr('licensing.locked.comfyui.name'),
+      icon: Sparkles,
+      bullets: [
+        tr('licensing.locked.comfyui.bulletWorkflow'),
+        tr('licensing.locked.comfyui.bulletPreview'),
+        tr('licensing.locked.comfyui.bulletOutput'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareEditorMore'),
+    },
+
+    a1111: {
+      contextLine: tr('licensing.locked.a1111.context'),
+      headline: tr('licensing.locked.a1111.headline'),
+      featureName: tr('licensing.locked.a1111.name'),
+      icon: Sparkles,
+      bullets: [
+        tr('licensing.locked.a1111.bulletParams'),
+        tr('licensing.locked.a1111.bulletQueue'),
+        tr('licensing.locked.a1111.bulletIndexed'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareEditorMore'),
+    },
+
+    analytics: {
+      contextLine: tr('licensing.locked.analytics.context'),
+      headline: tr('licensing.locked.analytics.headline'),
+      featureName: tr('analytics.title'),
+      icon: BarChart3,
+      bullets: [
+        tr('licensing.locked.analytics.bulletTop'),
+        tr('licensing.locked.analytics.bulletHabits'),
+        tr('licensing.locked.analytics.bulletTelemetry'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareComfyMore'),
+    },
+
+    clustering: {
+      contextLine: tr('licensing.locked.clustering.context'),
+      headline: tr('licensing.locked.clustering.headline', { limit: CLUSTERING_FREE_TIER_LIMIT }),
+      featureName: tr('licensing.locked.clustering.name'),
+      icon: Sparkles,
+      bullets: [
+        tr('licensing.locked.clustering.bulletPrompts'),
+        tr('licensing.locked.clustering.bulletTfidf'),
+        tr('licensing.locked.clustering.bulletDuplicates'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareEditorMore'),
+      freeTierNote: tr('licensing.locked.clustering.freeTierNote', { limit: CLUSTERING_FREE_TIER_LIMIT }),
+    },
+
+    batch_export: {
+      contextLine: tr('licensing.locked.batchExport.context'),
+      headline: tr('licensing.locked.batchExport.headline'),
+      featureName: tr('licensing.locked.batchExport.name'),
+      icon: Download,
+      bullets: [
+        tr('licensing.locked.batchExport.bulletSelection'),
+        tr('licensing.locked.batchExport.bulletFlattened'),
+        tr('licensing.locked.batchExport.bulletZip'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareEditorMore'),
+      freeTierNote: tr('licensing.locked.batchExport.freeTierNote'),
+    },
+
+    bulk_tagging: {
+      contextLine: tr('licensing.locked.bulkTagging.context'),
+      headline: tr('licensing.locked.bulkTagging.headline'),
+      featureName: tr('licensing.locked.bulkTagging.name'),
+      icon: Tag,
+      bullets: [
+        tr('licensing.locked.bulkTagging.bulletApply'),
+        tr('licensing.locked.bulkTagging.bulletAutocomplete'),
+        tr('licensing.locked.bulkTagging.bulletFiltered'),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareComfyMore'),
+    },
+
+    semantic_search: {
+      contextLine: tr('licensing.locked.visualSearch.context'),
+      headline: tr('licensing.locked.visualSearch.headline'),
+      featureName: tr('settings.navigation.visualSearch'),
+      icon: Sparkles,
+      bullets: [
+        tr('licensing.locked.visualSearch.bulletContent'),
+        tr('licensing.locked.visualSearch.bulletLocal'),
+        tr('licensing.locked.visualSearch.bulletLimit', { limit: SEMANTIC_FREE_TIER_LIMIT }),
+      ],
+      alsoUnlocks: tr('licensing.locked.alsoUnlocksCompareComfyMore'),
+      freeTierNote: tr('licensing.locked.visualSearch.freeTierNote', { limit: SEMANTIC_FREE_TIER_LIMIT }),
+    },
+  };
+
+  const blockedAttemptsCopy: Record<ProFeature, (count: number) => string> = {
+    canvas: (n) => tr('licensing.locked.attempts.canvas', { count: n }),
+    prompt_library_advanced: (n) => tr('licensing.locked.attempts.promptLibrary', { count: n }),
+    model_manager: (n) => tr('licensing.locked.attempts.modelManager', { count: n }),
+    comparison: (n) => tr('licensing.locked.attempts.comparison', { count: n }),
+    image_editor: (n) => tr('licensing.locked.attempts.imageEditor', { count: n }),
+    file_management: (n) => tr('licensing.locked.attempts.fileManagement', { count: n }),
+    comfyui: (n) => tr('licensing.locked.attempts.comfyui', { count: n }),
+    a1111: (n) => tr('licensing.locked.attempts.a1111', { count: n }),
+    analytics: (n) => tr('licensing.locked.attempts.analytics', { count: n }),
+    clustering: (n) => tr('licensing.locked.attempts.clustering', { count: n }),
+    batch_export: (n) => tr('licensing.locked.attempts.batchExport', { count: n }),
+    bulk_tagging: (n) => tr('licensing.locked.attempts.bulkTagging', { count: n }),
+    semantic_search: (n) => tr('licensing.locked.attempts.visualSearch', { count: n }),
+  };
+
   const creatorAttributionToken = useSettingsStore((state) => state.creatorAttributionToken);
   const blockedAttempts = useProModalStore((state) => state.blockedAttempts[feature] ?? 0);
 
   if (!isOpen) return null;
 
   const info = featureInfo[feature] ?? {
-    contextLine: 'Unlock this feature.',
-    headline: 'Unlock Pro',
-    featureName: 'Pro Feature',
+    contextLine: tr('licensing.locked.fallback.context'),
+    headline: tr('licensing.locked.fallback.headline'),
+    featureName: tr('licensing.proFeatureTitle'),
     icon: Sparkles,
-    bullets: ['Pro-only functionality'],
-    alsoUnlocks: 'Pro unlocks every feature in the app.',
+    bullets: [tr('licensing.locked.fallback.bullet')],
+    alsoUnlocks: tr('licensing.locked.fallback.alsoUnlocks'),
   };
   const Icon = info.icon;
 
@@ -243,8 +245,8 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Close"
-            aria-label="Close pro feature modal"
+            title={tr('comparison.close')}
+            aria-label={tr('licensing.locked.closeModal')}
           >
             <X className="w-5 h-5 text-gray-400" />
           </button>
@@ -289,11 +291,11 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
                   className="w-full inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
                 >
                   <Crown className="w-5 h-5" />
-                  Start {TRIAL_DURATION_DAYS}-day trial
+                  {tr('licensing.locked.startTrial', { days: TRIAL_DURATION_DAYS })}
                 </button>
-                <p className="text-center text-xs text-gray-400">No card, no account.</p>
+                <p className="text-center text-xs text-gray-400">{tr('licensing.locked.noCardNoAccount')}</p>
                 <div className="border-t border-gray-800 pt-3">
-                  <p className="mb-2 text-center text-xs text-gray-400">Or choose a Pro plan now</p>
+                  <p className="mb-2 text-center text-xs text-gray-400">{tr('licensing.locked.orChoosePlanNow')}</p>
                   <ProPlanCheckoutOptions
                     token={creatorAttributionToken}
                     ctx="lockedfeature"
@@ -310,20 +312,18 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
                   feature={feature}
                 />
                 <p className="text-center text-xs text-gray-500">
-                  14-day refund, no questions asked · Open source (MPL 2.0)
-                </p>
+                  {tr('licensing.locked.refundOpenSource')}</p>
               </>
             )}
             {creatorAttributionToken ? (
-              <p className="text-center text-xs text-gray-500">Creator attribution will be included at checkout.</p>
+              <p className="text-center text-xs text-gray-500">{tr('licensing.attributionCheckout')}</p>
             ) : null}
             <button
               onClick={onClose}
               className="w-full inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold py-2.5 px-6 rounded-lg transition-colors border border-gray-700"
             >
               <X className="w-4 h-4" />
-              Close
-            </button>
+              {tr('comparison.close')}</button>
           </div>
         </div>
       </div>

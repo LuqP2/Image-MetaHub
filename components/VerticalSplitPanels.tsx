@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 export interface VerticalSplitPane {
@@ -69,6 +70,8 @@ const VerticalSplitPanels: React.FC<VerticalSplitPanelsProps> = ({
   minPaneHeight = 120,
   className = '',
 }) => {
+  const { t: tr } = useTranslation();
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [sizes, setSizes] = useState<number[]>(() => {
     if (typeof window === 'undefined') {
@@ -166,7 +169,7 @@ const VerticalSplitPanels: React.FC<VerticalSplitPanelsProps> = ({
           {index < panes.length - 1 && (
             <div
               role="separator"
-              aria-label={`Resize ${pane.ariaLabel}`}
+              aria-label={tr('shell.resizeNamed', { name: pane.ariaLabel })}
               aria-orientation="horizontal"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -178,7 +181,7 @@ const VerticalSplitPanels: React.FC<VerticalSplitPanelsProps> = ({
                 });
               }}
               className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center touch-none"
-              title="Drag to resize pane"
+              title={tr('shell.dragResize')}
             >
               <div className={`h-1 w-16 rounded-full transition-colors ${dragState?.handleIndex === index ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-700/80 group-hover:bg-blue-400/80'}`} />
             </div>

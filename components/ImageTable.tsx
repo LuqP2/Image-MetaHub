@@ -934,6 +934,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
           {(() => {
             const fileMenuItems = buildFileMenuItems({
+              t,
               onRename: () => openRenameModal(contextMenu.image),
               onCopyTo: () => openTransferModal('copy'),
               onMoveTo: () => openTransferModal('move'),

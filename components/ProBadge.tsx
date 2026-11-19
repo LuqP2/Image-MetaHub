@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { Crown } from 'lucide-react';
 
@@ -15,9 +16,11 @@ interface ProBadgeProps {
 }
 
 const ProBadge: React.FC<ProBadgeProps> = ({ size = 'sm', tooltip, variant = 'pill' }) => {
+  const { t: tr } = useTranslation();
+
   const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1';
   const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
-  const title = tooltip || 'Pro Feature';
+  const title = tooltip || tr('licensing.proFeatureTitle');
 
   if (variant === 'subtle') {
     return (
