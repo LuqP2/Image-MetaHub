@@ -164,7 +164,7 @@ const Model3DThumbnail: React.FC<Model3DThumbnailProps> = ({ image, directoryPat
       {!cacheSafe ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-950 text-violet-300">
           <Box className="h-7 w-7" />
-          <span className="text-[10px] font-medium">3D preview</span>
+          <span className="text-[10px] font-medium">{t('modelLibrary.previewNamed', { name: '3D' })}</span>
         </div>
       ) : thumbnailUrl ? (
         <img src={thumbnailUrl} alt={image.name} className="h-full w-full object-cover" draggable={false} />

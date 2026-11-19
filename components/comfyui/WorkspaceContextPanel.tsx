@@ -7,9 +7,9 @@ import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 
 const tabLabels = { library: 'settings.navigation.library', prompt: 'promptLibrary.promptType', models: 'modelLibrary.models' } as const;
 const tabs = [
-  { id: 'library', label: t('settings.navigation.library'), Icon: Images },
-  { id: 'prompt', label: t('promptLibrary.promptType'), Icon: Bookmark },
-  { id: 'models', label: t('modelLibrary.models'), Icon: Box },
+  { id: 'library', Icon: Images },
+  { id: 'prompt', Icon: Bookmark },
+  { id: 'models', Icon: Box },
 ] as const;
 type Tab = typeof tabs[number]['id'];
 
