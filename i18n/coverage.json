@@ -266,7 +266,17 @@
       "components/promptLibrary/PromptFolders.tsx",
       "components/PromptLibrary.tsx",
       "components/promptLibrary/PromptImportExportDialog.tsx",
-      "components/promptLibrary/PromptLibraryFilters.tsx"
+      "components/promptLibrary/PromptLibraryFilters.tsx",
+      "components/promptLibrary/PromptDetails.tsx",
+      "components/promptLibrary/PromptPreview.tsx",
+      "components/promptLibrary/PromptInlineText.tsx",
+      "components/promptLibrary/PromptCategoryInput.tsx",
+      "components/promptLibrary/PromptTagsInput.tsx",
+      "hooks/usePromptBlockExtraction.tsx",
+      "components/promptLibrary/PromptBlockEditor.tsx",
+      "components/promptLibrary/BlockContentEditor.tsx",
+      "components/promptLibrary/BlockFieldSuggestions.tsx",
+      "hooks/usePromptSelectionMenu.tsx"
     ],
     "literalExceptions": [
       "styles.csv"

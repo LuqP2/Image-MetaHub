@@ -1,3 +1,5 @@
+import { useTranslation } from '../../i18n/useTranslation';
+import { translatePromptMessage } from '../../i18n/promptMessages';
 import React, { useRef, useState } from 'react';
 import type { PromptBlock, PromptVariable } from '../../types';
 import { useSavedPromptStore } from '../../store/useSavedPromptStore';
@@ -11,6 +13,7 @@ function FieldSuggestions({ variable, disabled, save, onDraftChange }: {
   save: (baseline: PromptVariable, options: string[]) => Promise<void>;
   onDraftChange: (dirty: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<{ baseline: PromptVariable; options: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +21,7 @@ function FieldSuggestions({ variable, disabled, save, onDraftChange }: {
     if (!draft || busy || disabled) return;
     setBusy(true); setError('');
     try { await save(draft.baseline, draft.options); setDraft(null); onDraftChange(false); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save suggestions.'); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'promptLibrary.suggestionsFailed'); }
     finally { setBusy(false); }
   };
   return <fieldset disabled={disabled || busy} className="space-y-2 rounded-lg border border-gray-700 p-3" onBlur={event => {
@@ -30,8 +33,8 @@ function FieldSuggestions({ variable, disabled, save, onDraftChange }: {
       onDraftChange(JSON.stringify(options) !== JSON.stringify(variable.options));
       setError('');
     }} />
-    {busy && <p role="status" className="text-xs text-gray-400">Saving suggestions…</p>}
-    {error && <div className="space-y-2"><p role="alert" className="text-xs text-red-400">{error}</p><button type="button" className={buttonClass} onClick={() => void persist()}>Retry saving {variable.name}</button></div>}
+    {busy && <p role="status" className="text-xs text-gray-400">{t('promptLibrary.savingSuggestions')}</p>}
+    {error && <div className="space-y-2"><p role="alert" className="text-xs text-red-400">{translatePromptMessage(error, t)}</p><button type="button" className={buttonClass} onClick={() => void persist()}>{t('promptLibrary.retryFieldSave', { variable: variable.name })}</button></div>}
   </fieldset>;
 }
 
@@ -40,6 +43,7 @@ export default function BlockFieldSuggestions({ block, onPending, beforeSave, on
   beforeSave?: () => Promise<void> | null;
   onDraftChange?: (name: string, dirty: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const { canUseAdvancedPromptLibrary } = useFeatureAccess();
   const tail = useRef<Promise<void>>(Promise.resolve());
   const variables = activeBlockFields(block.text, normalizeEditor(block.editor).variables);
@@ -53,10 +57,10 @@ export default function BlockFieldSuggestions({ block, onPending, beforeSave, on
       if (!canUseAdvancedPromptLibrary) return;
       const state = useSavedPromptStore.getState();
       const latest = state.blocks.find(entry => entry.id === block.id);
-      if (!latest) throw new Error('This block no longer exists.');
+      if (!latest) throw new Error('promptLibrary.blockMissing');
       const editor = normalizeEditor(latest.editor);
       const current = activeBlockFields(latest.text, editor.variables).find(entry => entry.name === baseline.name);
-      if (!current || !sameVariableDefinition(current, baseline)) throw new Error('This field changed elsewhere. Reopen the block before updating its suggestions.');
+      if (!current || !sameVariableDefinition(current, baseline)) throw new Error('promptLibrary.fieldChanged');
       const replacement = { ...current, options };
       const variables = editor.variables.some(entry => entry.name === current.name)
         ? editor.variables.map(entry => entry.name === current.name ? replacement : entry)
@@ -66,9 +70,9 @@ export default function BlockFieldSuggestions({ block, onPending, beforeSave, on
     tail.current = operation; onPending(operation);
     return operation;
   };
-  return <section aria-label="Block field suggestions" className="space-y-3">
-    <h3 className="text-sm font-semibold">Fields</h3>
-    <p className="text-xs text-gray-400">Changes save when you leave a field.</p>
+  return <section aria-label={t('promptLibrary.blockSuggestions')} className="space-y-3">
+    <h3 className="text-sm font-semibold">{t('promptLibrary.fields')}</h3>
+    <p className="text-xs text-gray-400">{t('promptLibrary.leaveFieldHelp')}</p>
     {variables.map(variable => <FieldSuggestions key={variable.name} variable={variable} disabled={!canUseAdvancedPromptLibrary} save={save} onDraftChange={dirty => onDraftChange?.(variable.name, dirty)} />)}
   </section>;
 }
