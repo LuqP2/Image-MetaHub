@@ -334,7 +334,9 @@
       "components/ComfyUIWorkflowNodeList.tsx",
       "components/comfyui/WorkspaceContextPanel.tsx",
       "components/comfyui/ComfyTextDrag.tsx",
-      "components/comfyui/WorkspaceSearch.tsx"
+      "components/comfyui/WorkspaceSearch.tsx",
+      "components/comfyui/WorkspaceModels.tsx",
+      "components/comfyui/WorkspacePrompts.tsx"
     ],
     "literalExceptions": []
   }
