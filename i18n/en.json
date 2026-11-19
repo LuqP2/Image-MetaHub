@@ -3627,5 +3627,7 @@
   "canvasFeedback.lightAzimuth": "Light azimuth",
   "canvasFeedback.lightElevation": "Light elevation",
   "canvasFeedback.resetLight": "Reset light",
-  "canvasFeedback.locateExternal": "Locate external file"
+  "canvasFeedback.locateExternal": "Locate external file",
+  "integrations.discardWorkspaceDraftConfirm": "Discard this Workspace draft?",
+  "integrations.discardBlockEditConfirm": "Discard this unsaved block edit?"
 }

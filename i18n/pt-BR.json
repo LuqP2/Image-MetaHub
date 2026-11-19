@@ -3627,5 +3627,7 @@
   "canvasFeedback.lightAzimuth": "Azimute da luz",
   "canvasFeedback.lightElevation": "Elevação da luz",
   "canvasFeedback.resetLight": "Restaurar luz",
-  "canvasFeedback.locateExternal": "Localizar arquivo externo"
+  "canvasFeedback.locateExternal": "Localizar arquivo externo",
+  "integrations.discardWorkspaceDraftConfirm": "Descartar este rascunho do Workspace?",
+  "integrations.discardBlockEditConfirm": "Descartar as alterações não salvas deste bloco?"
 }

@@ -3628,7 +3628,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "pt-BR": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -7259,7 +7261,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "ja": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -10890,7 +10894,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "de": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -14521,7 +14527,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "fr": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -18152,7 +18160,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "ko": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -21783,7 +21793,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "zh-CN": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -25414,7 +25426,9 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   },
   "zh-TW": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -29045,6 +29059,8 @@
     "canvasFeedback.lightAzimuth": "bd7c6590c29a07c058fdc023075a640be731573c76d9dc44d0654aa360080636",
     "canvasFeedback.lightElevation": "4899d95b8a9b34dca8ec748aa7c76591aeff802a0d7459fcaa17f0359ba50e7f",
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
-    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a"
+    "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
+    "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
   }
 }

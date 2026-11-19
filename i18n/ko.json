@@ -3627,5 +3627,7 @@
   "canvasFeedback.lightAzimuth": "조명 방위각",
   "canvasFeedback.lightElevation": "조명 고도",
   "canvasFeedback.resetLight": "조명 초기화",
-  "canvasFeedback.locateExternal": "외부 파일 찾기"
+  "canvasFeedback.locateExternal": "외부 파일 찾기",
+  "integrations.discardWorkspaceDraftConfirm": "이 워크스페이스 초안을 삭제할까요?",
+  "integrations.discardBlockEditConfirm": "이 블록의 저장하지 않은 변경 사항을 버릴까요?"
 }

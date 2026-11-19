@@ -501,7 +501,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
           >
             {tr('promptLibrary.previous')}</button>
           <span className="text-gray-400">
-            Page <span className="font-semibold text-gray-200">{page}</span> of {totalPages}
+            {tr('libraryGallery.pagePageOfTotal', { page, total: totalPages })}
           </span>
           <button
             type="button"

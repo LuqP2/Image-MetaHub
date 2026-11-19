@@ -3627,5 +3627,7 @@
   "canvasFeedback.lightAzimuth": "光源方位角",
   "canvasFeedback.lightElevation": "光源仰角",
   "canvasFeedback.resetLight": "重置光源",
-  "canvasFeedback.locateExternal": "定位外部文件"
+  "canvasFeedback.locateExternal": "定位外部文件",
+  "integrations.discardWorkspaceDraftConfirm": "放弃此工作区草稿吗？",
+  "integrations.discardBlockEditConfirm": "放弃此文本块未保存的更改吗？"
 }

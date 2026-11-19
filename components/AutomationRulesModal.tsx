@@ -778,8 +778,9 @@ return (
                   },
                 })}
                 className="rounded-full border border-blue-700/40 bg-blue-950/40 px-2 py-1 text-xs text-blue-200 hover:border-rose-500/50 hover:text-rose-200"
+                aria-label={tr('imageViewer.preview.removeTag', { tag })}
               >
-                {tag} x
+                {tag} <span aria-hidden="true">×</span>
               </button>
             ))}
           </div>

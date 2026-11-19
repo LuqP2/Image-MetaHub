@@ -3627,5 +3627,7 @@
   "canvasFeedback.lightAzimuth": "Lichtazimut",
   "canvasFeedback.lightElevation": "Lichthöhe",
   "canvasFeedback.resetLight": "Licht zurücksetzen",
-  "canvasFeedback.locateExternal": "Externe Datei suchen"
+  "canvasFeedback.locateExternal": "Externe Datei suchen",
+  "integrations.discardWorkspaceDraftConfirm": "Diesen Arbeitsbereichsentwurf verwerfen?",
+  "integrations.discardBlockEditConfirm": "Die ungespeicherten Änderungen an diesem Block verwerfen?"
 }
