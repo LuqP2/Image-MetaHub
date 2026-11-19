@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -13,6 +14,7 @@ import DiscoveryBanner from './DiscoveryBanner';
  * what makes it discoverable at all rather than gating on it being on already.
  */
 const VisualSearchOnboarding: React.FC<{ hasImages: boolean }> = ({ hasImages }) => {
+  const { t } = useTranslation();
   const enabled = useSettingsStore((s) => s.semanticSearchEnabled);
   const seen = useSettingsStore((s) => s.hasSeenVisualSearchOnboarding);
   const markSeen = useSettingsStore((s) => s.setHasSeenVisualSearchOnboarding);
@@ -45,7 +47,7 @@ const VisualSearchOnboarding: React.FC<{ hasImages: boolean }> = ({ hasImages })
   return (
     <DiscoveryBanner
       icon={Sparkles}
-      title="Find Similar — Local Visual Search"
+      title={t('shell.visualSearchTitle')}
       description="Select any image to find visually related files, even without prompts or metadata."
       actionLabel="Set up"
       onAction={setUp}

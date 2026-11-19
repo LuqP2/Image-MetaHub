@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useEffect } from 'react';
 import { CheckCircle2, AlertTriangle, CircleAlert, Info, X } from 'lucide-react';
 
@@ -12,6 +13,7 @@ interface ToastProps {
 }
 
 const Toast: React.FC<ToastProps> = ({ message, onDismiss, duration = 3000, variant = 'success', detail, action, prominent = false }) => {
+  const { t } = useTranslation();
   useEffect(() => {
     if (duration > 0) {
       const timer = setTimeout(() => {
@@ -32,8 +34,8 @@ const Toast: React.FC<ToastProps> = ({ message, onDismiss, duration = 3000, vari
         <button
           onClick={onDismiss}
           className="p-1 hover:bg-gray-800 rounded transition-colors flex-shrink-0"
-          title="Dismiss"
-          aria-label="Dismiss notification"
+          title={t('shell.dismiss')}
+          aria-label={t('shell.dismissNotification')}
         >
           <X size={16} />
         </button>

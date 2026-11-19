@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { FC, ReactNode, useEffect, useState } from 'react';
 import { ExternalLink, Loader2 } from 'lucide-react';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,6 +23,7 @@ const TOOLTIP_IDLE = 'Open on Civitai — makes a one-time request; the result i
  */
 export const CivitaiResourceLink: FC<CivitaiResourceLinkProps> = ({ resource, children }) => {
   const enabled = useSettingsStore((state) => state.civitaiLookupEnabled);
+  const { t } = useTranslation();
   const [state, setState] = useState<ViewState>('idle');
   const [url, setUrl] = useState<string | null>(null);
 
@@ -74,7 +76,7 @@ export const CivitaiResourceLink: FC<CivitaiResourceLinkProps> = ({ resource, ch
   // Confirmed absent from Civitai: plain text with a quiet hint.
   if (state === 'notFound') {
     return (
-      <span title="Not found on Civitai" className="text-gray-200">
+      <span title={t('shell.notFoundCivitai')} className="text-gray-200">
         {children}
       </span>
     );

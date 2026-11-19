@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useState, useEffect, useMemo } from 'react';
 
 interface Command {
@@ -15,6 +16,7 @@ interface CommandPaletteProps {
 }
 
 const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, commands }) => {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -81,7 +83,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, comman
         <div className="p-2">
           <input
             type="text"
-            placeholder="Type a command or search..."
+            placeholder={t('shell.commandSearch')}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full bg-gray-900 text-gray-200 placeholder-gray-500 px-4 py-3 rounded-md border-0 focus:ring-2 focus:ring-accent outline-none"
@@ -114,7 +116,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, comman
               ))}
             </ul>
           ) : (
-            <p className="text-gray-500 p-8 text-center">No commands found.</p>
+            <p className="text-gray-500 p-8 text-center">{t('shell.noCommands')}</p>
           )}
         </div>
       </div>

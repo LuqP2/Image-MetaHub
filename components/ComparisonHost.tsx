@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ComparisonSurface } from './ComparisonSurface';
 import { useImageStore } from '../store/useImageStore';
@@ -8,6 +9,7 @@ import type { ComparisonModalProps } from '../types';
 import type { ComparisonSnapshot } from '../services/comparisonContracts';
 type NativeComparisonSession = { id: string; phase: 'opening' | 'detached' };
 export default function ComparisonHost({ isOpen, onClose }: ComparisonModalProps) {
+  const { t } = useTranslation();
   const images = useImageStore(state => state.comparisonImages);
   const directories = useImageStore(state => state.directories);
   const detached = useImageStore(state => state.isComparisonDetached);
@@ -83,5 +85,5 @@ export default function ComparisonHost({ isOpen, onClose }: ComparisonModalProps
     }
   };
   if (detached) return null;
-  return <><ComparisonSurface isOpen={isOpen} onClose={close} onDetach={window.electronAPI?.comparison && !opening ? () => void detach() : undefined} />{isOpen && (error || opening) && <div role={error ? 'alert' : 'status'} className="fixed bottom-4 left-4 z-[150] rounded border border-gray-600 bg-gray-900 px-4 py-2 text-sm text-white">{error || 'Opening comparison window…'}</div>}</>;
+  return <><ComparisonSurface isOpen={isOpen} onClose={close} onDetach={window.electronAPI?.comparison && !opening ? () => void detach() : undefined} />{isOpen && (error || opening) && <div role={error ? 'alert' : 'status'} className="fixed bottom-4 left-4 z-[150] rounded border border-gray-600 bg-gray-900 px-4 py-2 text-sm text-white">{error || t('shell.openingComparison')}</div>}</>;
 }

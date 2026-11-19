@@ -9,7 +9,7 @@ export function modelKindText(kind: ModelSourceKind, t: Translate): string {
   return Object.hasOwn(keys, kind) ? t(keys[kind as keyof typeof keys]) : modelKindLabel(kind);
 }
 
-const errorKeys = ['modelLibrary.copyTriggersFailed', 'modelLibrary.copyTriggerFailed', 'modelLibrary.copyLoraFailed', 'modelLibrary.copyShaFailed', 'modelLibrary.actionFailed', 'modelLibrary.revealFailed', 'modelLibrary.baseNotProvided', 'modelLibrary.sameFamily', 'modelLibrary.otherBase', 'modelLibrary.sourceExists'] as const;
+const errorKeys = ['modelLibrary.copyTriggersFailed', 'modelLibrary.copyTriggerFailed', 'modelLibrary.copyLoraFailed', 'modelLibrary.copyShaFailed', 'modelLibrary.actionFailed', 'modelLibrary.revealFailed', 'modelLibrary.baseNotProvided', 'modelLibrary.sameFamily', 'modelLibrary.otherBase', 'modelLibrary.sourceExists', 'modelLibrary.copyPathFailed'] as const;
 
 export function translateModelMessage(message: string, t: Translate): string {
   for (const key of errorKeys) {

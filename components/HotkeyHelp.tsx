@@ -1,3 +1,4 @@
+import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import React from 'react';
 import hotkeyManager from '../services/hotkeyManager';
 
@@ -8,6 +9,7 @@ interface HotkeyHelpProps {
 }
 
 const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   const hotkeys = hotkeyManager.getRegisteredHotkeys();
@@ -23,8 +25,8 @@ const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings
         onClick={e => e.stopPropagation()}
       >
         <div className="p-4 border-b border-gray-700 flex justify-between items-center flex-shrink-0">
-          <h2 className="text-xl font-bold text-gray-100">Keyboard Shortcuts</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-50" aria-label="Close keyboard shortcuts" title="Close">
+          <h2 className="text-xl font-bold text-gray-100">{t('shell.keyboardShortcuts')}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-50" aria-label={t('shell.closeShortcuts')} title={t('promptLibrary.close')}>
             <svg aria-hidden="true" className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
           </button>
         </div>
@@ -32,7 +34,9 @@ const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
             {hotkeys.map((hk) => {
               const currentKey: string = hk.currentKey;
-              const description: string = hk.name;
+              const key = ('settings.shortcuts.action.' + hk.id) as MessageKey;
+              const translated = t(key);
+              const description = translated === key ? hk.name : translated;
               return (
                 <div key={currentKey} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
                   <p className="text-gray-200">{description}</p>
@@ -50,13 +54,13 @@ const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings
         </div>
         <div className="p-4 border-t border-gray-700 bg-gray-800/50 text-center flex-shrink-0">
             <p className="text-sm text-gray-400">
-                Want to change these? You can customize all shortcuts in the settings.
+                {t('shell.hotkeySettingsHelp')}
             </p>
             <button
                 onClick={onOpenSettings}
                 className="mt-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500"
             >
-                Customize Hotkeys
+                {t('shell.customizeHotkeys')}
             </button>
         </div>
       </div>

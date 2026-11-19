@@ -148,7 +148,15 @@
   "shell": {
     "paths": [
       "components/Header.tsx",
-      "components/Sidebar.tsx"
+      "components/Sidebar.tsx",
+      "components/AppErrorBoundary.tsx",
+      "components/GeneratedOutputModal.tsx",
+      "components/VisualSearchOnboarding.tsx",
+      "components/Toast.tsx",
+      "components/CommandPalette.tsx",
+      "components/HotkeyHelp.tsx",
+      "components/CivitaiResourceLink.tsx",
+      "components/ComparisonHost.tsx"
     ],
     "literalExceptions": [
       "ComfyUI",

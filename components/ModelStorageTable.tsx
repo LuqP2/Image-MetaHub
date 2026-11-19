@@ -196,7 +196,7 @@ export default function ModelStorageTable({ select, openInspector, active, folde
     {context && createPortal(<div className="fixed inset-0 z-[100]" onClick={() => setContext(null)} onContextMenu={(event) => { event.preventDefault(); setContext(null); }}><div role="menu" aria-label={t('modelLibrary.storageActions')} className="absolute w-52 rounded border border-gray-700 bg-gray-900 p-2 shadow-xl" style={{ left: context.x, top: context.y }}>{[
       { label: t('modelLibrary.openInspector'), action: () => openInspector(context.row.item.location.id) },
       { label: t('modelLibrary.showFolder'), action: () => report(globalThis.window.electronAPI!.modelLibraryRevealLocation(context.row.file.path).then((result) => { if (!result.success) throw new Error(result.error || t('modelLibrary.revealFailed')); })) },
-      { label: 'Copy path', action: () => report(globalThis.window.electronAPI!.copyTextToClipboard(context.row.file.path).then((result) => { if (!result.success) throw new Error(result.error || 'Unable to copy path.'); })) },
+      { label: t('modelLibrary.copyPath'), action: () => report(globalThis.window.electronAPI!.copyTextToClipboard(context.row.file.path).then((result) => { if (!result.success) throw new Error(result.error || 'Unable to copy path.'); })) },
     ].map(({ label, action }) => <button role="menuitem" key={label} className="block w-full rounded p-2 text-left text-xs hover:bg-gray-800" onClick={() => { action(); setContext(null); }}>{label}</button>)}</div></div>, document.body)}
   </div>;
 }
