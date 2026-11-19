@@ -1,5 +1,7 @@
+import { formatMessage, languages } from '../i18n/messages.mjs';
+import * as imageUtils from '../utils/imageUtils';
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BoardPromptIntegration from '../components/boards/BoardPromptIntegration';
 import BoardPromptInspector from '../components/boards/BoardPromptInspector';
@@ -47,10 +49,32 @@ beforeEach(() => {
   baseline.read.mockReset().mockResolvedValue([]);
   useBoardStore.setState({ sessions: {}, activeBoardId: null, closing: false });
   useBoardQueryStore.setState({ results: {} });
-  useSettingsStore.setState({ enableSafeMode: false, blurSensitiveImages: false, sensitiveTags: ['nsfw'] });
+  useSettingsStore.setState({ language: 'en', enableSafeMode: false, blurSensitiveImages: false, sensitiveTags: ['nsfw'] });
 });
 afterEach(async () => { cleanup(); await useBoardStore.getState().flushAll(); vi.restoreAllMocks(); });
 describe('Canvas prompt integration', () => {
+  it.each(languages)('preserves prompt copies and save dialog values in %s', async (language) => {
+    const copy = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
+    const { document } = setup([image('fixture.png')]);
+    const original = JSON.stringify(useBoardStore.getState().sessions[document.id].document);
+    act(() => useSettingsStore.setState({ language }));
+    expect(JSON.stringify(useBoardStore.getState().sessions[document.id].document)).toBe(original);
+    expect((screen.getByLabelText(formatMessage(language, 'promptLibrary.cardPositive')) as HTMLTextAreaElement).value).toBe(text);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'promptLibrary.copyPositive'), exact: true })); });
+    expect(copy).toHaveBeenCalledExactlyOnceWith(text);
+    expect(screen.getByText(formatMessage(language, 'promptLibrary.copied'))).toBeTruthy();
+    const nextLanguage = language === 'en' ? 'ja' : 'en';
+    act(() => useSettingsStore.setState({ language: nextLanguage }));
+    expect(screen.getByText(formatMessage(nextLanguage, 'promptLibrary.copied'))).toBeTruthy();
+    expect(copy).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(nextLanguage, 'promptLibrary.saveLibrary'), exact: true }));
+    const dialog = screen.getByRole('dialog', { name: formatMessage(nextLanguage, 'promptLibrary.saveCardTitle') });
+    expect((within(dialog).getByRole('textbox', { name: formatMessage(nextLanguage, 'imageViewer.provenance.positive'), exact: true }) as HTMLTextAreaElement).value).toBe(text);
+    expect((within(dialog).getByRole('textbox', { name: formatMessage(nextLanguage, 'imageViewer.provenance.negative'), exact: true }) as HTMLTextAreaElement).value).toBe(cardInput.negativePrompt);
+    fireEvent.click(within(dialog).getByRole('button', { name: formatMessage(nextLanguage, 'settings.native.close'), exact: true }));
+    expect(JSON.stringify(useBoardStore.getState().sessions[document.id].document)).toBe(original);
+  });
+
   it('highlights matches without selecting images; clears on deselection and updates edited positive in one undo', () => {
     const images = [image('a.png'), image('b.png', 'Different')];
     const { document, card } = setup(images);
