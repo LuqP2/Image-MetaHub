@@ -1,3 +1,4 @@
+import { formatMessage, languages } from '../i18n/messages.mjs';
 import { queueBoardReferenceRemaps, flushReferenceRemaps } from '../services/boards/referenceSync';
 import { loadBoardPreview } from '../services/boards/preview';
 import { boardWithAsset, boardLocator } from './helpers/boardFixtures';
@@ -7,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BoardCreateSmartFrameDialog from '../components/boards/BoardCreateSmartFrameDialog';
 import BoardListPreview from '../components/boards/BoardListPreview';
-import { boardSourceLabel, boardSourceMode, boardValueLabel, boardGroupLabel } from '../services/boards/presentation';
+import { createBoardPresentation, boardSourceLabel, boardSourceMode, boardValueLabel, boardGroupLabel } from '../services/boards/presentation';
 import { createBoardDocument, normalizeBoardDocument } from '../services/boards/document.mjs';
 import { branchSmartFrame, createSmartFrame } from '../services/boards/smartFrameOperations';
 import { buildBoardGroupedLayout, createGroupingContext } from '../services/boards/grouping';
@@ -32,12 +33,34 @@ beforeEach(() => {
   load.mockReset(); persist.mockReset().mockResolvedValue(undefined); thumbnail.mockClear();
   Object.defineProperty(window, 'electronAPI', { configurable: true, value: { boardsRemapReferences: vi.fn() } });
   useBoardStore.setState({ sessions: {}, activeBoardId: null });
-  useSettingsStore.setState({ enableSafeMode: false, blurSensitiveImages: false, sensitiveTags: [] });
+  useSettingsStore.setState({ language: 'en', enableSafeMode: false, blurSensitiveImages: false, sensitiveTags: [] });
 });
 afterEach(async () => { cleanup(); persist.mockResolvedValue(undefined); await flushReferenceRemaps(); Object.defineProperty(window, 'electronAPI', { configurable: true, value: originalApi }); vi.unstubAllGlobals(); });
 const visible = (isIntersecting = true) => act(() => intersect([{ isIntersecting } as IntersectionObserverEntry], observers[observers.length - 1]));
 
 describe('Canvas identification and first use', () => {
+  it.each(languages)('keeps source identity and technical values in %s', (language) => {
+    const name = 'Original collection {name} 海';
+    const create = vi.fn();
+    render(<BoardCreateSmartFrameDialog collections={[{ id: 'fixture', name }]} selectionCount={2} create={create} close={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'collection:fixture' } });
+    act(() => useSettingsStore.setState({ language }));
+    const select = screen.getByLabelText(formatMessage(language, 'canvas.source')) as HTMLSelectElement;
+    expect(select.value).toBe('collection:fixture');
+    expect(document.activeElement).toBe(select);
+    expect(screen.getByRole('option', { name: formatMessage(language, 'canvas.liveCollectionNamed', { name }) })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: formatMessage(language, 'canvas.createAction'), exact: true }));
+    expect(create).toHaveBeenCalledExactlyOnceWith('collection:fixture');
+    const presentation = createBoardPresentation((key, values) => formatMessage(language, key, values), language);
+    const raw = ['FixtureModel_{model}.safetensors', 'user tag 海'];
+    expect(raw.map(presentation.boardValueLabel)).toEqual(raw);
+    expect(presentation.boardConstraintLabel({ kind: 'exact', dimension: 'model', value: raw[0] })).toBe(raw[0]);
+    expect(presentation.boardConstraintLabel({ kind: 'missing', dimension: 'model' })).toBe(formatMessage(language, 'canvas.noValue'));
+    const doc = createSmartFrame(createBoardDocument(), { id: 'parent', title: name });
+    expect(presentation.boardSourceLabel({ kind: 'frame', frameId: 'parent' }, doc.objects)).toBe(formatMessage(language, 'canvas.refines', { title: name }));
+    expect(doc.objects[0]).toMatchObject({ id: 'parent', title: name });
+  });
+
   it('explains sources, counts selection, contains keyboard focus and restores it', () => {
     const before = document.createElement('button'); document.body.appendChild(before); before.focus();
     const create = vi.fn(), close = vi.fn();

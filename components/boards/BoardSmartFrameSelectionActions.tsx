@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useState } from 'react';
 import { useBoardStore } from '../../store/useBoardStore';
 import type { BoardDocument } from '../../services/boards/types';
@@ -6,6 +7,7 @@ import { intersectSmartFrames, subtractSmartFrames } from '../../services/boards
 import BoardSetOperationDialog from './BoardSetOperationDialog';
 
 export default function BoardSmartFrameSelectionActions({ boardId, frames, editable }: { boardId: string; frames: BoardSmartFrameObject[]; editable: boolean }) {
+  const { t } = useTranslation();
   const [difference, setDifference] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = (operation: (document: BoardDocument) => BoardDocument) => {
@@ -20,8 +22,8 @@ export default function BoardSmartFrameSelectionActions({ boardId, frames, edita
   };
   return <div className="board-smart-selection-actions">
     {error && <p role="alert">{error}</p>}
-    <button className="board-button" disabled={!editable || frames.length < 2} onClick={() => run(document => intersectSmartFrames(document, frames.map(frame => frame.id)))}>Intersect frames</button>
-    <button className="board-button" disabled={!editable || frames.length !== 2} onClick={() => setDifference(true)}>Difference…</button>
+    <button className="board-button" disabled={!editable || frames.length < 2} onClick={() => run(document => intersectSmartFrames(document, frames.map(frame => frame.id)))}>{t('canvas.intersect')}</button>
+    <button className="board-button" disabled={!editable || frames.length !== 2} onClick={() => setDifference(true)}>{t('canvas.differenceAction')}</button>
     {difference && <BoardSetOperationDialog frames={frames} disabled={!editable} close={() => setDifference(false)} confirm={(left, right) => run(document => subtractSmartFrames(document, left, right))} />}
   </div>;
 }

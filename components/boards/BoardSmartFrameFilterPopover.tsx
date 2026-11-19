@@ -1,13 +1,13 @@
+import { useTranslation } from '../../i18n/useTranslation';
+import { useBoardPresentation } from '../../i18n/useBoardPresentation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useViewport } from '@xyflow/react';
 import { useBoardStore } from '../../store/useBoardStore';
 import { useBoardUIStore } from '../../store/useBoardUIStore';
 import { useBoardEditor } from './BoardEditorContext';
-import { boardSourceLabel } from '../../services/boards/presentation';
 import BoardInheritedQuerySummary from './BoardInheritedQuerySummary';
 import BoardSmartFrameFilters from './BoardSmartFrameFilters';
-import { boardConstraintLabel } from '../../services/boards/presentation';
 import { updateObjects } from '../../services/boards/operations';
 
 export default function BoardSmartFrameFilterPopover({ boardId }: { boardId: string }) {
@@ -15,6 +15,8 @@ export default function BoardSmartFrameFilterPopover({ boardId }: { boardId: str
   const objects = useBoardStore(state => state.sessions[boardId].document.objects);
   const frame = objects.find(object => object.id === target?.frameId && object.type === 'smart-frame');
   const viewport = useViewport();
+  const { t } = useTranslation();
+  const { boardSourceLabel, boardConstraintLabel } = useBoardPresentation();
   const editor = useBoardEditor();
   const root = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
@@ -43,11 +45,11 @@ export default function BoardSmartFrameFilterPopover({ boardId }: { boardId: str
     return () => window.removeEventListener('resize', measure);
   }, [open, frame, viewport.x, viewport.y, viewport.zoom]);
   if (!open) return null;
-  return createPortal(<div ref={root} className="board-filter-popover nodrag nopan nowheel" role="dialog" aria-label={`Filters for ${frame.title}`} style={position} onKeyDown={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
-    <header><strong>Filters · {frame.title}</strong><button className="board-button" aria-label="Close frame filters" onClick={() => { useBoardUIStore.getState().setFilterTarget(null); document.querySelector<HTMLElement>(`[data-board-filter-trigger="${CSS.escape(frame.id)}"]`)?.focus(); }}>×</button></header>
-    <small>Source: {boardSourceLabel(frame.source, objects)}</small>
+  return createPortal(<div ref={root} className="board-filter-popover nodrag nopan nowheel" role="dialog" aria-label={t('canvas.filtersFor', { title: frame.title })} style={position} onKeyDown={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
+    <header><strong>{t('canvas.filtersTitle', { title: frame.title })}</strong><button className="board-button" aria-label={t('canvas.closeFilters')} onClick={() => { useBoardUIStore.getState().setFilterTarget(null); document.querySelector<HTMLElement>(`[data-board-filter-trigger="${CSS.escape(frame.id)}"]`)?.focus(); }}>×</button></header>
+    <small>{t('canvas.filterValue', { label: t('canvas.source'), value: boardSourceLabel(frame.source, objects) })}</small>
     <BoardInheritedQuerySummary source={frame.source} frames={objects.filter(object => object.type === 'smart-frame')} />
-    {frame.groupConstraints.map((constraint, index) => <div className="board-filter-chip" key={index}>{boardConstraintLabel(constraint)}<button className="board-button" disabled={!editor.editable} aria-label={`Remove group filter ${boardConstraintLabel(constraint)}`} onClick={() => useBoardStore.getState().executeOperation(boardId, document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, i) => i !== index) }]))}>×</button></div>)}
+    {frame.groupConstraints.map((constraint, index) => <div className="board-filter-chip" key={index}>{boardConstraintLabel(constraint)}<button className="board-button" disabled={!editor.editable} aria-label={t('canvas.removeGroupNamed', { filter: boardConstraintLabel(constraint) })} onClick={() => useBoardStore.getState().executeOperation(boardId, document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, i) => i !== index) }]))}>×</button></div>)}
     <BoardSmartFrameFilters boardId={boardId} frame={frame} editable={editor.editable} />
   </div>, document.body);
 }

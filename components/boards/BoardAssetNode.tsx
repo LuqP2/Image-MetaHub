@@ -2,7 +2,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { boardMediaLabel, boardMetadataLabel } from './boardPresentation';
 import { useBoardPrompts } from './BoardPromptContext';
 import BoardRichText from './BoardRichText';
-import { boardValueLabel } from '../../services/boards/presentation';
+import { useBoardPresentation } from '../../i18n/useBoardPresentation';
 import { getBoardDisplayName } from './boardPresentation';
 import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
@@ -19,6 +19,7 @@ import { useImageStore } from '../../store/useImageStore';
 
 export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardFlowNode>) {
   const { t } = useTranslation();
+  const { boardValueLabel } = useBoardPresentation();
   const editor = useBoardEditor();
   const prompts = useBoardPrompts();
   const object = data.object;
