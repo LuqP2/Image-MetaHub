@@ -1,5 +1,5 @@
 import { selectionClosure } from './clipboard';
-import { getBoardBounds } from './layout';
+import { getBoardBounds, type BoardBounds } from './layout';
 import type { BoardDocument, BoardObject } from './types';
 
 export function pngExportDocument(document: BoardDocument, selectedIds?: string[]): BoardDocument {
@@ -8,10 +8,21 @@ export function pngExportDocument(document: BoardDocument, selectedIds?: string[
   return { ...document, objects: document.objects.filter(object => selected.has(object.id)).map(object => ({ ...object, frameId: object.frameId && selected.has(object.frameId) ? object.frameId : null } as BoardObject)),
     connections: document.connections.filter(edge => selected.has(edge.sourceObjectId) && selected.has(edge.targetObjectId)) };
 }
-export function pngExportSize(document: BoardDocument, scale: number) {
-  const bounds = getBoardBounds(document.objects);
+export function pngExportSize(document: BoardDocument, scale: number, labelBounds: BoardBounds[] = []) {
+  const bounds = getBoardBounds([...document.objects, ...labelBounds]);
   const width = Math.ceil((bounds.width + 64) * scale), height = Math.ceil((bounds.height + 64) * scale);
   return { bounds, width, height, valid: document.objects.length > 0 && [1, 2, 4].includes(scale) && width <= 16384 && height <= 16384 && width * height <= 64000000 };
+}
+/** The export viewport is at zoom 1; measure text relative to its actual transform. */
+export function pngExportLabelBounds(root: HTMLElement): BoardBounds[] {
+  const viewport = root.querySelector<HTMLElement>('.react-flow__viewport');
+  if (!viewport) return [];
+  const origin = viewport.getBoundingClientRect();
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  return [...root.querySelectorAll<HTMLElement>('.board-edge-label')].map(label => {
+    const rect = label.getBoundingClientRect();
+    return { x: round(rect.left - origin.left), y: round(rect.top - origin.top), width: round(rect.width), height: round(rect.height) };
+  }).filter(bounds => bounds.width > 0 && bounds.height > 0);
 }
 async function imageData(source: string): Promise<string> {
   if (source.startsWith('data:')) return source;

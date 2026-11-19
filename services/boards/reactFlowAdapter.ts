@@ -1,3 +1,4 @@
+import { facingBoardSides } from './connectionGeometry';
 import { stackMembership, visibleBoardObjects } from './stackMembership';
 import { frameDependencies } from './queryGraph';
 import type { Edge, Node, NodeChange } from '@xyflow/react';
@@ -45,12 +46,17 @@ export function boardToFlow(document: BoardDocument, selectedObjectIds: string[]
       dragHandle: object.type === 'stack' ? '.board-stack-drag-handle' : undefined,
     };
   });
-  const edges: Edge[] = document.connections.map(connection => ({
+  const objectById = new Map(document.objects.map(object => [object.id, object]));
+  const edges: Edge[] = document.connections.map(connection => {
+    const source = owners.get(connection.sourceObjectId) ?? objectById.get(connection.sourceObjectId);
+    const target = owners.get(connection.targetObjectId) ?? objectById.get(connection.targetObjectId);
+    const sides = connection.anchoring === 'automatic' && source && target ? facingBoardSides(source, target) : connection;
+    return ({
     id: connection.id, type: 'manual', source: owners.get(connection.sourceObjectId)?.id ?? connection.sourceObjectId, target: owners.get(connection.targetObjectId)?.id ?? connection.targetObjectId,
-    sourceHandle: connection.sourceSide, targetHandle: connection.targetSide,
-    label: connection.label, data: { color: connection.color, width: connection.width, lineStyle: connection.lineStyle }, selected: selectedConnectionIds.includes(connection.id),
+    sourceHandle: sides.sourceSide, targetHandle: sides.targetSide, reconnectable: editable,
+    label: connection.label, data: { color: connection.color, width: connection.width, lineStyle: connection.lineStyle, routing: connection.routing, labelFontSize: connection.labelFontSize, labelOffset: connection.labelOffset, boardId: document.id, editable }, selected: selectedConnectionIds.includes(connection.id),
     zIndex: 1000,
-  }));
+  }); });
   for (let i = edges.length - 1; i >= 0; i--) if (edges[i].source === edges[i].target) edges.splice(i, 1);
   const usedIds = new Set(document.connections.map(connection => connection.id));
   const byId = new Map(document.objects.map(object => [object.id, object]));

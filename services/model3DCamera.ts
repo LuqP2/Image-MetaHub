@@ -1,3 +1,4 @@
+import { Matrix4, Quaternion, Vector3 } from 'three';
 import type * as Three from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 export interface Model3DCameraState {
@@ -37,4 +38,21 @@ export function applyModel3DCamera(runtime: CameraRuntime, state: Model3DCameraS
 }
 export function sameModel3DCamera(a: Model3DCameraState | undefined, b: Model3DCameraState): boolean {
   return !!a && a.projection === b.projection && Math.abs(a.zoom-b.zoom) < 1e-5 && Math.abs(a.fov-b.fov) < 1e-5 && [...a.position,...a.target,...a.up].every((value,index) => Math.abs(value-[...b.position,...b.target,...b.up][index]) < 1e-5);
+}
+
+/** Apply the leader's orbit/pan/zoom delta in each follower's own camera frame. */
+export function relativeModel3DCamera(previous: Model3DCameraState, next: Model3DCameraState, follower: Model3DCameraState): Model3DCameraState {
+  if (sameModel3DCamera(previous, follower)) return { ...next };
+  const vector = (values: [number, number, number]) => new Vector3(...values);
+  const orientation = (camera: Model3DCameraState) => new Quaternion().setFromRotationMatrix(new Matrix4().lookAt(vector(camera.position), vector(camera.target), vector(camera.up)));
+  const before = orientation(previous), after = orientation(next), own = orientation(follower);
+  const rotation = own.clone().multiply(before.clone().invert().multiply(after));
+  const distance = Math.max(1e-6, vector(previous.position).distanceTo(vector(previous.target)));
+  const ratio = vector(next.position).distanceTo(vector(next.target)) / distance;
+  const ownDistance = vector(follower.position).distanceTo(vector(follower.target));
+  const pan = vector(next.target).sub(vector(previous.target)).applyQuaternion(before.clone().invert()).applyQuaternion(own).multiplyScalar(ownDistance / distance);
+  const target = vector(follower.target).add(pan);
+  const position = new Vector3(0, 0, ownDistance * ratio).applyQuaternion(rotation).add(target);
+  const up = vector(follower.up).applyQuaternion(rotation.clone().multiply(own.clone().invert())).normalize();
+  return { projection: next.projection, position: position.toArray() as [number, number, number], target: target.toArray() as [number, number, number], up: up.toArray() as [number, number, number], zoom: follower.zoom * next.zoom / Math.max(previous.zoom, 1e-6), fov: next.fov };
 }

@@ -11,6 +11,9 @@ import { createBoardDocument } from '../services/boards/document.mjs';
 import { addAssets } from '../services/boards/operations';
 import { createBoardAssetReference } from '../services/boards/assetResolver';
 import { boardDirectory, boardImage } from './helpers/boardIntegrationFixtures';
+import { externalBoardReference, loadExternalBoardAsset } from '../services/boards/externalAssets';
+
+vi.mock('../services/boards/externalAssets', async importOriginal => ({ ...await importOriginal<typeof import('../services/boards/externalAssets')>(), loadExternalBoardAsset: vi.fn() }));
 
 const feature = vi.hoisted(() => ({ canUseCanvas: true, canUseComparison: true, showProModal: vi.fn() }));
 const editor = vi.hoisted(() => ({ latest: null as Record<string, unknown> | null }));
@@ -22,6 +25,25 @@ vi.mock('../components/ComparisonMetadataPanel', () => ({ default: ({ image }) =
 beforeEach(() => { feature.canUseCanvas = true; feature.canUseComparison = true; feature.showProModal.mockClear(); useBoardStore.setState({ sessions: {}, activeBoardId: null, closing: false }); });
 afterEach(async () => { await act(async () => useBoardStore.getState().flushAll()); cleanup(); });
 describe('Canvas IMH integration', () => {
+  it('restores a missing external card when relinking to its unchanged original path', async () => {
+    const reference = externalBoardReference('/synthetic/restored.png');
+    const board = addAssets(createBoardDocument(), [{ name: 'restored.png', mediaType: 'image', reference }], { x: 0, y: 0 });
+    useImageStore.setState({ images: [], directories: [] });
+    useBoardStore.getState().adoptBoard(board);
+    useBoardStore.getState().setSelection(board.id, [board.objects[0].id]);
+    const restored = boardImage('restored.png');
+    vi.mocked(loadExternalBoardAsset).mockRejectedValueOnce(new Error('File unavailable')).mockResolvedValue(restored);
+    const previousAPI = window.electronAPI;
+    window.electronAPI = { ...previousAPI, getPathForFile: () => '/synthetic/restored.png' } as Window['electronAPI'];
+    try {
+      render(<CanvasWorkspace loading={false} onOpenImage={vi.fn()} onCompareImages={vi.fn()} />);
+      await screen.findByText('This file is not available in the current library.');
+      fireEvent.change(screen.getByLabelText('Locate external file'), { target: { files: [new File(['synthetic'], 'restored.png')] } });
+      await screen.findByText('Metadata restored.png');
+      expect(screen.queryByRole('button', { name: 'Locate missing file' })).toBeNull();
+      expect(useBoardStore.getState().sessions[board.id].document.objects[0]).toMatchObject({ reference });
+    } finally { window.electronAPI = previousAPI; }
+  });
   it('opens the viewer with board navigation, compares distinct images and reuses annotations', async () => {
     const images = [boardImage('a.png'), boardImage('b.png')];
     useImageStore.setState({ images, directories: [boardDirectory] });

@@ -21,7 +21,7 @@ export interface BoardStableReference {
 
 export type BoardAssetReference =
   | ({ kind: 'stable'; locator: BoardAssetLocator; appliedRemapIds?: string[] } & BoardStableReference)
-  | { kind: 'path'; locator: BoardAssetLocator; appliedRemapIds?: string[] };
+  | { kind: 'path' | 'external'; locator: BoardAssetLocator; appliedRemapIds?: string[] };
 
 export interface BoardObjectBase {
   id: string;
@@ -38,6 +38,7 @@ export interface BoardAssetObject extends BoardObjectBase {
   type: 'asset';
   reference: BoardAssetReference;
   name: string;
+  label?: string;
   mediaType: BoardMediaType;
   visibleFields: BoardMetadataField[];
 }
@@ -75,6 +76,7 @@ export interface BoardShapeObject extends BoardObjectBase {
 }
 export interface BoardLinkObject extends BoardObjectBase {
   type: 'link'; title: string; url: string; color: string;
+  preview?: { title: string; imageData?: string };
 }
 export interface BoardStackObject extends BoardObjectBase {
   type: 'stack';
@@ -98,6 +100,10 @@ export interface BoardConnection {
   targetObjectId: string;
   width?: number;
   lineStyle?: 'solid' | 'dashed';
+  routing?: 'curved' | 'orthogonal';
+  anchoring?: 'manual' | 'automatic';
+  labelFontSize?: number;
+  labelOffset?: { x: number; y: number };
   sourceSide: BoardSide;
   targetSide: BoardSide;
   label: string;
@@ -105,7 +111,7 @@ export interface BoardConnection {
 }
 
 export interface BoardDocument {
-  schemaVersion: 5;
+  schemaVersion: 6;
   backgroundColor?: string | null;
   id: string;
   revision: number;

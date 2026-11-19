@@ -2103,7 +2103,7 @@ export async function reparseIndexedImage(
 
   const absolutePath = joined.path;
   let fileData: ArrayBuffer | undefined;
-  if (!isModel3D && !isExrFileName(image.name)) {
+  if (!isModel3D && !isExrFileName(image.name) && !isVideoFileName(image.name) && !isAudioFileName(image.name)) {
     const readResult = await window.electronAPI.readFile(absolutePath);
     if (!readResult.success || !readResult.data) {
       throw new Error(readResult.error || 'Failed to read the image file.');

@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import type { BoardConnection } from '../services/boards/types';
 
-export type BoardConnectionStyle = Required<Pick<BoardConnection, 'color' | 'width' | 'lineStyle'>>;
-export const DEFAULT_BOARD_CONNECTION_STYLE: BoardConnectionStyle = { color: '#94a3b8', width: 1.5, lineStyle: 'solid' };
+export type BoardConnectionStyle = Required<Pick<BoardConnection, 'color' | 'width' | 'lineStyle' | 'routing'>>;
+export const DEFAULT_BOARD_CONNECTION_STYLE: BoardConnectionStyle = { color: '#94a3b8', width: 1.5, lineStyle: 'solid', routing: 'curved' };
 const key = 'imh-board-connection-style';
 function validStyle(value: Partial<BoardConnectionStyle>): Partial<BoardConnectionStyle> {
   return {
+    ...(value.routing === 'curved' || value.routing === 'orthogonal' ? { routing: value.routing } : {}),
     ...(typeof value.color === 'string' && /^#[0-9a-f]{6}$/i.test(value.color) ? { color: value.color } : {}),
     ...(typeof value.width === 'number' && Number.isFinite(value.width) && value.width >= .5 && value.width <= 12 ? { width: value.width } : {}),
     ...(value.lineStyle === 'solid' || value.lineStyle === 'dashed' ? { lineStyle: value.lineStyle } : {}),

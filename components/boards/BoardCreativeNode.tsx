@@ -42,7 +42,9 @@ export default memo(function BoardCreativeNode({ data, selected }: NodeProps<Boa
           onBlur={() => finish()} onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape' && !event.nativeEvent.isComposing) finish(true); }} />
       </> : <div className="board-creative-text"><BoardRichText text={object.type === 'link' ? object.title : object.text || (selected ? t('canvas.doubleEdit') : '')} /></div>}
       </div>
-      {object.type === 'link' && <a className="nodrag nopan board-link-url" href={object.url} target="_blank" rel="noreferrer" onDoubleClick={event => event.stopPropagation()}>{object.url}</a>}
+      {object.type === 'link' && object.preview?.imageData && <img className="board-link-preview" src={object.preview.imageData} alt="" draggable={false} />}
+      {object.type === 'link' && <small>{new URL(object.url).hostname}</small>}
+      {object.type === 'link' && <a className="nodrag nopan board-link-url" href={object.url} target="_blank" rel="noreferrer" onDoubleClick={event => event.stopPropagation()}>{t('canvasFeedback.openLink')}</a>}
     </div>
   </div>;
 });

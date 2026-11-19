@@ -1,4 +1,5 @@
 import { useTranslation } from '../../i18n/useTranslation';
+import { reverseConnections } from '../../services/boards/operations';
 import { Copy, Scissors, CopyPlus, Clipboard, Grid2X2, Frame, Download, Layers, Ungroup, Pencil, Trash2, Scan, MousePointer2, StickyNote, Type, Square, Circle, Diamond, Sparkles, PanelTop, type LucideIcon } from 'lucide-react';
 import { visualGroupingCandidates } from '../../services/boards/visualGroupOperations';
 import { createStack, unstack } from '../../services/boards/stackOperations';
@@ -48,7 +49,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
   const creationIcons = { sticky: StickyNote, text: Type, rectangle: Square, ellipse: Circle, diamond: Diamond, frame: Frame };
   const button = (label: keyof typeof menuKeys, action: () => unknown, disabled = false) => {
     const Icon = icons[label] ?? Pencil;
-    return <button role="menuitem" aria-label={t(menuKeys[label])} className={`board-menu-item${label === 'Delete' ? ' board-menu-item--danger' : ''}`} disabled={disabled} onClick={() => run(action)}><Icon size={15} aria-hidden="true"/><span>{t(menuKeys[label])}</span>{shortcuts[label] && <kbd>{commandKey}{shortcuts[label]}</kbd>}{label === 'Delete' && <kbd>Delete</kbd>}</button>;
+    return <button role="menuitem" aria-label={t(menuKeys[label])} className={`board-menu-item${label === 'Delete' ? ' board-menu-item--danger' : ''}`} disabled={disabled} onClick={() => run(action)}><Icon size={15} aria-hidden="true"/><span>{t(menuKeys[label])}</span>{shortcuts[label] && <kbd>{commandKey}{shortcuts[label]}</kbd>}{label === 'Delete' && <kbd>{t('promptLibrary.delete')}</kbd>}</button>;
   };
   return createPortal(<div ref={root} className="board-context-menu" role="menu" aria-label={t('canvas.actions')} style={position} onKeyDown={event => {
     event.stopPropagation();
@@ -65,6 +66,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
       if (stack) useBoardStore.getState().setSelection(boardId, [stack.id]);
     }, !editor.editable)}
     {menu.kind === 'selection' && session.selectedObjectIds.length === 1 && session.document.objects.some(object => object.id === session.selectedObjectIds[0] && object.type === 'stack') && button('Unstack', () => useBoardStore.getState().executeOperation(boardId, document => unstack(document, session.selectedObjectIds[0])), !editor.editable)}
+    {menu.kind === 'edge' && button('Reverse direction', () => useBoardStore.getState().executeOperation(boardId, document => reverseConnections(document, session.selectedConnectionIds)), !editor.editable)}
     {menu.kind === 'edge'  && button('Edit connection', () => { useBoardUIStore.getState().setInspectorOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.board-inspector input')?.focus()); }, !editor.editable)}
     {menu.kind !== 'create' && <hr role="separator"/>}
     {menu.kind !== 'create' && button('Paste', () => pasteBoardSelection(boardId, menu.point), !editor.editable)}

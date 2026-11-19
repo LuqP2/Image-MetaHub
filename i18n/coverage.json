@@ -392,5 +392,11 @@
     "literalExceptions": [
       "YYYY-MM-DD"
     ]
+  },
+  "canvasFeedback": {
+    "paths": [
+      "components/boards/BoardRichText.tsx"
+    ],
+    "literalExceptions": []
   }
 }

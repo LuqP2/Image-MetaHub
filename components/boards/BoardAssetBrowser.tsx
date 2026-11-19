@@ -1,4 +1,7 @@
 import { useTranslation, type MessageKey } from '../../i18n/useTranslation';
+import { useImageStore } from '../../store/useImageStore';
+import Model3DThumbnail from '../Model3DThumbnail';
+import { boardMediaType } from '../../services/boards/assetResolver';
 import { PanelLeftClose } from 'lucide-react';
 import { browserMarqueeIds, BOARD_BROWSER_ROW_HEIGHT } from '../../services/boards/assetSelection';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -16,20 +19,24 @@ import { searchBoardAssets } from '../../services/boards/assetSearch';
 import { clearInternalImageDragData, setInternalImageDragData } from '../../utils/internalImageDrag';
 import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../../utils/safeModeVisibility';
 
-const useBrowserState = create<{ query: string; directoryId: string; mediaType: string; selectedIds: string[] }>(() => ({ query: '', directoryId: '', mediaType: '', selectedIds: [] }));
+const useBrowserState = create<{ query: string; directoryId: string; mediaType: string; selectedIds: string[]; subfolder: string }>(() => ({ query: '', directoryId: '', mediaType: '', subfolder: '', selectedIds: [] }));
 function AssetTile({ image, selected, onSelect, editable, draggingIds }: { image: IndexedImage; selected: boolean; onSelect(multiple: boolean): void; editable: boolean; draggingIds: string[] }) {
   const { t } = useTranslation();
-  useThumbnail(image);
+  const model = boardMediaType(image) === 'model3d';
+  useThumbnail(model ? null : image);
   const thumbnail = useResolvedThumbnail(image);
   const enableSafeMode = useSettingsStore(state => state.enableSafeMode);
   const sensitiveTags = useSettingsStore(state => state.sensitiveTags);
   const blurSensitive = useSettingsStore(state => state.blurSensitiveImages);
+  const disableThumbnails = useSettingsStore(state => state.disableThumbnails);
+  const directories = useImageStore(state => state.directories);
+  const directoryPath = directories.find(directory => directory.id === image.directoryId)?.path;
   const blurred = enableSafeMode && blurSensitive && image.tags?.some(tag => sensitiveTags.some(sensitive => sensitive.toLowerCase() === tag.toLowerCase()));
   return <button className={`board-browser-tile ${selected ? 'selected' : ''}`} title={image.name} aria-pressed={selected} data-browser-id={image.id}
     onClick={event => onSelect(event.shiftKey || event.ctrlKey || event.metaKey)} draggable={editable && selected}
     onDragStart={event => { event.dataTransfer.effectAllowed = 'copy'; setInternalImageDragData(event.dataTransfer, image.id, draggingIds.includes(image.id) ? draggingIds : [image.id]); }}
     onDragEnd={clearInternalImageDragData}>
-    {thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(16px)' : undefined }} /> : <span>{t('settings.shortcuts.preview')}</span>}
+    {model && !disableThumbnails ? <div className="board-browser-model" style={{ filter: blurred ? 'blur(16px)' : undefined }}><Model3DThumbnail image={image} directoryPath={directoryPath} /></div> : thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt="" draggable={false} style={{ filter: blurred ? 'blur(16px)' : undefined }} /> : <span>{t('settings.shortcuts.preview')}</span>}
     <span>{getBoardDisplayName(image.name)}</span>
   </button>;
 }
@@ -75,7 +82,16 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
     const visibleIds = new Set(visibleImages.map(image => image.id));
     return state.selectedIds.filter(id => visibleIds.has(id));
   }, [visibleImages, state.selectedIds]);
-  const results = useMemo(() => searchBoardAssets(visibleImages, state.query, state.directoryId, state.mediaType), [visibleImages, state.query, state.directoryId, state.mediaType]);
+  const results = useMemo(() => searchBoardAssets(visibleImages, state.query, state.directoryId, state.mediaType, state.subfolder), [visibleImages, state.query, state.directoryId, state.mediaType, state.subfolder]);
+  const subfolders = useMemo(() => {
+    const paths = new Set<string>();
+    visibleImages.filter(image => !state.directoryId || image.directoryId === state.directoryId).forEach(image => {
+      const relative = image.id.split('::')[1] || image.name;
+      const parts = relative.replace(/\\/g, '/').split('/').slice(0, -1);
+      parts.forEach((_, index) => paths.add(parts.slice(0, index + 1).join('/')));
+    });
+    return [...paths].sort();
+  }, [visibleImages, state.directoryId]);
   const resultIds = useMemo(() => results.map(image => image.id), [results]);
   const data = useMemo(() => ({ images: results, selectedIds, editable, onPick }), [results, selectedIds, editable, onPick]);
   const viewport = useRef<HTMLDivElement>(null);
@@ -86,7 +102,7 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
   const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const stop = () => { gesture.current = null; setMarquee(null); if (animation.current !== null) cancelAnimationFrame(animation.current); animation.current = null; };
   useEffect(() => () => { if (animation.current !== null) cancelAnimationFrame(animation.current); }, []);
-  useEffect(() => { stop(); }, [state.query, state.directoryId, state.mediaType, enableSafeMode, blurSensitiveImages, open]);
+  useEffect(() => { stop(); }, [state.query, state.directoryId, state.mediaType, state.subfolder, enableSafeMode, blurSensitiveImages, open]);
   const updateMarquee = () => {
     const current = gesture.current, element = viewport.current;
     if (!current || !element || !current.active) return;
@@ -136,8 +152,9 @@ export default function BoardAssetBrowser({ images, directories, editable, onAdd
   return <aside ref={browserRoot} className="board-browser" aria-label={t('canvas.library')}>
     <div className="board-browser-heading"><strong>{onPick ? t('canvas.chooseReplacement') : t('settings.library.library')}</strong><button className="board-icon-button" aria-label={onPick ? t('canvas.cancelReplacement') : t('canvas.hideLibrary')} title={onPick ? t('canvas.cancelReplacement') : t('canvas.hideLibrary')} onClick={() => onPick ? onCancelPick?.() : (onOpenChange ?? useBoardUIStore.getState().setLibraryOpen)(false)}>{onPick ? '×' : <PanelLeftClose size={16}/>}</button></div>
     <input className="board-input" data-board-library-search aria-label={t('canvas.searchLibrary')} placeholder={t('canvas.searchPlaceholder')} value={state.query} onChange={event => useBrowserState.setState({ query: event.target.value })} />
-    <div className="board-browser-filters"><select className="board-select" aria-label={t('canvas.folderFilter')} value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value })}><option value="">{t('canvas.allFolders')}</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
+    <div className="board-browser-filters"><select className="board-select" aria-label={t('canvas.folderFilter')} value={state.directoryId} onChange={event => useBrowserState.setState({ directoryId: event.target.value, subfolder: '' })}><option value="">{t('canvas.allFolders')}</option>{directories.map(directory => <option key={directory.id} value={directory.id}>{directory.name}</option>)}</select>
     <select className="board-select" aria-label={t('canvas.mediaFilter')} value={state.mediaType} onChange={event => useBrowserState.setState({ mediaType: event.target.value })}><option value="">{t('canvas.allMedia')}</option>{(['image', 'video', 'audio', 'model3d'] as const).map(type => <option value={type} key={type}>{t(({ image: 'canvas.imageMedia', video: 'canvas.videoMedia', audio: 'canvas.audioMedia', model3d: 'canvas.modelMedia' } satisfies Record<string, MessageKey>)[type])}</option>)}</select></div>
+    <select className="board-select" aria-label={t('canvasFeedback.subfolderLabel')} value={state.subfolder} onChange={event => useBrowserState.setState({ subfolder: event.target.value })}><option value="">{t('canvasFeedback.subfolders')}</option>{subfolders.map(folder => <option key={folder} value={folder}>{folder}</option>)}</select>
     <p>{t('canvas.assetsCount', { count: results.length })}</p>
     <div ref={viewport} className="board-browser-results" onDragStartCapture={event => { if (gesture.current) event.preventDefault(); }} onPointerDown={beginMarquee} onPointerMove={moveMarquee} onPointerUp={event => { if (gesture.current?.active) { suppressClick.current = true; event.preventDefault(); } stop(); }} onPointerCancel={() => { if (gesture.current?.active) useBrowserState.setState({ selectedIds: gesture.current.original }); stop(); }} onLostPointerCapture={stop} onClickCapture={event => { if (suppressClick.current) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); } }}><AutoSizer>{({ width, height }) => <FixedSizeList<RowData> className="scrollbar-thin" width={width} height={height} itemCount={Math.ceil(results.length / 2)} itemSize={BOARD_BROWSER_ROW_HEIGHT} outerRef={scroll} itemData={data}>{BrowserRow}</FixedSizeList>}</AutoSizer>{marquee && <div className="board-browser-marquee" style={marquee} />}</div>
     {!onPick && <button className="board-button board-button--primary" disabled={!editable || !selectedIds.length} onClick={() => onAdd(visibleImages.filter(image => selectedIds.includes(image.id)))}>{selectedIds.length ? t('canvas.addCount', { count: selectedIds.length }) : t('canvas.add')}</button>}

@@ -45,7 +45,7 @@ export default memo(function BoardAssetNode({ data, selected }: NodeProps<BoardF
         : source ? <img src={source} alt={object.name} draggable={false} />
         : <span>{resolution?.status === 'loading' ? t('imageViewer.provenance.loading') : resolution?.status === 'ambiguous' ? t('canvas.chooseReference') : t('canvas.unavailableAsset', { type: boardMediaLabel(object.mediaType, t) })}</span>}
     </div>
-    <div className="board-asset-caption" title={object.name}>{getBoardDisplayName(object.name)}{object.mediaType !== 'image' && <span>{boardMediaLabel(object.mediaType, t)}</span>}</div>
+    <div className="board-asset-caption" title={object.name}>{object.label?.trim() || getBoardDisplayName(object.name)}{object.mediaType !== 'image' && <span>{boardMediaLabel(object.mediaType, t)}</span>}</div>
     {fields && object.visibleFields.length > 0 && <div className="board-asset-fields">{object.visibleFields.map(field => <div key={field} title={String(fields[field] ?? '')}><strong>{boardMetadataLabel(field, t)}</strong> {field === 'model' ? image?.models?.map(boardValueLabel).join(', ') || '—' : <BoardRichText text={String(fields[field] ?? '—')} />}</div>)}</div>}
   </div>;
 });

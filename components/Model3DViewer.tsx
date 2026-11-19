@@ -1,6 +1,7 @@
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import { formatMessage } from '../i18n/messages.mjs';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { positionModel3DLight } from '../services/model3DLighting';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette, RotateCcw, Sun } from 'lucide-react';
 import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
@@ -20,6 +21,8 @@ interface ViewerPreferences {
   cameraType: CameraType;
   fov: number;
   lightIntensity: number;
+  lightAzimuth: number;
+  lightElevation: number;
 }
 
 interface Model3DViewerProps {
@@ -67,6 +70,8 @@ const DEFAULTS: ViewerPreferences = {
   cameraType: 'perspective',
   fov: 35,
   lightIntensity: 2.5,
+  lightAzimuth: 39,
+  lightElevation: 48,
 };
 
 const loadPreferences = (): ViewerPreferences => {
@@ -467,6 +472,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     runtime.perspective.fov = preferences.fov;
     runtime.perspective.updateProjectionMatrix();
     runtime.keyLight.intensity = preferences.lightIntensity;
+    positionModel3DLight(runtime.model, runtime.keyLight, preferences.lightAzimuth, preferences.lightElevation);
     runtime.fillLight.intensity = preferences.lightIntensity * 0.35;
     applyMaterialMode(preferences.materialMode);
 
@@ -527,6 +533,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         const keyLight = new THREE.DirectionalLight(0xffffff, initialPreferences.lightIntensity);
         keyLight.position.set(4, 7, 5);
         scene.add(keyLight);
+        scene.add(keyLight.target);
         const fillLight = new THREE.AmbientLight(0xffffff, initialPreferences.lightIntensity * 0.35);
         scene.add(fillLight);
 
@@ -634,6 +641,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         runtimeRef.current = runtime;
         pendingRenderer = null;
         applyMaterialMode(initialPreferences.materialMode);
+        positionModel3DLight(model, keyLight, initialPreferences.lightAzimuth, initialPreferences.lightElevation);
 
         const resize = () => {
           const width = Math.max(container.clientWidth, 1);
@@ -850,6 +858,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
               FOV <input type="range" aria-label={t('imageViewer.model3d.fov', { value: preferences.fov })} min="15" max="90" step="1" value={preferences.fov} onChange={(event) => updatePreference('fov', Number(event.target.value))} className="w-20" />
             </label>
           )}
+          <label className={controlButton} title={t('canvasFeedback.lightAzimuth')}><span>{t('canvasFeedback.lightAzimuth')}</span><input aria-label={t('canvasFeedback.lightAzimuth')} type="range" min="-180" max="180" step="1" value={preferences.lightAzimuth} onChange={event => updatePreference('lightAzimuth', Number(event.target.value))} className="w-20" /></label>
+          <label className={controlButton} title={t('canvasFeedback.lightElevation')}><span>{t('canvasFeedback.lightElevation')}</span><input aria-label={t('canvasFeedback.lightElevation')} type="range" min="-90" max="90" step="1" value={preferences.lightElevation} onChange={event => updatePreference('lightElevation', Number(event.target.value))} className="w-20" /></label>
+          <button className={controlButton} title={t('canvasFeedback.resetLight')} onClick={() => setPreferences(current => { const next = { ...current, lightAzimuth: DEFAULTS.lightAzimuth, lightElevation: DEFAULTS.lightElevation, lightIntensity: DEFAULTS.lightIntensity }; savePreferences(next); return next; })}>{t('canvasFeedback.resetLight')}</button>
           <label className={controlButton} title={t('imageViewer.model3d.light', { value: preferences.lightIntensity.toFixed(1) })}>
             <Sun size={14} /><input type="range" aria-label={t('imageViewer.model3d.light', { value: preferences.lightIntensity.toFixed(1) })} min="0" max="8" step="0.1" value={preferences.lightIntensity} onChange={(event) => updatePreference('lightIntensity', Number(event.target.value))} className="w-20" />
           </label>

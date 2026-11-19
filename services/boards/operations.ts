@@ -1,3 +1,4 @@
+import { facingBoardSides } from './connectionGeometry';
 import { stackMembership, stackSelectionClosure, remapStackMembers } from './stackMembership';
 import { createFrameDetacher } from './smartFrameOperations';
 import type { BoardAssetInput, BoardAssetObject, BoardConnection, BoardDocument, BoardObject, BoardTextObject, BoardTool } from './types';
@@ -159,7 +160,14 @@ export function addConnection(document: BoardDocument, connection: Omit<BoardCon
   return changed(document, { connections: [...document.connections, { ...connection, id: id(), type: 'manual' }] });
 }
 export function updateConnection(document: BoardDocument, connectionId: string, patch: Partial<Omit<BoardConnection, 'id' | 'type'>>): BoardDocument {
-  return changed(document, { connections: document.connections.map(connection => connection.id === connectionId ? { ...connection, ...patch, id: connection.id, type: 'manual' } : connection) });
+  const owners = stackMembership(document.objects);
+  return changed(document, { connections: document.connections.map(connection => {
+    if (connection.id !== connectionId) return connection;
+    const source = owners.get(connection.sourceObjectId) ?? document.objects.find(object => object.id === connection.sourceObjectId);
+    const target = owners.get(connection.targetObjectId) ?? document.objects.find(object => object.id === connection.targetObjectId);
+    const sides = connection.anchoring === 'automatic' && patch.anchoring === 'manual' && source && target ? facingBoardSides(source, target) : {};
+    return { ...connection, ...sides, ...patch, id: connection.id, type: 'manual' as const };
+  }) });
 }
 export function removeConnections(document: BoardDocument, connectionIds: string[]): BoardDocument {
   return changed(document, { connections: document.connections.filter(connection => !connectionIds.includes(connection.id)) });
@@ -173,4 +181,9 @@ export function arrangeObjectsInGrid(document: BoardDocument, objectIds: string[
 }
 export function setObjectFrame(document: BoardDocument, objectId: string, frameId: string | null): BoardDocument {
   return updateObjects(document, [{ id: objectId, frameId }]);
+}
+
+export function reverseConnections(document: BoardDocument, ids: string[]): BoardDocument {
+  const selected = new Set(ids);
+  return changed(document, { connections: document.connections.map(edge => selected.has(edge.id) ? { ...edge, sourceObjectId: edge.targetObjectId, targetObjectId: edge.sourceObjectId, sourceSide: edge.targetSide, targetSide: edge.sourceSide } : edge) });
 }

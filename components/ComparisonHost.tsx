@@ -7,6 +7,7 @@ import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import type { ComparisonModalProps } from '../types';
 import type { ComparisonSnapshot } from '../services/comparisonContracts';
+import { getComparisonDirectories } from '../services/comparisonDirectories';
 type NativeComparisonSession = { id: string; phase: 'opening' | 'detached' };
 export default function ComparisonHost({ isOpen, onClose }: ComparisonModalProps) {
   const { t } = useTranslation();
@@ -20,7 +21,7 @@ export default function ComparisonHost({ isOpen, onClose }: ComparisonModalProps
   const mounted = useRef(true);
   const { generateWithA1111 } = useGenerateWithA1111();
   const { canUseComparison, showProModal } = useFeatureAccess();
-  const snapshot = (sessionId: string): ComparisonSnapshot => ({ sessionId, images: images.map(({ handle: _handle, thumbnailHandle: _thumbnailHandle, thumbnailUrl: _thumbnailUrl, ...image }) => image), directories: directories.filter(directory => images.some(image => image.directoryId === directory.id)).map(({ handle: _handle, ...directory }) => directory), ui: useComparisonUIStore.getState().ui });
+  const snapshot = (sessionId: string): ComparisonSnapshot => ({ sessionId, images: images.map(({ handle: _handle, thumbnailHandle: _thumbnailHandle, thumbnailUrl: _thumbnailUrl, ...image }) => image), directories: getComparisonDirectories(images, directories), ui: useComparisonUIStore.getState().ui });
   const cancelSession = useCallback(() => {
     const previous = session.current;
     // Invalidate before IPC so late events/completions cannot act on a new comparison.

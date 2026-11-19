@@ -1,3 +1,4 @@
+import { createBoardExternalAccess } from './boardExternalAccess.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -5,7 +6,7 @@ import { registerBoardIpc } from './boardIpc.mjs';
 import { BoardRepository } from './boardRepository.mjs';
 import { resetUserDataContents } from './cacheReset.mjs';
 import { createBoardDocument } from '../services/boards/document.mjs';
-import { clipboard, nativeImage } from 'electron';
+import { nativeImage } from 'electron';
 
 /** Functional smoke only: hidden synthetic profile, no visual acceptance or real library. */
 export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root, appPath = app.getAppPath() }) {
@@ -16,7 +17,10 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   const window = new BrowserWindow({ show: false, webPreferences: { preload: path.join(appPath, 'preload.js'), contextIsolation: true, nodeIntegration: false } });
   const exportedPath = path.join(root, 'synthetic.imhboard.json');
   const pngPath = path.join(root, 'synthetic.png');
-  const persistence = registerBoardIpc({ ipcMain, app, BrowserWindow, clipboard, getMainWindow: () => window, dialog: {
+  const externalAccess = createBoardExternalAccess();
+  const externalPath = path.join(root, 'external.png');
+  await fs.writeFile(externalPath, nativeImage.createFromBitmap(Buffer.from([0, 0, 255, 255]), { width: 1, height: 1 }).toPNG());
+  const persistence = registerBoardIpc({ authorizeExternalFile: file => externalAccess.authorize(file), ipcMain, app, BrowserWindow, clipboard: { readText: () => 'synthetic canvas clipboard' }, getMainWindow: () => window, dialog: {
     showSaveDialog: async (_window, options) => ({ canceled: false, filePath: options.filters[0].extensions[0] === 'png' ? pngPath : exportedPath }),
     showOpenDialog: async () => ({ canceled: false, filePaths: [exportedPath] }),
   } });
@@ -34,6 +38,7 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   const result = await window.webContents.executeJavaScript(`(async () => {
     const api = window.electronAPI;
     const unwrap = result => { if (!result.success) throw new Error(result.error); return result.data; };
+    unwrap(await api.boardsAuthorizeFile(${JSON.stringify(externalPath)}));
     let saved = unwrap(await api.boardsSave({ document: ${JSON.stringify(document)}, expectedRevision: 0 }));
     unwrap(await api.boardsRemapReferences(${JSON.stringify(remaps)}));
     for (let index = 0; index < 3; index++) {
@@ -45,15 +50,16 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
     if (conflict.success || conflict.code !== 'BOARD_REVISION_CONFLICT') throw new Error('Revision conflict was not enforced');
     unwrap(await api.boardsExport(saved));
     const imported = unwrap(await api.boardsImport());
-    if (imported.id === saved.id || imported.objects.length !== 5 || imported.schemaVersion !== 5) throw new Error('Import did not preserve independent v5 objects');
+    if (imported.id === saved.id || imported.objects.length !== 5 || imported.schemaVersion !== 6) throw new Error('Import did not preserve independent v6 objects');
     const baseline = unwrap(await api.boardsReferenceBaseline());
     if (baseline.length !== 3) throw new Error('Reference baseline is missing');
     unwrap(await api.boardsFlush());
     return { boardId: saved.id, importedId: imported.id, revision: saved.revision };
   })()`);
-  // Exercise the native bridge without changing the operator's clipboard.
+  if (!externalAccess.allows(externalPath) || externalAccess.allows(path.join(root, 'unapproved.png'))) throw new Error('External file authorization escaped its scope.');
+  // Exercise the bridge with a synthetic clipboard, independent of the operator's data.
   const clipboardText = await window.webContents.executeJavaScript('window.electronAPI.boardsReadClipboard()');
-  if (!clipboardText.success || clipboardText.data !== await clipboard.readText()) throw new Error('System clipboard bridge failed');
+  if (!clipboardText.success || clipboardText.data !== 'synthetic canvas clipboard') throw new Error('System clipboard bridge failed');
   const pngResult = await window.webContents.executeJavaScript(`window.electronAPI.boardsExportPng(${JSON.stringify({ name: 'Packaged PNG', width: 2304, height: 256, scale: 1,
     html: '<div style="position:relative;width:2304px;height:256px"><div style="position:absolute;left:2090px;top:20px;width:100px;height:100px;background:#ff0000"></div></div>' })})`);
   if (!pngResult.success) throw new Error(pngResult.error);

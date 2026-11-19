@@ -29,6 +29,7 @@ export interface BoardWorkspaceProps {
   onOpenAsset?: (object: BoardAssetObject) => void;
   assetPanel?: ReactNode;
   assetActions?: ReactNode; assetMetadata?: ReactNode; assetStatus?: ReactNode; selectionActions?: ReactNode; libraryLocked?: boolean;
+  onDropFiles?: BoardEditorActions['dropFiles'];
   onDropAssets?: BoardEditorActions['dropAssets'];
 
 }
@@ -38,7 +39,7 @@ export default function BoardWorkspace(props: BoardWorkspaceProps) {
   return <ReactFlowProvider key={boardId ?? 'list'}><BoardWorkspaceContent {...props} /></ReactFlowProvider>;
 }
 
-function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAsset, assetPanel, assetActions, assetMetadata, assetStatus, selectionActions, libraryLocked, onDropAssets }: BoardWorkspaceProps) {
+function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAsset, assetPanel, assetActions, assetMetadata, assetStatus, selectionActions, libraryLocked, onDropAssets, onDropFiles }: BoardWorkspaceProps) {
   const { t } = useTranslation();
   const closing = useBoardStore(state => state.closing);
   const boardId = useBoardStore(state => state.activeBoardId);
@@ -100,13 +101,13 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
     void action().catch(cause => setError(cause instanceof Error ? cause.message : String(cause))).finally(() => setBusy(false));
   }, []);
   useEffect(() => { run(() => useBoardStore.getState().loadBoardList()); }, [run]);
-  const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, editingObjectId, editObject, inspectSelection, reportError: setError, exportPng: setPngScope, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets,
+  const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, editingObjectId, editObject, inspectSelection, reportError: setError, exportPng: setPngScope, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets, dropFiles: onDropFiles,
     getVisibleCenter: () => stage.current ? visibleBoardCenter(flow.getViewport(), boardVisibleArea(stage.current)) : undefined,
     begin: () => { if (boardId && editable) useBoardStore.getState().beginInteraction(boardId); },
     change: update => { if (boardId && editable) useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [update])); },
     commit: () => { if (boardId) useBoardStore.getState().commitInteraction(boardId); },
     cancel: () => { if (boardId) useBoardStore.getState().cancelInteraction(boardId); },
-  }), [boardId, editable, connecting, tool, editingObjectId, inspectSelection, resolveAsset, onOpenAsset, onDropAssets, flow]);
+  }), [boardId, editable, connecting, tool, editingObjectId, inspectSelection, resolveAsset, onOpenAsset, onDropAssets, onDropFiles, flow]);
   const openSelection = useCallback(() => {
     if (!boardId) return;
     const current = useBoardStore.getState().sessions[boardId];
