@@ -615,7 +615,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     onWorkflowLoadRequestHandled,
     targetUrl,
     workflowLoadRequest,
-  , tr]);
+    tr,
+  ]);
 
   const setSidebarWidth = (width: number) => {
     const nextWidth = clampSidebarWidth(width);

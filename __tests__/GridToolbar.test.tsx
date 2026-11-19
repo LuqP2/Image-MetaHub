@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import GridToolbar from '../components/GridToolbar';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 vi.mock('../hooks/useFeatureAccess', () => ({
   useFeatureAccess: () => ({
@@ -282,13 +283,13 @@ describe('GridToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Jump to group' }));
 
     // Opens snapped to the active date's month.
-    expect(await screen.findByText(new Date(2025, 11, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))).toBeTruthy();
+    expect(await screen.findByText(new Date(2025, 11, 1).toLocaleDateString(useSettingsStore.getState().language, { month: 'long', year: 'numeric' }))).toBeTruthy();
 
     // Manual navigation must persist (previously an effect reverted it every render).
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
-    await waitFor(() => expect(screen.getByText(new Date(2026, 0, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(new Date(2026, 0, 1).toLocaleDateString(useSettingsStore.getState().language, { month: 'long', year: 'numeric' }))).toBeTruthy());
 
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
-    await waitFor(() => expect(screen.getByText(new Date(2026, 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(new Date(2026, 1, 1).toLocaleDateString(useSettingsStore.getState().language, { month: 'long', year: 'numeric' }))).toBeTruthy());
   });
 });

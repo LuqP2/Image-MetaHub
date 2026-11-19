@@ -30,6 +30,7 @@ describe('Analytics Explorer', () => {
     const t = (key, values?) => formatMessage(language, key, values);
     const original = JSON.stringify(useImageStore.getState().images);
     render(<Analytics isOpen onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: t('analytics.fullLibrary'), exact: true }));
     fireEvent.click(screen.getByRole('button', { name: t('analytics.tabResources'), exact: true }));
     fireEvent.click(screen.getByRole('button', { name: /^Flux/ }));
     expect(useImageStore.getState().selectedModels).toEqual(['Flux']);

@@ -595,6 +595,7 @@ return (
         type="button"
         onClick={onAdd}
         className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40 px-4 py-10 text-center text-gray-400 transition-colors hover:border-blue-600/50 hover:bg-blue-950/20 hover:text-blue-200"
+        aria-label={tr('automation.addFirstCondition')}
       >
         <Plus className="mb-2 h-6 w-6" />
         <span className="text-sm font-medium">{tr('automation.noConditions')}</span>
