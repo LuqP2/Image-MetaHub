@@ -277,11 +277,13 @@
       "components/ModelInspectorApp.tsx",
       "components/ModelUsagePanel.tsx",
       "components/ModelStoragePanel.tsx",
-      "components/ModelManagerPanels.tsx"
+      "components/ModelManagerPanels.tsx",
+      "components/ModelsWorkspace.tsx"
     ],
     "literalExceptions": [
       "Civitai",
-      "SHA256"
+      "SHA256",
+      "LoRAs"
     ]
   }
 }
