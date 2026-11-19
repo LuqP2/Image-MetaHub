@@ -1,3 +1,5 @@
+import { useTranslation } from '../../i18n/useTranslation';
+import { translatePromptMessage } from '../../i18n/promptMessages';
 import { useState } from 'react';
 import type { BoardPromptObject } from '../../services/boards/types';
 import { updateObjects } from '../../services/boards/operations';
@@ -7,6 +9,7 @@ import { copyTextToClipboard } from '../../utils/imageUtils';
 import { useBoardPrompts } from './BoardPromptContext';
 
 export default function BoardPromptInspector({ boardId, card, editable }: { boardId: string; card: BoardPromptObject; editable: boolean }) {
+  const { t } = useTranslation();
   const prompts = useBoardPrompts();
   const [status, setStatus] = useState('');
   const count = prompts.counts(card.positivePrompt);
@@ -14,19 +17,19 @@ export default function BoardPromptInspector({ boardId, card, editable }: { boar
     if (editable) useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [{ id: card.id, [key]: value }]));
   };
   const commit = () => useBoardStore.getState().commitInteraction(boardId);
-  const copy = async (text: string) => { const result = await copyTextToClipboard(text); setStatus(result.success ? 'Copied.' : result.error || 'Could not copy prompt.'); };
+  const copy = async (text: string) => { const result = await copyTextToClipboard(text); setStatus(result.success ? 'promptLibrary.copied' : result.error || 'promptLibrary.copyFailed'); };
   return <section className="board-prompt-inspector">
-    <label>Title<input aria-label="Prompt card title" className="board-input" value={card.title} disabled={!editable} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label>
-    <label>Positive prompt<textarea aria-label="Card positive prompt" className="board-textarea" value={card.positivePrompt} disabled={!editable} onChange={event => edit('positivePrompt', event.target.value)} onBlur={commit} /></label>
-    <button className="board-button" onClick={() => void copy(card.positivePrompt)}>Copy positive</button>
-    <label>Negative prompt<textarea aria-label="Card negative prompt" className="board-textarea" value={card.negativePrompt} disabled={!editable} onChange={event => edit('negativePrompt', event.target.value)} onBlur={commit} /></label>
-    <button className="board-button" onClick={() => void copy(card.negativePrompt)}>Copy negative</button>
-    <p role="status">{prompts.loading ? 'Loading matches…' : `${count.canvas} images on this Canvas · ${count.library} in library`}</p>
-    <small>Exact positive prompt. Ignores outer whitespace and line ending format.</small>
-    <button className="board-button" disabled={!editable || prompts.loading || !count.library} onClick={() => prompts.bring(card)}>Bring matching images…</button>
-    <button className="board-button" disabled={!editable} onClick={() => { duplicateBoardSelection(boardId); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Card positive prompt"]')?.focus()); }}>Duplicate as variation</button>
-    <button className="board-button" disabled={!editable || !(card.positivePrompt.trim() || card.negativePrompt.trim())} onClick={() => prompts.save(card)}>Save to Prompt Library…</button>
-    {card.origin?.kind === 'library' && <button className="board-button" onClick={() => { if (card.origin?.kind === 'library') prompts.openLibrary(card.origin.id); }}>Open in Prompt Library</button>}
-    {status && <p role="status">{status}</p>}
+    <label>{t('imageViewer.collection.title')}<input aria-label={t('promptLibrary.cardTitle')} className="board-input" value={card.title} disabled={!editable} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label>
+    <label>{t('imageViewer.provenance.positive')}<textarea data-board-positive-prompt aria-label={t('promptLibrary.cardPositive')} className="board-textarea" value={card.positivePrompt} disabled={!editable} onChange={event => edit('positivePrompt', event.target.value)} onBlur={commit} /></label>
+    <button className="board-button" onClick={() => void copy(card.positivePrompt)}>{t('promptLibrary.copyPositive')}</button>
+    <label>{t('imageViewer.provenance.negative')}<textarea aria-label={t('promptLibrary.cardNegative')} className="board-textarea" value={card.negativePrompt} disabled={!editable} onChange={event => edit('negativePrompt', event.target.value)} onBlur={commit} /></label>
+    <button className="board-button" onClick={() => void copy(card.negativePrompt)}>{t('promptLibrary.copyNegative')}</button>
+    <p role="status">{prompts.loading ? t('promptLibrary.loadingMatches') : t('promptLibrary.cardCounts', { canvasCount: count.canvas, libraryCount: count.library })}</p>
+    <small>{t('promptLibrary.exactHelp')}</small>
+    <button className="board-button" disabled={!editable || prompts.loading || !count.library} onClick={() => prompts.bring(card)}>{t('promptLibrary.bringMatches')}</button>
+    <button className="board-button" disabled={!editable} onClick={() => { duplicateBoardSelection(boardId); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-board-positive-prompt]')?.focus()); }}>{t('promptLibrary.duplicateVariation')}</button>
+    <button className="board-button" disabled={!editable || !(card.positivePrompt.trim() || card.negativePrompt.trim())} onClick={() => prompts.save(card)}>{t('promptLibrary.saveLibrary')}</button>
+    {card.origin?.kind === 'library' && <button className="board-button" onClick={() => { if (card.origin?.kind === 'library') prompts.openLibrary(card.origin.id); }}>{t('promptLibrary.openLibrary')}</button>}
+    {status && <p role="status">{translatePromptMessage(status, t)}</p>}
   </section>;
 }
