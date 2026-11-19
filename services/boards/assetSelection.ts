@@ -1,4 +1,4 @@
-export const BOARD_BROWSER_ROW_HEIGHT = 140;
+export const BOARD_BROWSER_ROW_HEIGHT = 168;
 export function browserMarqueeIds(ids: string[], width: number, box: { left: number; top: number; right: number; bottom: number }): string[] {
   const columnWidth = Math.max(1, (width - 24) / 2);
   const selected: string[] = [];

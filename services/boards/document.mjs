@@ -56,7 +56,8 @@ function normalizeStable(value) {
 }
 
 function normalizeReference(value) {
-  if (!record(value) || !['stable', 'path'].includes(value.kind)) fail('Invalid asset reference.');
+  if (!record(value) || !['stable', 'path', 'external'].includes(value.kind)) fail('Invalid asset reference.');
+  if (value.kind === 'external' && (typeof value.locator?.directoryPath !== 'string' || !/^(?:\/|[a-z]:[\\/])/i.test(value.locator.directoryPath))) fail('External files require an absolute directory.');
   if (value.appliedRemapIds !== undefined && (!Array.isArray(value.appliedRemapIds) || value.appliedRemapIds.some(id => typeof id !== 'string' || !id.trim()))) fail('Invalid applied remap IDs.');
   return {
     kind: value.kind,
@@ -69,7 +70,7 @@ function normalizeReference(value) {
 // Reconstruct explicitly: imported runtime data, handles and unknown fields never reach disk.
 export function normalizeBoardDocument(input) {
   if (!record(input)) fail('Board document is required.');
-  if (![1, 2, 3, 4, 5].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
+  if (![1, 2, 3, 4, 5, 6].includes(input.schemaVersion)) throw new BoardError('BOARD_UNSUPPORTED_VERSION', 'Unsupported board version.');
   if (!Array.isArray(input.objects) || !Array.isArray(input.connections)) fail('Objects and connections must be arrays.');
   if (!record(input.viewport)) fail('Viewport is required.');
   const ids = new Set();
@@ -122,7 +123,15 @@ export function normalizeBoardDocument(input) {
       let url;
       try { url = new URL(value.url); } catch { fail('Invalid link URL.'); }
       if (!['http:', 'https:'].includes(url.protocol)) fail('Link must use HTTP or HTTPS.');
-      return { ...base, title: string(value.title, 'Link title'), url: url.href, color: color(value.color) };
+      let preview;
+      if (value.preview !== undefined) {
+        if (!record(value.preview)) fail('Invalid link preview.');
+        const title = string(value.preview.title, 'Preview title');
+        const imageData = value.preview.imageData;
+        if (title.length > 1000 || (imageData !== undefined && (typeof imageData !== 'string' || !/^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(imageData) || imageData.length > 4 * 1024 * 1024))) fail('Invalid preview image or title.');
+        preview = { title, ...(imageData ? { imageData } : {}) };
+      }
+      return { ...base, title: string(value.title, 'Link title'), url: url.href, color: color(value.color), ...(preview ? { preview } : {}) };
     }
     if (['text', 'sticky', 'shape'].includes(value.type)) {
       const text = { ...base, text: string(value.text, 'Text'), fontSize: number(value.fontSize, 'Font size', 1), color: color(value.color) };
@@ -156,7 +165,7 @@ export function normalizeBoardDocument(input) {
     }
     if (!['image', 'video', 'audio', 'model3d'].includes(value.mediaType)) fail('Invalid media type.');
     if (!Array.isArray(value.visibleFields) || value.visibleFields.some(field => !metadataFields.has(field))) fail('Invalid visible metadata fields.');
-    return { ...base, reference: normalizeReference(value.reference), name: string(value.name, 'Asset name'), mediaType: value.mediaType, visibleFields: [...new Set(value.visibleFields)] };
+    return { ...base, reference: normalizeReference(value.reference), name: string(value.name, 'Asset name'), ...(value.label === undefined ? {} : { label: string(value.label, 'Asset label') }), mediaType: value.mediaType, visibleFields: [...new Set(value.visibleFields)] };
   });
   const byId = new Map(objects.map(object => [object.id, object]));
   for (const object of objects) {
@@ -176,16 +185,24 @@ export function normalizeBoardDocument(input) {
     if (!record(value) || value.type !== 'manual') fail('Invalid connection.');
     if (value.width !== undefined && (number(value.width, 'Connection width', 0.5) > 12)) fail('Connection width is too large.');
     if (value.lineStyle !== undefined && !['solid', 'dashed'].includes(value.lineStyle)) fail('Invalid connection line style.');
+    if (value.routing !== undefined && !['curved', 'orthogonal'].includes(value.routing)) fail('Invalid connection routing.');
+    if (value.anchoring !== undefined && !['manual', 'automatic'].includes(value.anchoring)) fail('Invalid connection anchoring.');
+    if (value.labelFontSize !== undefined && number(value.labelFontSize, 'Label font size', 8) > 72) fail('Label font size is too large.');
+    if (value.labelOffset !== undefined && !record(value.labelOffset)) fail('Invalid label offset.');
     if (!byId.has(value.sourceObjectId) || !byId.has(value.targetObjectId)) fail('Connection endpoint is missing.');
     return {
       id: claim(value.id), type: 'manual', ...(value.lineStyle === undefined ? {} : { lineStyle: value.lineStyle }), ...(value.width === undefined ? {} : { width: value.width }), sourceObjectId: value.sourceObjectId, targetObjectId: value.targetObjectId,
       sourceSide: side(value.sourceSide), targetSide: side(value.targetSide), label: string(value.label, 'Connection label'), color: color(value.color),
+      ...(value.routing === undefined ? {} : { routing: value.routing }),
+      ...(value.anchoring === undefined ? {} : { anchoring: value.anchoring }),
+      ...(value.labelFontSize === undefined ? {} : { labelFontSize: value.labelFontSize }),
+      ...(value.labelOffset === undefined ? {} : { labelOffset: { x: number(value.labelOffset.x, 'Label X'), y: number(value.labelOffset.y, 'Label Y') } }),
     };
   });
   const zoom = number(input.viewport.zoom, 'Zoom', 0.1);
   if (zoom > 4) fail('Zoom cannot exceed 4.');
   return {
-    schemaVersion: 5, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
+    schemaVersion: 6, id: validateBoardId(input.id), revision: integer(input.revision, 'Revision'), name: string(input.name, 'Board name', true),
     createdAt: integer(input.createdAt, 'Creation time'), updatedAt: integer(input.updatedAt, 'Update time'),
     backgroundColor: input.backgroundColor == null ? null : color(input.backgroundColor).toLowerCase(),
     viewport: { x: number(input.viewport.x, 'Viewport X'), y: number(input.viewport.y, 'Viewport Y'), zoom }, objects, connections,
@@ -193,7 +210,7 @@ export function normalizeBoardDocument(input) {
 }
 
 export function createBoardDocument(name = 'Untitled board', id = crypto.randomUUID(), now = Date.now()) {
-  return normalizeBoardDocument({ schemaVersion: 5, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
+  return normalizeBoardDocument({ schemaVersion: 6, id, revision: 0, name, createdAt: now, updatedAt: now, viewport: { x: 0, y: 0, zoom: 1 }, objects: [], connections: [] });
 }
 
 export function duplicateBoardDocument(document, name = `${document.name} (copy)`, id = crypto.randomUUID(), now = Date.now()) {

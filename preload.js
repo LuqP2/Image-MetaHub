@@ -323,6 +323,8 @@ const electronAPI = {
     ipcRenderer.on('stable-user-data-changed', handler);
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
+  boardsAuthorizeFile: (file) => ipcRenderer.invoke('boards:authorize-file', file),
+  boardsLinkPreview: (url) => ipcRenderer.invoke('boards:link-preview', url),
   boardsFonts: () => ipcRenderer.invoke('boards:fonts'),
   boardsList: () => ipcRenderer.invoke('boards:list'),
   boardsReferenceBaseline: () => ipcRenderer.invoke('boards:reference-baseline'),

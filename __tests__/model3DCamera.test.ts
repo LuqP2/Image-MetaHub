@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera } from '../services/model3DCamera';
+import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera, relativeModel3DCamera } from '../services/model3DCamera';
 function runtime(size: number, offset: number) {
   const model = new THREE.Mesh(new THREE.BoxGeometry(size,size,size)); model.position.x = offset; model.updateMatrixWorld(true);
   const perspective = new THREE.PerspectiveCamera(35,1,.001,10000);
@@ -17,4 +17,15 @@ describe('normalized 3D comparison cameras', () => {
     expect(a.activeCamera.position.distanceTo(a.controls.target)).toBeCloseTo(b.activeCamera.position.distanceTo(b.controls.target) / 100);
     a.model.geometry.dispose(); b.model.geometry.dispose();
   });
+});
+
+it('preserves an independently aligned follower when orbit, pan and zoom are linked', () => {
+  const before = { projection: 'perspective' as const, position: [0,0,4] as [number,number,number], target: [0,0,0] as [number,number,number], up: [0,1,0] as [number,number,number], zoom: 1, fov: 35 };
+  const follower = { ...before, position: [4,0,0] as [number,number,number] };
+  const turned = relativeModel3DCamera(before, { ...before, position: [4,0,0] }, follower);
+  expect(turned.position[0]).toBeCloseTo(0);
+  expect(turned.position[2]).toBeCloseTo(-4);
+  const panned = relativeModel3DCamera(before, { ...before, position: [1,0,4], target: [1,0,0], zoom: 2 }, follower);
+  expect(panned.target[2]).toBeCloseTo(-1);
+  expect(panned.zoom).toBe(2);
 });

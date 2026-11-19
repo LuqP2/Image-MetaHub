@@ -10,7 +10,7 @@ Canvas v1 is split into three dependent PRs. The complete user workflow ships af
 
 ### Creative tools, Explorer, stacks and prompt cards (schema v5)
 
-The shared document boundary reads schemas v1 through v5 and returns v5 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v5 using the existing expected-revision contract. File envelopes are exported as version 5. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
+The shared document boundary reads schemas v1 through v6 and returns v6 in memory. Loading an older file preserves its revision and does not write it back; the next explicit save writes v6 using the existing expected-revision contract. File envelopes are exported as version 6. Sticky notes and shapes require v3. URLs are plain editable text with clickable HTTP/HTTPS links in display mode; the editor has no Link creation tool. Existing v3 link cards remain readable.
 
 Clipboard fragments use a separate versioned envelope and carry frame members, internal connectors and transitive Smart Frame dependencies. Paste remaps IDs and missing dependency IDs; cut deletes only after a successful system clipboard write. All editor shortcuts defer to text inputs, composition and dialogs.
 
@@ -18,7 +18,7 @@ Open-tab IDs, order and active ID are local preferences (`imh-board-tabs-v1`). D
 
 Text objects optionally persist `fontFamily` and `backgroundColor` (null means transparent); existing objects keep the app font and transparent background. The desktop font picker requests installed Windows family names through the main-window-only `boards:fonts` IPC channel, enumerated asynchronously and cached for the process lifetime. Font files remain installed locally rather than embedded in boards. Manual connections optionally persist `lineStyle` (`solid` or `dashed`), with solid as the legacy default; thickness presets write widths 1.5, 3 and 5 while preserving existing custom widths until changed.
 
-PNG export materializes an unvirtualized React Flow scene, freezes computed styles/images and current visible Smart Frame presentation, and captures it in an isolated Electron surface. Native capture uses 2048-pixel tiles, preserves alpha and supports 1×/2×/4× within 64 megapixels and 16,384 pixels per side. Run `node scripts/runCanvasV1UiSmoke.mjs` for the real editor/clipboard/restart/export smoke; artifacts are written under `build/canvas-smoke-local/canvas-v1-ui`.
+PNG export materializes an unvirtualized React Flow scene and freezes computed styles/images and current visible Smart Frame presentation. The sandboxed Electron surface serializes it into a self-contained SVG foreignObject and rasterizes it to canvas, preserving alpha at 1×/2×/4× within 64 megapixels and 16,384 pixels per side. This avoids native hidden-window capture and its platform-dependent UnknownVizError. Run `node scripts/runCanvasV1UiSmoke.mjs` for the real editor/clipboard/restart/export smoke; artifacts are written under `build/canvas-smoke-local/canvas-v1-ui`.
 
 Smart Frames persist their source expression, independent query criteria, group constraints and layout. Results and visibility settings are runtime concerns. Missing frame/collection sources remain reconnectable; cycles, incompatible existing frame targets, invalid layouts and excessive expression depth/size are rejected. Smart Frames are top-level objects and do not adopt manual cards as children.
 
@@ -102,3 +102,14 @@ Production bundling and automated tests do not establish this packaged-app/manua
 Prompt cards (schema v5) store an independent title, positive/negative text and optional Library revision or image reference. Matching compares the full positive, trims outer whitespace and normalizes CRLF/CR to LF. Correspondence outlines and counts are derived UI state. Prompt index construction depends on library metadata and Safe Mode visibility, not Canvas geometry.
 
 Packaged prompt UI smoke: run `node scripts/buildCanvasPromptSmoke.mjs` after the production Vite build and before packaging, then `node scripts/runPackagedCanvasSmoke.mjs <packaged executable> --prompt-cards`. The optional fixture is included under `dist/canvas-prompt-smoke` and exercises native DOM drag events, exact highlighting, separate object selection and native prompt persistence in a hidden window with synthetic data.
+
+
+## Issue 659: Canvas and 3D feedback
+
+Schema v6 adds optional asset labels, `external` file references, local link previews and manual connection routing/anchoring/label appearance. Older boards retain their original appearance. External files are referenced in place and resolved outside the library catalog. Their source and optional sidecars receive read-only access; 3D dependencies are restricted to resource files within the model folder. Missing files can be relinked in the inspector. Dropping folders is not supported.
+
+Inline URLs use Ctrl/Cmd+click to open, preserving normal dragging and double-click editing. A URL-only text card can be converted to a link card; Fetch preview is an explicit public HTTP/HTTPS request. Preview images are embedded in the board for offline display and export, and the main process also keeps a reconstructible one-day cache. The new controls have reviewed translations in all supported locales.
+
+Manual connections support reversal, reconnecting endpoints, automatic facing sides, curved/orthogonal routing, draggable labels and label font sizes. Turning automatic anchoring off retains the currently displayed sides. Comparison camera Sync preserves independent alignment and applies relative orbit, pan and zoom. Light azimuth/elevation are independent from camera controls.
+
+PNG export uses a small isolated data document, native Chromium zoom and paint-confirmed tiles, avoiding large data-URL documents and CSS scale capture discrepancies. `node scripts/runIssue659PngSmoke.mjs` verifies native pixel content at 1x/2x/4x and cancellation with synthetic data. macOS acceptance must additionally cover Finder drops, windowed/fullscreen tooltips, Retina PNGs and independently aligned 3D comparisons.

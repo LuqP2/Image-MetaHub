@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import BoardPromptInspector from './BoardPromptInspector';
 import { useBoardConnectionStyleStore, type BoardConnectionStyle } from '../../store/useBoardConnectionStyleStore';
 import { BoardColorField, BoardPropertyRow } from './BoardPropertyControls';
@@ -12,16 +13,21 @@ import { PanelRightClose } from 'lucide-react';
 import { useBoardUIStore } from '../../store/useBoardUIStore';
 import Section from './BoardInspectorSection';
 import { getBoardDisplayName } from './boardPresentation';
-import { type ReactNode } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
 import { useBoardStore } from '../../store/useBoardStore';
-import { arrangeObjectsInGrid, updateConnection, updateObjects } from '../../services/boards/operations';
+import { arrangeObjectsInGrid, reverseConnections, updateConnection, updateObjects } from '../../services/boards/operations';
 import type { BoardMetadataField } from '../../services/boards/types';
 
 const fields: BoardMetadataField[] = ['model', 'loras', 'seed', 'dimensions', 'generator', 'rating', 'prompt'];
 export default function BoardInspector({ boardId, editable, assetActions, assetMetadata, assetStatus, selectionActions, onHide }: { boardId: string; editable: boolean; assetActions?: ReactNode; assetMetadata?: ReactNode; assetStatus?: ReactNode; selectionActions?: ReactNode; onHide?: () => void }) {
+  const { t } = useTranslation();
+  const editableRef = useRef(editable);
+  editableRef.current = editable;
   const session = useBoardStore(state => state.sessions[boardId]);
   const selected = session.document.objects.filter(object => session.selectedObjectIds.includes(object.id));
   const object = selected.length === 1 ? selected[0] : null;
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const connections = session.document.connections.filter(edge => session.selectedConnectionIds.includes(edge.id));
   const connection = connections[0] ?? null;
   const sameWidth = connections.every(edge => (edge.width ?? 1.5) === (connection?.width ?? 1.5));
@@ -44,12 +50,36 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
     {object?.type === 'prompt' && <BoardPromptInspector key={object.id} boardId={boardId} card={object} editable={editable} />}
     <BoardSelectionStyles boardId={boardId} editable={editable} includeText={false} includeTypography={false} />
     {selected.some(item => item.type === 'text' || item.type === 'shape') && <BoardTextStyles boardId={boardId} editable={editable} />}
-    {object?.type === 'link' && <><label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label><label>URL<input className="board-input" disabled={!editable} defaultValue={object.url} key={object.url} onBlur={event => { try { const url = new URL(event.target.value); if (['http:', 'https:'].includes(url.protocol)) { edit('url', url.href); commit(); } else event.target.value = object.url; } catch { event.target.value = object.url; } }} /></label></>}
+    {object?.type === 'link' && <><label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label><label>URL<input className="board-input" disabled={!editable} defaultValue={object.url} key={object.url} onBlur={event => { try { const url = new URL(event.target.value); if (['http:', 'https:'].includes(url.protocol)) { useBoardStore.getState().executeOperation(boardId, document => ({ ...document, objects: document.objects.map(item => item.id === object.id && item.type === 'link' ? { ...item, url: url.href, preview: undefined } : item) })); } else event.target.value = object.url; } catch { event.target.value = object.url; } }} /></label></>}
+    {object?.type === 'text' && /^(https?:\/\/|www\.)[^\s]+$/i.test(object.text.trim()) && <button className="board-button" disabled={!editable} onClick={() => {
+      const url = new URL(object.text.trim().startsWith('www.') ? `https://${object.text.trim()}` : object.text.trim());
+      useBoardStore.getState().executeOperation(boardId, document => ({ ...document, objects: document.objects.map(item => item.id === object.id ? { id: item.id, type: 'link' as const, x: item.x, y: item.y, width: Math.max(item.width, 280), height: Math.max(item.height, 200), frameId: item.frameId, zIndex: item.zIndex, url: url.href, title: url.hostname, color: '#93c5fd' } : item) }));
+    }}>{t('canvasFeedback.createLink')}</button>}
+    {object?.type === 'link' && <><button className="board-button" disabled={!editable || previewBusy} onClick={async () => {
+      const id = object.id, url = object.url;
+      setPreviewBusy(true); setPreviewError(null);
+      try {
+        const result = await window.electronAPI?.boardsLinkPreview?.(url);
+        if (!result) throw new Error('Link preview requires the updated desktop app.');
+        if (result.success === false) throw new Error(result.error);
+        const current = useBoardStore.getState();
+        if (!editableRef.current || current.activeBoardId !== boardId || current.closing || current.sessions[boardId]?.recovering) return;
+        current.executeOperation(boardId, document => ({ ...document, objects: document.objects.map(item => item.id === id && item.type === 'link' && item.url === url ? { ...item, preview: result.data, title: item.title === new URL(url).hostname ? result.data.title : item.title } : item) }));
+      } catch (error) { setPreviewError(error instanceof Error ? error.message : String(error)); }
+      finally { setPreviewBusy(false); }
+    }}>{t(previewBusy ? 'canvasFeedback.fetching' : 'canvasFeedback.fetchPreview')}</button>{previewError && <p role="alert">{previewError}</p>}<small>{t('canvasFeedback.previewHelp')}</small></>}
     {(object?.type === 'text' || object?.type === 'shape') && <>
       <label className="board-content-field">Content<textarea aria-label="Text" className="board-textarea" disabled={!editable} value={object.text} onChange={event => edit('text', event.target.value)} onBlur={commit} /></label>
     </>}
     {object?.type === 'frame' && <label>Title<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label>}
+    {object?.type === 'asset' && <label>{t('canvasFeedback.label')}<input className="board-input" disabled={!editable} value={object.label ?? ''} placeholder={getBoardDisplayName(object.name)} onChange={event => edit('label', event.target.value)} onBlur={commit} /></label>}
     {connection && <>
+      <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => reverseConnections(document, connections.map(edge => edge.id)))}>{t('canvasFeedback.reverse')}</button>
+      <label>{t('canvasFeedback.routing')}<select className="board-select" disabled={!editable} value={connection.routing ?? 'curved'} onChange={event => applyConnectionStyle({ routing: event.target.value as 'curved' | 'orthogonal' })}><option value="curved">{t('canvasFeedback.curved')}</option><option value="orthogonal">{t('canvasFeedback.orthogonal')}</option></select></label>
+      <label>{t('canvasFeedback.anchoring')}<select className="board-select" disabled={!editable} value={connection.anchoring ?? 'manual'} onChange={event => useBoardStore.getState().executeOperation(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { anchoring: event.target.value as 'manual' | 'automatic' }), document))}><option value="manual">{t('canvasFeedback.manual')}</option><option value="automatic">{t('canvasFeedback.automatic')}</option></select></label>
+      {connections.length === 1 && <>{(['sourceSide', 'targetSide'] as const).map(key => <label key={key}>{t(key === 'sourceSide' ? 'canvasFeedback.start' : 'canvasFeedback.end')}<select className="board-select" disabled={!editable} value={connection[key]} onChange={event => useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, connection.id, { [key]: event.target.value, anchoring: 'manual' }))}>{['top', 'right', 'bottom', 'left'].map(side => <option key={side} value={side}>{side}</option>)}</select></label>)}</>}
+      <label>{t('canvasFeedback.labelSize')}<input className="board-input" type="number" min="8" max="72" value={connection.labelFontSize ?? 11} disabled={!editable} onChange={event => { const size = Number(event.target.value); if (size >= 8 && size <= 72) useBoardStore.getState().updateInteraction(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { labelFontSize: size }), document)); }} onBlur={commit} /></label>
+      <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { labelOffset: { x: 0, y: 0 } }), document))}>{t('canvasFeedback.resetLabel')}</button>
       <div className="board-inspector-properties"><BoardPropertyRow label="Weight"><div role="group" aria-label="Line thickness" className="board-line-options">{([1.5, 3, 5] as const).map((width, index) => {
         const current = connection.width ?? 1.5;
         const active = sameWidth && index === (current < 2.25 ? 0 : current < 4 ? 1 : 2);
@@ -58,7 +88,7 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
       })}</div></BoardPropertyRow>
       <BoardPropertyRow label="Pattern"><div role="group" aria-label="Line style" className="board-line-options">{(['solid', 'dashed'] as const).map(lineStyle => <button key={lineStyle} className="board-button" disabled={!editable} aria-pressed={samePattern && (connection.lineStyle ?? 'solid') === lineStyle} onClick={() => applyConnectionStyle({ lineStyle })}>
         <svg viewBox="0 0 36 10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth="2" strokeDasharray={lineStyle === 'dashed' ? '6 4' : undefined}/></svg>{lineStyle === 'solid' ? 'Solid' : 'Dashed'}</button>)}</div></BoardPropertyRow>
-      {connections.length === 1 && <label className="board-connection-label">Label<input className="board-input" disabled={!editable} value={connection.label} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { label: event.target.value }))} onBlur={commit} /></label>}
+      {connections.length === 1 && <label className="board-connection-label">{t('canvasFeedback.label')}<input className="board-input" disabled={!editable} value={connection.label} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { label: event.target.value }))} onBlur={commit} /></label>}
       <BoardPropertyRow label="Color"><BoardColorField label="Connection color" disabled={!editable} value={connection.color} mixed={!sameColor} onChange={color => applyConnectionStyle({ color }, true)} onBlur={commit}/></BoardPropertyRow></div>
     </>}
     {selected.some(item => item.type === 'asset') && <Section title="Show on canvas"><fieldset className="board-field-grid" disabled={!editable}>{fields.map(field => {

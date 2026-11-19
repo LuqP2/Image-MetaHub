@@ -1,3 +1,4 @@
+import { reverseConnections } from '../../services/boards/operations';
 import { Copy, Scissors, CopyPlus, Clipboard, Grid2X2, Frame, Download, Layers, Ungroup, Pencil, Trash2, Scan, MousePointer2, StickyNote, Type, Square, Circle, Diamond, Sparkles, PanelTop, type LucideIcon } from 'lucide-react';
 import { visualGroupingCandidates } from '../../services/boards/visualGroupOperations';
 import { createStack, unstack } from '../../services/boards/stackOperations';
@@ -61,6 +62,7 @@ export default function BoardContextMenu({ boardId, menu, close, create, fit, au
       if (stack) useBoardStore.getState().setSelection(boardId, [stack.id]);
     }, !editor.editable)}
     {menu.kind === 'selection' && session.selectedObjectIds.length === 1 && session.document.objects.some(object => object.id === session.selectedObjectIds[0] && object.type === 'stack') && button('Unstack', () => useBoardStore.getState().executeOperation(boardId, document => unstack(document, session.selectedObjectIds[0])), !editor.editable)}
+    {menu.kind === 'edge' && button('Reverse direction', () => useBoardStore.getState().executeOperation(boardId, document => reverseConnections(document, session.selectedConnectionIds)), !editor.editable)}
     {menu.kind === 'edge'  && button('Edit connection', () => { useBoardUIStore.getState().setInspectorOpen(true); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.board-inspector input')?.focus()); }, !editor.editable)}
     {menu.kind !== 'create' && <hr role="separator"/>}
     {menu.kind !== 'create' && button('Paste', () => pasteBoardSelection(boardId, menu.point), !editor.editable)}
