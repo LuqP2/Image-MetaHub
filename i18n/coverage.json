@@ -299,5 +299,13 @@
       "owner/repository",
       "folder/model.safetensors"
     ]
+  },
+  "fileOperations": {
+    "paths": [
+      "components/RenameImageModal.tsx",
+      "components/TagManagerModal.tsx",
+      "components/TransferImagesModal.tsx"
+    ],
+    "literalExceptions": []
   }
 }

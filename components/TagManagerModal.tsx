@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Plus, Tag } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
@@ -16,6 +17,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
   onClose,
   selectedImageIds,
 }) => {
+  const { t } = useTranslation();
   const { availableTags, bulkAddTag, bulkRemoveTag, images } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
@@ -170,16 +172,15 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
           <div className="flex items-center gap-2">
             <Tag className="w-5 h-5 text-blue-400" />
             <h2 className="text-lg font-bold text-white">
-              Manage Tags 
-              <span className="ml-2 text-sm font-normal text-gray-400">
-                ({selectedImageIds.length} selected)
+              {t('fileOperations.manageTags')}<span className="ml-2 text-sm font-normal text-gray-400">
+                {t('fileOperations.selected', { count: selectedImageIds.length })}
               </span>
             </h2>
           </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
-            aria-label="Close tag manager"
+            aria-label={t('fileOperations.closeTags')}
           >
             <X size={20} />
           </button>
@@ -201,7 +202,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               excludedTags={[]}
               suggestionLimit={tagSuggestionLimit}
               mode="csv"
-              placeholder="Type tags separated by commas..."
+              placeholder={t('fileOperations.tagsComma')}
               onEscape={() => {
                 if (pendingRemoveTag) {
                   setPendingRemoveTag(null);
@@ -222,7 +223,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                   onKeyDown={handleKeyDown}
                   disabled={!inputValue.trim() || isSubmitting}
                   className="absolute right-1.5 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-white hover:text-gray-950 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Add tags"
+                  aria-label={t('promptLibrary.addTags')}
                 >
                   <Plus size={16} />
                 </button>
@@ -252,11 +253,10 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium text-rose-200">
-                    Remove tag "{pendingRemoveTag}" from {selectedImages.length} images?
+                    {t('fileOperations.removeTagConfirm', { tag: pendingRemoveTag, count: selectedImages.length })}
                   </div>
                   <p className="mt-1 text-xs text-rose-200/70">
-                    This only removes the tag from the selected images.
-                  </p>
+                    {t('fileOperations.removeTagHelp')}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -267,16 +267,14 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                     }}
                     className="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700"
                   >
-                    Cancel
-                  </button>
+                    {t('modelLibrary.cancel')}</button>
                   <button
                     type="button"
                     onClick={handleConfirmRemoveTag}
                     disabled={isSubmitting}
                     className="rounded-md border border-rose-500/40 bg-rose-600/80 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Remove
-                  </button>
+                    {t('promptLibrary.remove')}</button>
                 </div>
               </div>
             </div>
@@ -285,13 +283,11 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
           {/* Existing Tags List */}
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Current Tags
-            </h3>
+              {t('fileOperations.currentTags')}</h3>
             
             {sortedExistingTags.length === 0 ? (
               <div className="text-center py-4 text-gray-500 text-sm italic">
-                No tags on selected images.
-              </div>
+                {t('fileOperations.noTags')}</div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {sortedExistingTags.map(({ name, count, isAll }) => (
@@ -302,7 +298,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                         ? 'bg-blue-900/30 border-blue-700/50 text-blue-200' 
                         : 'bg-gray-800 border-gray-700 text-gray-300 border-dashed'
                     }`}
-                    title={isAll ? 'Click to apply to all selected images' : `Click to apply to all selected images. Present on ${count} of ${selectedImages.length} images`}
+                    title={isAll ? t('fileOperations.applyAll') : t('fileOperations.applySome', { count, total: selectedImages.length })}
                   >
                     <button
                       type="button"
@@ -313,7 +309,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                           ? 'hover:bg-blue-800/30 disabled:hover:bg-transparent'
                           : 'hover:bg-gray-700 disabled:hover:bg-transparent'
                       } disabled:cursor-not-allowed disabled:opacity-60`}
-                      aria-label={`Apply tag ${name} to all selected images`}
+                      aria-label={t('fileOperations.applyNamed', { tag: name })}
                     >
                       <span className="max-w-[150px] truncate">{name}</span>
                       {!isAll && (
@@ -326,8 +322,8 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                       type="button"
                       onClick={(e) => handleRemoveTagRequest(name, e)}
                       className="mr-1 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      aria-label={`Remove tag ${name}`}
-                      title={`Remove tag ${name}`}
+                      aria-label={t('promptLibrary.removeTagNamed', { tag: name })}
+                      title={t('promptLibrary.removeTagNamed', { tag: name })}
                     >
                       <X size={14} />
                     </button>
@@ -338,11 +334,10 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
           </div>
           
           <div className="mt-4 p-3 bg-gray-800/50 rounded-lg text-xs text-gray-400 border border-gray-700/50">
-             <p>Tip: Separate tags with commas. Press Enter to add.</p>
+             <p>{t('fileOperations.tagsTip')}</p>
              {sortedExistingTags.some(t => !t.isAll) && (
                <p className="mt-1 text-yellow-500/80">
-                 * Dashed tags are only present on some selected images.
-               </p>
+                 {t('fileOperations.dashedTags')}</p>
              )}
           </div>
 
@@ -354,8 +349,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
             onClick={onClose}
             className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium text-sm border border-gray-700"
           >
-            Done
-          </button>
+            {t('modelLibrary.done')}</button>
         </div>
       </div>
     </div>

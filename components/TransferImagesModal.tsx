@@ -1,3 +1,5 @@
+import { useTranslation } from '../i18n/useTranslation';
+import { translatePresentationMessage } from '../i18n/presentationMessages';
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { ArrowRightLeft, ChevronDown, ChevronRight, Copy, Folder, FolderOpen, FolderPlus, MoveRight, X } from 'lucide-react';
 import type { Directory, IndexedImage, IndexedImageTransferMode, IndexedImageTransferProgress } from '../types';
@@ -88,6 +90,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   const [createdFolderOptions, setCreatedFolderOptions] = useState<DestinationOption[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(destinationSession.expandedIds));
   const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
+  const { t } = useTranslation();
   const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -101,7 +104,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
     if (isOpen && destinationsLoaded && treeRef.current) treeRef.current.scrollTop = destinationSession.scrollTop;
   }, [isOpen, destinationsLoaded]);
   const imageCount = images.length;
-  const title = mode === 'move' ? 'Move To' : 'Copy To';
+  const title = t(mode === 'move' ? 'fileOperations.moveTitle' : 'fileOperations.copyTitle');
 
   const sortedDirectories = useMemo(
     () => [...directories].sort((a, b) => a.name.localeCompare(b.name)),
@@ -379,7 +382,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
               type="button"
               onClick={() => toggleExpanded(option.id)}
               className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-100"
-              aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
+              aria-label={isExpanded ? t('fileOperations.collapseFolder') : t('fileOperations.expandFolder')}
               aria-expanded={isExpanded}
             >
               {isExpanded
@@ -419,15 +422,15 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             <div>
               <h2 className="text-lg font-semibold text-white">{title}</h2>
               <p className="text-sm text-gray-400">
-                {imageCount} image{imageCount === 1 ? '' : 's'} selected
+                {t('fileOperations.selectedImages', { count: imageCount })}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Close"
-            aria-label="Close transfer modal"
+            title={t('modelLibrary.close')}
+            aria-label={t('fileOperations.closeTransfer')}
             disabled={isSubmitting}
           >
             <X className="w-4 h-4 text-gray-400" />
@@ -439,7 +442,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             <div className="flex items-center gap-2 text-sm text-gray-300">
               <ArrowRightLeft className="w-4 h-4 text-gray-400" />
               <span>
-                {mode === 'move' ? 'Move' : 'Copy'} will preserve tags, favorites, and shadow metadata.
+                {t(mode === 'move' ? 'fileOperations.movePreserves' : 'fileOperations.copyPreserves')}
               </span>
             </div>
             {isSubmitting && (
@@ -451,7 +454,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                   />
                 </div>
                 <p className="text-xs text-blue-200">
-                  {statusText || progress?.statusText || (mode === 'move' ? 'Moving files...' : 'Copying files...')}
+                  {translatePresentationMessage(statusText || progress?.statusText || (mode === 'move' ? 'Moving files...' : 'Copying files...'), t)}
                 </p>
               </div>
             )}
@@ -459,7 +462,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-300">Destination folder</label>
+              <label className="text-sm text-gray-300">{t('fileOperations.destination')}</label>
               {canCreateFolder && !isCreatingFolder && (
                 <button
                   type="button"
@@ -468,15 +471,14 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                   className="flex items-center gap-1.5 text-xs text-blue-300 hover:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <FolderPlus className="w-4 h-4" />
-                  New folder
-                </button>
+                  {t('promptLibrary.newFolder')}</button>
               )}
             </div>
 
             {isCreatingFolder && (
               <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-3 space-y-2">
                 <p className="text-xs text-gray-400 truncate">
-                  New folder inside: <span className="text-gray-300">{selectedOption ? (selectedOption.relativePath ? `${selectedOption.rootDirectory.name}/${selectedOption.relativePath}` : selectedOption.rootDirectory.name) : ''}</span>
+                  {t('fileOperations.folderInside', { folder: selectedOption ? (selectedOption.relativePath ? `${selectedOption.rootDirectory.name}/${selectedOption.relativePath}` : selectedOption.rootDirectory.name) : '' })}
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -488,7 +490,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                       if (e.key === 'Enter') { e.preventDefault(); void handleCreateFolder(); }
                       if (e.key === 'Escape') { e.preventDefault(); setIsCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }
                     }}
-                    placeholder="Folder name"
+                    placeholder={t('promptLibrary.folderName')}
                     disabled={isSubmittingNewFolder}
                     className="flex-1 rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-60"
                   />
@@ -498,7 +500,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                     disabled={isSubmittingNewFolder || newFolderName.trim().length === 0}
                     className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-accent-strong disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
-                    {isSubmittingNewFolder ? 'Creating...' : 'Create'}
+                    {isSubmittingNewFolder ? t('fileOperations.creating') : t('canvas.createAction')}
                   </button>
                   <button
                     type="button"
@@ -506,31 +508,28 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                     disabled={isSubmittingNewFolder}
                     className="px-3 py-1.5 rounded-md border border-gray-600 bg-gray-800 text-gray-200 text-sm hover:bg-gray-700 disabled:opacity-60 transition-colors"
                   >
-                    Cancel
-                  </button>
+                    {t('modelLibrary.cancel')}</button>
                 </div>
                 {createFolderError && (
-                  <p className="text-xs text-red-300">{createFolderError}</p>
+                  <p className="text-xs text-red-300">{translatePresentationMessage(createFolderError, t)}</p>
                 )}
               </div>
             )}
 
-            <div ref={treeRef} aria-label="Destination folders" onScroll={event => { destinationSession.scrollTop = event.currentTarget.scrollTop; }} className="rounded-lg border border-gray-700 bg-gray-800/40 max-h-72 overflow-y-auto py-1 pr-1">
+            <div ref={treeRef} aria-label={t('fileOperations.destinations')} onScroll={event => { destinationSession.scrollTop = event.currentTarget.scrollTop; }} className="rounded-lg border border-gray-700 bg-gray-800/40 max-h-72 overflow-y-auto py-1 pr-1">
               {rootOptions.map((option) => renderTreeNode(option))}
               {isLoadingSubfolders && (
                 <div className="px-3 py-2 text-sm text-gray-400">
-                  Loading subfolders...
-                </div>
+                  {t('libraryFolders.loadingSubfolders')}</div>
               )}
               {!isLoadingSubfolders && subfolderLoadError && (
                 <div className="mx-2 my-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                  {subfolderLoadError}
+                  {translatePresentationMessage(subfolderLoadError, t)}
                 </div>
               )}
               {!isLoadingSubfolders && !subfolderLoadError && destinationOptions.length === sortedDirectories.length && (
                 <div className="px-3 py-2 text-sm text-gray-400">
-                  No subfolders found. Root folders are still available.
-                </div>
+                  {t('fileOperations.noSubfolders')}</div>
               )}
             </div>
             {selectedOption && (
@@ -545,7 +544,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
               onClick={onClose}
               className="flex-1 px-4 py-2.5 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-colors"
             >
-              {isSubmitting ? 'Hide' : 'Cancel'}
+              {isSubmitting ? t('imageViewer.collection.hide') : t('modelLibrary.cancel')}
             </button>
             <button
               onClick={() => selectedDirectory && onConfirm(selectedDirectory)}
@@ -554,7 +553,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             >
               {isSubmitting
                 ? (mode === 'move' ? 'Moving...' : 'Copying...')
-                : `${mode === 'move' ? 'Move' : 'Copy'} ${imageCount} image${imageCount === 1 ? '' : 's'}`}
+                : t(mode === 'move' ? 'fileOperations.moveCount' : 'fileOperations.copyCount', { count: imageCount })}
             </button>
           </div>
         </div>

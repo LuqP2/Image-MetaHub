@@ -48,11 +48,11 @@ const VisualSearchOnboarding: React.FC<{ hasImages: boolean }> = ({ hasImages })
     <DiscoveryBanner
       icon={Sparkles}
       title={t('shell.visualSearchTitle')}
-      description="Select any image to find visually related files, even without prompts or metadata."
-      actionLabel="Set up"
+      description={t('shell.visualSearchHelp')}
+      actionLabel={t('shell.setUp')}
       onAction={setUp}
       onDismiss={dismiss}
-      dismissLabel="Dismiss Find Similar setup"
+      dismissLabel={t('shell.dismissVisualSearch')}
     />
   );
 };
