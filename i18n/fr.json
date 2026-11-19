@@ -3116,5 +3116,21 @@
   "shell.downloadDesktop": "Ou téléchargez l’application de bureau pour toutes les fonctionnalités",
   "canvas.dragResizeFrame": "Glisser pour redimensionner le cadre",
   "canvas.dragResizeFrameScale": "Glisser pour redimensionner le cadre · Alt/Option + glisser redimensionne les images",
-  "canvas.scaleSelection": "Redimensionner les images sélectionnées {corner}"
+  "canvas.scaleSelection": "Redimensionner les images sélectionnées {corner}",
+  "integrations.generateComfy": "Générer avec ComfyUI",
+  "integrations.generateHelp": "Examinez le workflow intégré, modifiez les valeurs prises en charge et générez des variantes sans quitter MetaHub.",
+  "integrations.restoreModal": "Restaurer la taille du dialogue",
+  "integrations.expandModal": "Agrandir le dialogue",
+  "integrations.closeGenerate": "Fermer le dialogue de génération",
+  "integrations.noWorkflowNodes": "Les détails des nœuds sont indisponibles car cette image ne contient pas de workflow ComfyUI exécutable.",
+  "integrations.workflowNodes": "Nœuds du workflow",
+  "integrations.workflowNodeCount": "{count} nœuds dans l’ordre d’exécution. Les paramètres littéraux sûrs peuvent être modifiés ici.",
+  "integrations.noLiteralParams": "Ce nœud n’expose aucun paramètre littéral sûr.",
+  "integrations.workspaceTools": "Outils de l’espace de travail",
+  "integrations.collapseSidebar": "Réduire la barre latérale de l’espace de travail",
+  "integrations.dragNode": "Glisser vers le nœud",
+  "integrations.dragHelp": "Glissez vers un nœud texte : déposez pour ajouter ; maintenez Shift au dépôt pour Ajouter / Remplacer",
+  "integrations.fillBeforeDrag": "Renseignez des valeurs de modèle valides avant de glisser",
+  "integrations.clearSearch": "Effacer {label}",
+  "licensing.learnMore": "En savoir plus"
 }

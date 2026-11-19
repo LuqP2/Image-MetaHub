@@ -3116,5 +3116,21 @@
   "shell.downloadDesktop": "またはデスクトップアプリをダウンロードすると、すべての機能を利用できます",
   "canvas.dragResizeFrame": "ドラッグしてフレームのサイズを変更",
   "canvas.dragResizeFrameScale": "ドラッグでフレームのサイズを変更 · Alt/Option+ドラッグで画像を拡大縮小",
-  "canvas.scaleSelection": "選択した画像を拡大縮小 {corner}"
+  "canvas.scaleSelection": "選択した画像を拡大縮小 {corner}",
+  "integrations.generateComfy": "ComfyUI で生成",
+  "integrations.generateHelp": "埋め込みワークフローを確認し、対応する値を編集して、MetaHub 内でバリエーションを生成できます。",
+  "integrations.restoreModal": "ダイアログのサイズを元に戻す",
+  "integrations.expandModal": "ダイアログを拡大",
+  "integrations.closeGenerate": "生成ダイアログを閉じる",
+  "integrations.noWorkflowNodes": "この画像には実行可能な ComfyUI ワークフローがないため、ノードの詳細を表示できません。",
+  "integrations.workflowNodes": "ワークフローのノード",
+  "integrations.workflowNodeCount": "実行順に {count} 個のノードを表示しています。安全なリテラルパラメーターはここで編集できます。",
+  "integrations.noLiteralParams": "このノードには編集可能な安全なリテラルパラメーターがありません。",
+  "integrations.workspaceTools": "ワークスペースのツール",
+  "integrations.collapseSidebar": "ワークスペースのサイドバーを折りたたむ",
+  "integrations.dragNode": "ノードにドラッグ",
+  "integrations.dragHelp": "テキストノードにドラッグして追加します。ドロップ時に Shift を押すと、追加または置換を選べます",
+  "integrations.fillBeforeDrag": "ドラッグする前にテンプレートの値を正しく入力してください",
+  "integrations.clearSearch": "{label} をクリア",
+  "licensing.learnMore": "詳細を見る"
 }

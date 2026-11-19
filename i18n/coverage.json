@@ -327,5 +327,15 @@
       "GPU",
       "N/A"
     ]
+  },
+  "integrations": {
+    "paths": [
+      "components/ComfyUIGenerateModal.tsx",
+      "components/ComfyUIWorkflowNodeList.tsx",
+      "components/comfyui/WorkspaceContextPanel.tsx",
+      "components/comfyui/ComfyTextDrag.tsx",
+      "components/comfyui/WorkspaceSearch.tsx"
+    ],
+    "literalExceptions": []
   }
 }

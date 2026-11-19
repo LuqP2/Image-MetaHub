@@ -1,3 +1,4 @@
+import { useTranslation } from '../i18n/useTranslation';
 import React from 'react';
 import { Boxes } from 'lucide-react';
 import {
@@ -28,11 +29,11 @@ const ComfyUIWorkflowNodeList: React.FC<ComfyUIWorkflowNodeListProps> = ({
   fieldOptions,
   onFieldChange,
 }) => {
+  const { t } = useTranslation();
   if (!graph || graph.nodes.length === 0) {
     return (
       <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
-        Node details are unavailable because this image does not contain an executable ComfyUI workflow.
-      </div>
+        {t('integrations.noWorkflowNodes')}</div>
     );
   }
 
@@ -40,9 +41,9 @@ const ComfyUIWorkflowNodeList: React.FC<ComfyUIWorkflowNodeListProps> = ({
     <div className="space-y-3">
       <div className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-900/60 px-4 py-3">
         <div>
-          <div className="text-sm font-semibold text-gray-100">Workflow Nodes</div>
+          <div className="text-sm font-semibold text-gray-100">{t('integrations.workflowNodes')}</div>
           <div className="text-xs text-gray-400">
-            {graph.nodes.length} nodes in execution order. Safe literal parameters can be edited here.
+            {t('integrations.workflowNodeCount', { count: graph.nodes.length })}
           </div>
         </div>
         <Boxes size={18} className="text-purple-300" />
@@ -85,8 +86,7 @@ const ComfyUIWorkflowNodeList: React.FC<ComfyUIWorkflowNodeListProps> = ({
               </div>
             ) : (
               <div className="mt-4 rounded-md border border-dashed border-gray-700 bg-gray-950/40 px-3 py-2 text-xs text-gray-500">
-                No safe literal parameters are exposed for this node.
-              </div>
+                {t('integrations.noLiteralParams')}</div>
             )}
           </section>
         ))}

@@ -1,13 +1,15 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import React, { useId, useState } from 'react';
 import { Bookmark, Box, ChevronLeft, Images } from 'lucide-react';
 import WorkspacePrompts, { type WorkspaceCompositionRequest } from './WorkspacePrompts';
 import WorkspaceModels from './WorkspaceModels';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 
+const tabLabels = { library: 'settings.navigation.library', prompt: 'promptLibrary.promptType', models: 'modelLibrary.models' } as const;
 const tabs = [
-  { id: 'library', label: 'Library', Icon: Images },
-  { id: 'prompt', label: 'Prompt', Icon: Bookmark },
-  { id: 'models', label: 'Models', Icon: Box },
+  { id: 'library', label: t('settings.navigation.library'), Icon: Images },
+  { id: 'prompt', label: t('promptLibrary.promptType'), Icon: Bookmark },
+  { id: 'models', label: t('modelLibrary.models'), Icon: Box },
 ] as const;
 type Tab = typeof tabs[number]['id'];
 
@@ -19,6 +21,7 @@ export default function WorkspaceContextPanel({ collapsed, onToggle, active, lib
   onOpenLibrary: () => void;
   onViewSource: (path: string) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const id = useId();
   const [tab, setTab] = useState<Tab>('library');
   const [visited, setVisited] = useState(new Set<Tab>(['library']));
@@ -42,11 +45,11 @@ export default function WorkspaceContextPanel({ collapsed, onToggle, active, lib
 
   return <div className="flex h-full min-h-0 flex-col">
     <div className={`flex shrink-0 border-b border-gray-800 ${collapsed ? 'flex-col p-1' : 'items-center gap-1 px-2'}`}>
-      <div role="tablist" aria-label="Workspace tools" aria-orientation={collapsed ? 'vertical' : 'horizontal'} className={`flex flex-1 ${collapsed ? 'flex-col' : 'min-w-0 items-center'}`}>
-        {tabs.map(({ id: value, label, Icon }, index) => (
-          <button key={value} type="button" id={`${id}-tab-${value}`} role="tab" aria-label={label}
+      <div role="tablist" aria-label={t('integrations.workspaceTools')} aria-orientation={collapsed ? 'vertical' : 'horizontal'} className={`flex flex-1 ${collapsed ? 'flex-col' : 'min-w-0 items-center'}`}>
+        {tabs.map(({ id: value, Icon }, index) => (
+          <button key={value} type="button" id={`${id}-tab-${value}`} role="tab" aria-label={t(tabLabels[value])}
             aria-selected={tab === value} aria-controls={`${id}-panel-${value}`}
-            tabIndex={tab === value ? 0 : -1} title={label}
+            tabIndex={tab === value ? 0 : -1} title={t(tabLabels[value])}
             className={`flex h-8 items-center justify-center gap-1.5 px-2 text-xs focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-accent hover:bg-gray-800 ${collapsed ? 'border-l-2' : 'flex-1 border-b-2'} ${tab === value ? 'border-accent text-gray-100' : 'border-transparent text-gray-400'}`}
             onClick={() => { select(value); if (collapsed) onToggle(); }}
             onKeyDown={event => {
@@ -63,11 +66,11 @@ export default function WorkspaceContextPanel({ collapsed, onToggle, active, lib
             }}
           >
             <Icon size={14} className="shrink-0" />
-            {!collapsed && label}
+            {!collapsed && t(tabLabels[value])}
           </button>
         ))}
       </div>
-      {!collapsed && <button type="button" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent" title="Collapse workspace sidebar" aria-label="Collapse workspace sidebar" onClick={() => {
+      {!collapsed && <button type="button" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-800 focus-visible:outline focus-visible:outline-accent" title={t('integrations.collapseSidebar')} aria-label={t('integrations.collapseSidebar')} onClick={() => {
         onToggle();
         document.getElementById(`${id}-tab-${tab}`)?.focus();
       }}><ChevronLeft size={14} /></button>}

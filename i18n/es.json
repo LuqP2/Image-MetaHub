@@ -3116,5 +3116,21 @@
   "shell.downloadDesktop": "O descarga la aplicación de escritorio para todas las funciones",
   "canvas.dragResizeFrame": "Arrastra para cambiar tamaño del marco",
   "canvas.dragResizeFrameScale": "Arrastra para cambiar tamaño del marco · Alt/Option + arrastrar escala las imágenes",
-  "canvas.scaleSelection": "Escalar imágenes seleccionadas {corner}"
+  "canvas.scaleSelection": "Escalar imágenes seleccionadas {corner}",
+  "integrations.generateComfy": "Generar con ComfyUI",
+  "integrations.generateHelp": "Revisa el workflow incrustado, edita los valores admitidos y genera variaciones sin salir de MetaHub.",
+  "integrations.restoreModal": "Restaurar tamaño del diálogo",
+  "integrations.expandModal": "Expandir diálogo",
+  "integrations.closeGenerate": "Cerrar diálogo de generación",
+  "integrations.noWorkflowNodes": "No hay detalles de nodes porque esta imagen no contiene un workflow ejecutable de ComfyUI.",
+  "integrations.workflowNodes": "Nodes del workflow",
+  "integrations.workflowNodeCount": "{count} nodes en orden de ejecución. Aquí se pueden editar parámetros literales seguros.",
+  "integrations.noLiteralParams": "Este node no expone parámetros literales seguros.",
+  "integrations.workspaceTools": "Herramientas del espacio de trabajo",
+  "integrations.collapseSidebar": "Contraer barra lateral del espacio de trabajo",
+  "integrations.dragNode": "Arrastrar al node",
+  "integrations.dragHelp": "Arrastra a un node de texto: suelta para añadir; mantén Shift al soltar para Añadir / Reemplazar",
+  "integrations.fillBeforeDrag": "Completa valores válidos en la plantilla antes de arrastrar",
+  "integrations.clearSearch": "Borrar {label}",
+  "licensing.learnMore": "Más información"
 }

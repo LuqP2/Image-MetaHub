@@ -3116,5 +3116,21 @@
   "shell.downloadDesktop": "或下载桌面应用以使用完整功能",
   "canvas.dragResizeFrame": "拖动以调整框架大小",
   "canvas.dragResizeFrameScale": "拖动以调整框架大小 · Alt/Option + 拖动缩放图像",
-  "canvas.scaleSelection": "缩放所选图像 {corner}"
+  "canvas.scaleSelection": "缩放所选图像 {corner}",
+  "integrations.generateComfy": "使用 ComfyUI 生成",
+  "integrations.generateHelp": "检查内嵌工作流，编辑支持的值，无需离开 MetaHub 即可生成变体。",
+  "integrations.restoreModal": "恢复对话框大小",
+  "integrations.expandModal": "放大对话框",
+  "integrations.closeGenerate": "关闭生成对话框",
+  "integrations.noWorkflowNodes": "此图像不包含可执行的 ComfyUI 工作流，因此无法显示节点详情。",
+  "integrations.workflowNodes": "工作流节点",
+  "integrations.workflowNodeCount": "按执行顺序排列的 {count} 个节点。可在此编辑安全的字面量参数。",
+  "integrations.noLiteralParams": "此节点没有可编辑的安全字面量参数。",
+  "integrations.workspaceTools": "工作区工具",
+  "integrations.collapseSidebar": "折叠工作区侧边栏",
+  "integrations.dragNode": "拖到节点",
+  "integrations.dragHelp": "拖到文本节点：放下以添加；放下时按住 Shift 可选择添加或替换",
+  "integrations.fillBeforeDrag": "拖动前请填写有效的模板值",
+  "integrations.clearSearch": "清除{label}",
+  "licensing.learnMore": "了解更多"
 }

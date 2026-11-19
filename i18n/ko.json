@@ -3116,5 +3116,21 @@
   "shell.downloadDesktop": "또는 데스크톱 앱을 다운로드하여 모든 기능을 사용하세요",
   "canvas.dragResizeFrame": "드래그하여 프레임 크기 조절",
   "canvas.dragResizeFrameScale": "드래그하여 프레임 크기 조절 · Alt/Option + 드래그로 이미지 크기 조절",
-  "canvas.scaleSelection": "선택한 이미지 크기 조절 {corner}"
+  "canvas.scaleSelection": "선택한 이미지 크기 조절 {corner}",
+  "integrations.generateComfy": "ComfyUI로 생성",
+  "integrations.generateHelp": "내장된 워크플로를 확인하고 지원되는 값을 편집하여 MetaHub 안에서 변형 이미지를 생성하세요.",
+  "integrations.restoreModal": "대화 상자 크기 복원",
+  "integrations.expandModal": "대화 상자 확대",
+  "integrations.closeGenerate": "생성 대화 상자 닫기",
+  "integrations.noWorkflowNodes": "이 이미지에 실행 가능한 ComfyUI 워크플로가 없어 노드 세부 정보를 표시할 수 없습니다.",
+  "integrations.workflowNodes": "워크플로 노드",
+  "integrations.workflowNodeCount": "실행 순서대로 노드 {count}개가 표시됩니다. 안전한 리터럴 매개변수를 여기서 편집할 수 있습니다.",
+  "integrations.noLiteralParams": "이 노드에는 안전하게 편집할 수 있는 리터럴 매개변수가 없습니다.",
+  "integrations.workspaceTools": "작업 공간 도구",
+  "integrations.collapseSidebar": "작업 공간 사이드바 접기",
+  "integrations.dragNode": "노드로 드래그",
+  "integrations.dragHelp": "텍스트 노드로 드래그하여 추가합니다. 놓을 때 Shift를 누르면 추가 / 바꾸기를 선택할 수 있습니다",
+  "integrations.fillBeforeDrag": "드래그하기 전에 올바른 템플릿 값을 입력하세요",
+  "integrations.clearSearch": "{label} 지우기",
+  "licensing.learnMore": "자세히 알아보기"
 }

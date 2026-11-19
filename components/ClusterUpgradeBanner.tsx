@@ -53,7 +53,7 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold py-2 px-4 rounded-lg transition-colors border border-gray-700"
             >
-              Learn more
+              {t('licensing.learnMore')}
             </a>
           </div>
 

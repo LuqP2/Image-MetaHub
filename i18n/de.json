@@ -3116,5 +3116,21 @@
   "shell.downloadDesktop": "Oder die Desktop-App für den vollen Funktionsumfang herunterladen",
   "canvas.dragResizeFrame": "Zum Ändern der Rahmengröße ziehen",
   "canvas.dragResizeFrameScale": "Ziehen zum Ändern der Rahmengröße · Alt/Option + Ziehen skaliert Bilder",
-  "canvas.scaleSelection": "Ausgewählte Bilder skalieren {corner}"
+  "canvas.scaleSelection": "Ausgewählte Bilder skalieren {corner}",
+  "integrations.generateComfy": "Mit ComfyUI generieren",
+  "integrations.generateHelp": "Eingebetteten Workflow prüfen, unterstützte Werte bearbeiten und Varianten direkt in MetaHub generieren.",
+  "integrations.restoreModal": "Dialoggröße wiederherstellen",
+  "integrations.expandModal": "Dialog vergrößern",
+  "integrations.closeGenerate": "Generierungsdialog schließen",
+  "integrations.noWorkflowNodes": "Node-Details sind nicht verfügbar, da dieses Bild keinen ausführbaren ComfyUI-Workflow enthält.",
+  "integrations.workflowNodes": "Workflow-Nodes",
+  "integrations.workflowNodeCount": "{count} Nodes in Ausführungsreihenfolge. Sichere literale Parameter können hier bearbeitet werden.",
+  "integrations.noLiteralParams": "Dieser Node stellt keine sicheren literalen Parameter bereit.",
+  "integrations.workspaceTools": "Arbeitsbereichswerkzeuge",
+  "integrations.collapseSidebar": "Seitenleiste des Arbeitsbereichs einklappen",
+  "integrations.dragNode": "Auf Node ziehen",
+  "integrations.dragHelp": "Auf einen Text-Node ziehen: Ablegen zum Hinzufügen; beim Ablegen Shift für Hinzufügen / Ersetzen halten",
+  "integrations.fillBeforeDrag": "Vor dem Ziehen gültige Vorlagenwerte ausfüllen",
+  "integrations.clearSearch": "{label} leeren",
+  "licensing.learnMore": "Mehr erfahren"
 }
