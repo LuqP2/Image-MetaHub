@@ -2546,5 +2546,12 @@
   "promptLibrary.unknownOperation": "Unbekannter Prompt-Bibliotheksvorgang.",
   "promptLibrary.storageUnavailable": "Desktop-Speicher für gespeicherte Prompts ist nicht verfügbar.",
   "promptLibrary.loadLibraryFailed": "Prompt-Bibliothek konnte nicht geladen werden.",
-  "promptLibrary.loadSavedFailed": "Gespeicherte Prompts konnten nicht geladen werden."
+  "promptLibrary.loadSavedFailed": "Gespeicherte Prompts konnten nicht geladen werden.",
+  "promptLibrary.composePrompt": "Prompt komponieren",
+  "promptLibrary.cancelEdit": "Bearbeitung abbrechen",
+  "promptLibrary.clear": "Leeren",
+  "promptLibrary.saveChanges": "Änderungen speichern",
+  "promptLibrary.saveToLibrary": "In Bibliothek speichern",
+  "promptLibrary.saveComposition": "Komposition speichern",
+  "promptLibrary.moreLibraryOptions": "Weitere Bibliotheksoptionen"
 }

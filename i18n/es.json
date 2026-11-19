@@ -2546,5 +2546,12 @@
   "promptLibrary.unknownOperation": "Operación de biblioteca de prompts desconocida.",
   "promptLibrary.storageUnavailable": "El almacenamiento de prompts de escritorio no está disponible.",
   "promptLibrary.loadLibraryFailed": "No se pudo cargar la biblioteca de prompts.",
-  "promptLibrary.loadSavedFailed": "No se pudieron cargar los prompts guardados."
+  "promptLibrary.loadSavedFailed": "No se pudieron cargar los prompts guardados.",
+  "promptLibrary.composePrompt": "Componer prompt",
+  "promptLibrary.cancelEdit": "Cancelar edición",
+  "promptLibrary.clear": "Limpiar",
+  "promptLibrary.saveChanges": "Guardar cambios",
+  "promptLibrary.saveToLibrary": "Guardar en biblioteca",
+  "promptLibrary.saveComposition": "Guardar composición",
+  "promptLibrary.moreLibraryOptions": "Más opciones de biblioteca"
 }

@@ -2547,7 +2547,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "pt-BR": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -5097,7 +5104,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "ja": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -7647,7 +7661,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "de": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -10197,7 +10218,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "fr": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -12747,7 +12775,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "ko": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -15297,7 +15332,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "zh-CN": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -17847,7 +17889,14 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   },
   "zh-TW": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -20397,6 +20446,13 @@
     "promptLibrary.unknownOperation": "26fc55d154c9026ddb9ea3a11344b4e8793c9de5605da7b4889e4bf78102d239",
     "promptLibrary.storageUnavailable": "2a897469f5e2a82b764d043a1994b33f5f79de55b951c5bd1309cd298c105bbf",
     "promptLibrary.loadLibraryFailed": "1359a763bfcf48ac26cea8f66017acd52731e56fae8beb4a6f16c1a444be4e61",
-    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178"
+    "promptLibrary.loadSavedFailed": "9e8952f93f4fcb9b61b3a832d0f49adf22a04aa1442ec651c308ba7869d40178",
+    "promptLibrary.composePrompt": "8affc143aa90e9adb198af00d0ad89c86b07e7fcdceec52fdb997602e6d8773c",
+    "promptLibrary.cancelEdit": "6fa271453f8ac4901530c022db4c9280eaf3c4316a550889561b8483449d7db5",
+    "promptLibrary.clear": "83b12c2216efb4fdc924e1deb5182e905e4926ed0c1c324d467107f46d5a26a9",
+    "promptLibrary.saveChanges": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
+    "promptLibrary.saveToLibrary": "c2a5bbbdc2fb314d7264f4237e1c326a6d5c6028881cdb7d219b13a194897494",
+    "promptLibrary.saveComposition": "30edee361d9967c16cb88d03cf758dde7511b8d0498bb90a580296412afcca8d",
+    "promptLibrary.moreLibraryOptions": "fefdbd7a5fce962ad4666f8a24d088d17e97ee004a5fe763368b472eeff6dd4f"
   }
 }

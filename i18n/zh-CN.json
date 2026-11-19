@@ -2546,5 +2546,12 @@
   "promptLibrary.unknownOperation": "未知提示词库操作。",
   "promptLibrary.storageUnavailable": "桌面端提示词存储不可用。",
   "promptLibrary.loadLibraryFailed": "无法加载提示词库。",
-  "promptLibrary.loadSavedFailed": "无法加载已保存的提示词。"
+  "promptLibrary.loadSavedFailed": "无法加载已保存的提示词。",
+  "promptLibrary.composePrompt": "组合提示词",
+  "promptLibrary.cancelEdit": "取消编辑",
+  "promptLibrary.clear": "清空",
+  "promptLibrary.saveChanges": "保存更改",
+  "promptLibrary.saveToLibrary": "保存到提示词库",
+  "promptLibrary.saveComposition": "保存组合",
+  "promptLibrary.moreLibraryOptions": "更多提示词库选项"
 }

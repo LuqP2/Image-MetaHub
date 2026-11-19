@@ -2546,5 +2546,12 @@
   "promptLibrary.unknownOperation": "未知提示詞庫操作。",
   "promptLibrary.storageUnavailable": "無法使用桌面版提示詞儲存空間。",
   "promptLibrary.loadLibraryFailed": "無法載入提示詞庫。",
-  "promptLibrary.loadSavedFailed": "無法載入已儲存的提示詞。"
+  "promptLibrary.loadSavedFailed": "無法載入已儲存的提示詞。",
+  "promptLibrary.composePrompt": "組合提示詞",
+  "promptLibrary.cancelEdit": "取消編輯",
+  "promptLibrary.clear": "清除",
+  "promptLibrary.saveChanges": "儲存變更",
+  "promptLibrary.saveToLibrary": "儲存至提示詞庫",
+  "promptLibrary.saveComposition": "儲存組合",
+  "promptLibrary.moreLibraryOptions": "更多提示詞庫選項"
 }

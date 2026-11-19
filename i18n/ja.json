@@ -2546,5 +2546,12 @@
   "promptLibrary.unknownOperation": "不明なプロンプトライブラリの操作です。",
   "promptLibrary.storageUnavailable": "デスクトップ版のプロンプト保存機能を利用できません。",
   "promptLibrary.loadLibraryFailed": "プロンプトライブラリを読み込めませんでした。",
-  "promptLibrary.loadSavedFailed": "保存済みプロンプトを読み込めませんでした。"
+  "promptLibrary.loadSavedFailed": "保存済みプロンプトを読み込めませんでした。",
+  "promptLibrary.composePrompt": "プロンプトを構成",
+  "promptLibrary.cancelEdit": "編集をキャンセル",
+  "promptLibrary.clear": "クリア",
+  "promptLibrary.saveChanges": "変更を保存",
+  "promptLibrary.saveToLibrary": "ライブラリに保存",
+  "promptLibrary.saveComposition": "構成を保存",
+  "promptLibrary.moreLibraryOptions": "ライブラリのその他のオプション"
 }

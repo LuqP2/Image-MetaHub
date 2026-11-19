@@ -2546,5 +2546,12 @@
   "promptLibrary.unknownOperation": "Unknown prompt library operation.",
   "promptLibrary.storageUnavailable": "Saved-prompt desktop storage is unavailable.",
   "promptLibrary.loadLibraryFailed": "Could not load prompt library.",
-  "promptLibrary.loadSavedFailed": "Could not load saved prompts."
+  "promptLibrary.loadSavedFailed": "Could not load saved prompts.",
+  "promptLibrary.composePrompt": "Compose prompt",
+  "promptLibrary.cancelEdit": "Cancel edit",
+  "promptLibrary.clear": "Clear",
+  "promptLibrary.saveChanges": "Save changes",
+  "promptLibrary.saveToLibrary": "Save to library",
+  "promptLibrary.saveComposition": "Save composition",
+  "promptLibrary.moreLibraryOptions": "More library options"
 }
