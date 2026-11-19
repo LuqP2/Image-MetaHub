@@ -276,7 +276,8 @@
       "components/ModelDetailsPanels.tsx",
       "components/ModelInspectorApp.tsx",
       "components/ModelUsagePanel.tsx",
-      "components/ModelStoragePanel.tsx"
+      "components/ModelStoragePanel.tsx",
+      "components/ModelManagerPanels.tsx"
     ],
     "literalExceptions": [
       "Civitai",
