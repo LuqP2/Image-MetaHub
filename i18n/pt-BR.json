@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "Modelo de ampliação",
   "modelLibrary.kindOther": "Outro / desconhecido",
   "modelLibrary.kindAuto": "Automático (pasta mista)",
-  "modelLibrary.previewLocal": "local"
+  "modelLibrary.previewLocal": "local",
+  "modelLibrary.usageUnavailable": "Uso indisponível",
+  "modelLibrary.libraryUsage": "Uso na biblioteca",
+  "modelLibrary.loadingUsage": "Carregando uso na biblioteca…",
+  "modelLibrary.usageCount": "{count} arquivos na biblioteca",
+  "modelLibrary.usagePartial": "{count} arquivos na biblioteca · Parcial",
+  "modelLibrary.viewLibrary": "Ver na biblioteca",
+  "modelLibrary.chooseRemoval": "Escolher arquivos de modelo para remover",
+  "modelLibrary.removalHelp": "Selecione os caminhos dos arquivos físicos para mover à Lixeira. As imagens da biblioteca não serão removidas. Notas, capas e exemplos serão mantidos.",
+  "modelLibrary.removeCopies": "Remover todas as cópias",
+  "modelLibrary.removalConfirmationHelp": "A confirmação do sistema mostrará os caminhos finais, o tamanho e as cópias restantes. Pode ser necessário esvaziar a Lixeira para liberar espaço.",
+  "modelLibrary.reviewSystemDialog": "Revisar no diálogo do sistema…"
 }

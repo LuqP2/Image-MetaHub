@@ -274,7 +274,9 @@
       "components/ModelPromptPickerModal.tsx",
       "components/ModelMetadataEditor.tsx",
       "components/ModelDetailsPanels.tsx",
-      "components/ModelInspectorApp.tsx"
+      "components/ModelInspectorApp.tsx",
+      "components/ModelUsagePanel.tsx",
+      "components/ModelStoragePanel.tsx"
     ],
     "literalExceptions": [
       "Civitai",

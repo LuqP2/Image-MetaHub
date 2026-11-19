@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "放大模型",
   "modelLibrary.kindOther": "其他 / 未知",
   "modelLibrary.kindAuto": "自动（混合文件夹）",
-  "modelLibrary.previewLocal": "本地"
+  "modelLibrary.previewLocal": "本地",
+  "modelLibrary.usageUnavailable": "使用情况不可用",
+  "modelLibrary.libraryUsage": "图库使用情况",
+  "modelLibrary.loadingUsage": "正在加载图库使用情况…",
+  "modelLibrary.usageCount": "图库中有 {count} 个文件",
+  "modelLibrary.usagePartial": "图库中有 {count} 个文件 · 部分结果",
+  "modelLibrary.viewLibrary": "在图库中查看",
+  "modelLibrary.chooseRemoval": "选择要移除的模型文件",
+  "modelLibrary.removalHelp": "选择要移到回收站的实际文件路径。不会移除图库中的图像。备注、封面和示例将保留。",
+  "modelLibrary.removeCopies": "移除所有副本",
+  "modelLibrary.removalConfirmationHelp": "系统确认框将显示最终路径、大小和剩余副本。释放空间可能需要清空回收站。",
+  "modelLibrary.reviewSystemDialog": "在系统对话框中检查…"
 }

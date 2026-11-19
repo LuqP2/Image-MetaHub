@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "アップスケールモデル",
   "modelLibrary.kindOther": "その他 / 不明",
   "modelLibrary.kindAuto": "自動（混在フォルダー）",
-  "modelLibrary.previewLocal": "ローカル"
+  "modelLibrary.previewLocal": "ローカル",
+  "modelLibrary.usageUnavailable": "使用状況を利用できません",
+  "modelLibrary.libraryUsage": "ライブラリでの使用状況",
+  "modelLibrary.loadingUsage": "ライブラリでの使用状況を読み込み中…",
+  "modelLibrary.usageCount": "ライブラリ内に {count} ファイル",
+  "modelLibrary.usagePartial": "ライブラリ内に {count} ファイル · 一部のみ",
+  "modelLibrary.viewLibrary": "ライブラリで表示",
+  "modelLibrary.chooseRemoval": "削除するモデルファイルを選択",
+  "modelLibrary.removalHelp": "ゴミ箱に移動する実際のファイルパスを選択してください。ライブラリ内の画像は削除されません。メモ、カバー、作例は保持されます。",
+  "modelLibrary.removeCopies": "すべてのコピーを削除",
+  "modelLibrary.removalConfirmationHelp": "システムの確認画面に最終的なパス、サイズ、残るコピーが表示されます。空き容量を確保するには、ゴミ箱を空にする必要がある場合があります。",
+  "modelLibrary.reviewSystemDialog": "システムのダイアログで確認…"
 }

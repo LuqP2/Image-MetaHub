@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "Upscale model",
   "modelLibrary.kindOther": "Other / unknown",
   "modelLibrary.kindAuto": "Automatic (mixed folder)",
-  "modelLibrary.previewLocal": "local"
+  "modelLibrary.previewLocal": "local",
+  "modelLibrary.usageUnavailable": "Usage unavailable",
+  "modelLibrary.libraryUsage": "Library usage",
+  "modelLibrary.loadingUsage": "Loading Library usage…",
+  "modelLibrary.usageCount": "{count} files in Library",
+  "modelLibrary.usagePartial": "{count} files in Library · Partial",
+  "modelLibrary.viewLibrary": "View in Library",
+  "modelLibrary.chooseRemoval": "Choose model files to remove",
+  "modelLibrary.removalHelp": "Select the physical file paths to move to Trash. Images in your Library will not be removed. Notes, covers and examples will be kept.",
+  "modelLibrary.removeCopies": "Remove all copies",
+  "modelLibrary.removalConfirmationHelp": "The system confirmation will show the final paths, size and copies remaining. Free space may depend on emptying the Trash.",
+  "modelLibrary.reviewSystemDialog": "Review in system dialog…"
 }

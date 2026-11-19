@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "Modèle d’agrandissement",
   "modelLibrary.kindOther": "Autre / inconnu",
   "modelLibrary.kindAuto": "Automatique (dossier mixte)",
-  "modelLibrary.previewLocal": "local"
+  "modelLibrary.previewLocal": "local",
+  "modelLibrary.usageUnavailable": "Utilisation indisponible",
+  "modelLibrary.libraryUsage": "Utilisation dans la bibliothèque",
+  "modelLibrary.loadingUsage": "Chargement de l’utilisation dans la bibliothèque…",
+  "modelLibrary.usageCount": "{count} fichiers dans la bibliothèque",
+  "modelLibrary.usagePartial": "{count} fichiers dans la bibliothèque · Partiel",
+  "modelLibrary.viewLibrary": "Voir dans la bibliothèque",
+  "modelLibrary.chooseRemoval": "Choisir les fichiers de modèle à retirer",
+  "modelLibrary.removalHelp": "Sélectionnez les chemins des fichiers physiques à placer dans la corbeille. Les images de votre bibliothèque ne seront pas supprimées. Les notes, couvertures et exemples seront conservés.",
+  "modelLibrary.removeCopies": "Retirer toutes les copies",
+  "modelLibrary.removalConfirmationHelp": "La confirmation système affichera les chemins finaux, la taille et les copies restantes. Il peut être nécessaire de vider la corbeille pour libérer de l’espace.",
+  "modelLibrary.reviewSystemDialog": "Vérifier dans la boîte de dialogue système…"
 }

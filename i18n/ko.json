@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "업스케일 모델",
   "modelLibrary.kindOther": "기타 / 알 수 없음",
   "modelLibrary.kindAuto": "자동(혼합 폴더)",
-  "modelLibrary.previewLocal": "로컬"
+  "modelLibrary.previewLocal": "로컬",
+  "modelLibrary.usageUnavailable": "사용 현황을 확인할 수 없음",
+  "modelLibrary.libraryUsage": "라이브러리 사용 현황",
+  "modelLibrary.loadingUsage": "라이브러리 사용 현황 불러오는 중…",
+  "modelLibrary.usageCount": "라이브러리의 파일 {count}개",
+  "modelLibrary.usagePartial": "라이브러리의 파일 {count}개 · 일부 결과",
+  "modelLibrary.viewLibrary": "라이브러리에서 보기",
+  "modelLibrary.chooseRemoval": "제거할 모델 파일 선택",
+  "modelLibrary.removalHelp": "휴지통으로 이동할 실제 파일 경로를 선택하세요. 라이브러리의 이미지는 제거되지 않습니다. 메모, 표지 및 예제는 유지됩니다.",
+  "modelLibrary.removeCopies": "모든 사본 제거",
+  "modelLibrary.removalConfirmationHelp": "시스템 확인 창에 최종 경로, 크기 및 남은 사본이 표시됩니다. 공간을 확보하려면 휴지통을 비워야 할 수 있습니다.",
+  "modelLibrary.reviewSystemDialog": "시스템 대화 상자에서 검토…"
 }

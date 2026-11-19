@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "放大模型",
   "modelLibrary.kindOther": "其他／未知",
   "modelLibrary.kindAuto": "自動（混合資料夾）",
-  "modelLibrary.previewLocal": "本機"
+  "modelLibrary.previewLocal": "本機",
+  "modelLibrary.usageUnavailable": "無法取得使用情況",
+  "modelLibrary.libraryUsage": "圖庫使用情況",
+  "modelLibrary.loadingUsage": "正在載入圖庫使用情況…",
+  "modelLibrary.usageCount": "圖庫中有 {count} 個檔案",
+  "modelLibrary.usagePartial": "圖庫中有 {count} 個檔案 · 部分結果",
+  "modelLibrary.viewLibrary": "在圖庫中檢視",
+  "modelLibrary.chooseRemoval": "選擇要移除的模型檔案",
+  "modelLibrary.removalHelp": "選擇要移至資源回收筒的實體檔案路徑。不會移除圖庫中的影像。備註、封面和範例將保留。",
+  "modelLibrary.removeCopies": "移除所有副本",
+  "modelLibrary.removalConfirmationHelp": "系統確認對話框將顯示最終路徑、大小和剩餘副本。釋放空間可能需要清空資源回收筒。",
+  "modelLibrary.reviewSystemDialog": "在系統對話框中檢查…"
 }

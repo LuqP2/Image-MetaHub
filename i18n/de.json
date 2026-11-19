@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "Hochskalierungsmodell",
   "modelLibrary.kindOther": "Andere / unbekannt",
   "modelLibrary.kindAuto": "Automatisch (gemischter Ordner)",
-  "modelLibrary.previewLocal": "lokal"
+  "modelLibrary.previewLocal": "lokal",
+  "modelLibrary.usageUnavailable": "Nutzung nicht verfügbar",
+  "modelLibrary.libraryUsage": "Nutzung in der Bibliothek",
+  "modelLibrary.loadingUsage": "Bibliotheksnutzung wird geladen…",
+  "modelLibrary.usageCount": "{count} Dateien in der Bibliothek",
+  "modelLibrary.usagePartial": "{count} Dateien in der Bibliothek · Teilweise",
+  "modelLibrary.viewLibrary": "In Bibliothek anzeigen",
+  "modelLibrary.chooseRemoval": "Zu entfernende Modelldateien auswählen",
+  "modelLibrary.removalHelp": "Die physischen Dateipfade auswählen, die in den Papierkorb verschoben werden sollen. Bilder in der Bibliothek werden nicht entfernt. Notizen, Titelbilder und Beispiele bleiben erhalten.",
+  "modelLibrary.removeCopies": "Alle Kopien entfernen",
+  "modelLibrary.removalConfirmationHelp": "Die Systembestätigung zeigt die endgültigen Pfade, Größe und verbleibenden Kopien. Freier Speicherplatz kann vom Leeren des Papierkorbs abhängen.",
+  "modelLibrary.reviewSystemDialog": "Im Systemdialog überprüfen…"
 }

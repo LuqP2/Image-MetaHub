@@ -2654,5 +2654,16 @@
   "modelLibrary.kindUpscaler": "Modelo de escalado",
   "modelLibrary.kindOther": "Otro / desconocido",
   "modelLibrary.kindAuto": "Automático (carpeta mixta)",
-  "modelLibrary.previewLocal": "local"
+  "modelLibrary.previewLocal": "local",
+  "modelLibrary.usageUnavailable": "Uso no disponible",
+  "modelLibrary.libraryUsage": "Uso en la biblioteca",
+  "modelLibrary.loadingUsage": "Cargando uso en la biblioteca…",
+  "modelLibrary.usageCount": "{count} archivos en la biblioteca",
+  "modelLibrary.usagePartial": "{count} archivos en la biblioteca · Parcial",
+  "modelLibrary.viewLibrary": "Ver en la biblioteca",
+  "modelLibrary.chooseRemoval": "Elegir archivos de modelo para eliminar",
+  "modelLibrary.removalHelp": "Selecciona las rutas de los archivos que se moverán a la papelera. Las imágenes de la biblioteca no se eliminarán. Se conservarán las notas, portadas y ejemplos.",
+  "modelLibrary.removeCopies": "Eliminar todas las copias",
+  "modelLibrary.removalConfirmationHelp": "La confirmación del sistema mostrará las rutas finales, el tamaño y las copias restantes. Puede que debas vaciar la papelera para liberar espacio.",
+  "modelLibrary.reviewSystemDialog": "Revisar en el diálogo del sistema…"
 }
