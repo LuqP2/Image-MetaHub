@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useState } from 'react';
 import { useBoardStore } from '../../store/useBoardStore';
 import { branchSmartFrameGroup } from '../../services/boards/smartFrameOperations';
@@ -9,6 +10,7 @@ import BoardResultThumbnail from './BoardResultThumbnail';
 export default function BoardGroupPreview({ frameId, label, rawLabel, ids, constraints, open }: {
   frameId: string; label: string; rawLabel?: string; ids: string[]; constraints: BoardGroupConstraint[]; open(): void;
 }) {
+  const { t } = useTranslation();
   const editor = useBoardEditor();
   const actions = useBoardQueryActions();
   const [error, setError] = useState<string | null>(null);
@@ -22,9 +24,9 @@ export default function BoardGroupPreview({ frameId, label, rawLabel, ids, const
       state.setSelection(boardId, added.map(object => object.id)); state.requestReveal(boardId, [frameId, ...added.map(object => object.id)], true); setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  return <div className={`board-group-preview${ids.length ? '' : ' board-group-preview--empty'}`}><strong tabIndex={0} title={rawLabel ?? label}>{label}</strong><span>{ids.length.toLocaleString()} {ids.length === 1 ? 'image' : 'images'}</span>
+  return <div className={`board-group-preview${ids.length ? '' : ' board-group-preview--empty'}`}><strong tabIndex={0} title={rawLabel ?? label}>{label}</strong><span>{t('canvas.imagesCount', { count: ids.length })}</span>
     <div className="board-group-thumbnails">{ids.slice(0, 4).map(id => { const image = actions?.images.get(id); return image ? <BoardResultThumbnail key={id} image={image} open={() => actions?.open(id, frameId, ids)} /> : null; })}</div>
-    <div className="board-group-actions"><button className="board-button" onClick={open}>Browse group</button><button className="board-button" disabled={!editor.editable} onClick={branch}>Branch group</button></div>
+    <div className="board-group-actions"><button className="board-button" onClick={open}>{t('canvas.browseGroup')}</button><button className="board-button" disabled={!editor.editable} onClick={branch}>{t('canvas.branchGroup')}</button></div>
     {error && <span role="alert">{error}</span>}
   </div>;
 }

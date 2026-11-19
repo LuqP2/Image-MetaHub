@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation';
 import { useBoardPrompts } from './BoardPromptContext';
 import { useBoardEditor } from './BoardEditorContext';
 import type { IndexedImage } from '../../types';
@@ -9,6 +10,7 @@ import { setInternalImageDragData } from '../../utils/internalImageDrag';
 import { setStackCardDrag, setStackCardDragPreview, clearStackCardDrag, type StackCardDrag } from '../../services/boards/stackDrag';
 
 export default function BoardResultThumbnail({ image, open, stackDrag, draggable = true }: { image: IndexedImage; open(): void; stackDrag?: StackCardDrag; draggable?: boolean }) {
+  const { t } = useTranslation();
   const prompts = useBoardPrompts();
   const editor = useBoardEditor();
   useThumbnail(image);
@@ -28,7 +30,7 @@ export default function BoardResultThumbnail({ image, open, stackDrag, draggable
         setStackCardDrag(event.dataTransfer, stackDrag);
         setStackCardDragPreview(event.dataTransfer, event.currentTarget, { x: event.clientX, y: event.clientY });
       } else setInternalImageDragData(event.dataTransfer, image.id);
-    }} onDragEnd={() => { if (stackDrag) clearStackCardDrag(); }} aria-label={`Open ${image.name}`}>
+    }} onDragEnd={() => { if (stackDrag) clearStackCardDrag(); }} aria-label={t('canvas.openNamed', { name: image.name })}>
     {thumbnail?.thumbnailUrl ? <img src={thumbnail.thumbnailUrl} alt={image.name} draggable={false} style={{ filter: blurred ? 'blur(20px)' : undefined }} /> : <span>{image.name}</span>}
   </button>;
 }
