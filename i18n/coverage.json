@@ -259,27 +259,14 @@
       "components/boards/BoardPromptIntegration.tsx",
       "components/boards/BoardPromptLibrary.tsx",
       "hooks/usePromptLibraryPreview.ts",
-      "components/promptLibrary/PromptVariables.tsx",
-      "components/promptLibrary/PromptLibraryBrowser.tsx",
-      "components/promptLibrary/PromptDuplicatesPanel.tsx",
-      "components/promptLibrary/PromptPreviewPicker.tsx",
-      "components/promptLibrary/PromptFolders.tsx",
       "components/PromptLibrary.tsx",
-      "components/promptLibrary/PromptImportExportDialog.tsx",
-      "components/promptLibrary/PromptLibraryFilters.tsx",
-      "components/promptLibrary/PromptDetails.tsx",
-      "components/promptLibrary/PromptPreview.tsx",
-      "components/promptLibrary/PromptInlineText.tsx",
-      "components/promptLibrary/PromptCategoryInput.tsx",
-      "components/promptLibrary/PromptTagsInput.tsx",
       "hooks/usePromptBlockExtraction.tsx",
-      "components/promptLibrary/PromptBlockEditor.tsx",
-      "components/promptLibrary/BlockContentEditor.tsx",
-      "components/promptLibrary/BlockFieldSuggestions.tsx",
-      "hooks/usePromptSelectionMenu.tsx"
+      "hooks/usePromptSelectionMenu.tsx",
+      "components/promptLibrary/"
     ],
     "literalExceptions": [
-      "styles.csv"
+      "styles.csv",
+      "{{color}}"
     ]
   }
 }
