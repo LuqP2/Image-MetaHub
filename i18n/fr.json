@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, one {# image dans le cadre} other {# images dans le cadre}}",
   "canvas.filtersButton": "Filtres{count, plural, =0 {} other { (#)}}",
   "canvas.moreFilters": " · +{count} filtres",
-  "canvas.unavailableReferences": "{count, plural, one {# référence indisponible} other {# références indisponibles}}"
+  "canvas.unavailableReferences": "{count, plural, one {# référence indisponible} other {# références indisponibles}}",
+  "canvas.groupsHelp": "Les images peuvent apparaître dans plusieurs groupes. Le total du cadre compte les images uniques.",
+  "canvas.matrixHelp": "Lignes / colonnes. Les cellules vides n’ont aucun résultat.",
+  "canvas.imagesCount": "{count, plural, one {# image} other {# images}}",
+  "canvas.browseGroup": "Parcourir le groupe",
+  "canvas.branchGroup": "Créer une branche du groupe",
+  "canvas.groupGone": "Le groupe ouvert n’est plus disponible. Tous les groupes sont affichés.",
+  "canvas.backOverview": "Retour à la vue d’ensemble",
+  "canvas.orderGroups": "Trier les groupes",
+  "canvas.mostImages": "Plus d’images",
+  "canvas.nameOrder": "Nom",
+  "canvas.newMatchesHelp": "Les nouvelles images correspondantes apparaissent automatiquement. Utilisez les filtres pour affiner les résultats.",
+  "canvas.noFrameMatches": "Aucune image ne correspond à ce cadre.",
+  "canvas.addSmartFrame": "Ajouter un cadre intelligent depuis toute la bibliothèque",
+  "canvas.noGroupImages": "Aucune image dans ce groupe."
 }

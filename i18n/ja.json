@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, other {フレーム内に#枚の画像}}",
   "canvas.filtersButton": "フィルター{count, plural, =0 {} other {（#）}}",
   "canvas.moreFilters": " · 他{count}件のフィルター",
-  "canvas.unavailableReferences": "{count, plural, other {#件の参照が利用不可}}"
+  "canvas.unavailableReferences": "{count, plural, other {#件の参照が利用不可}}",
+  "canvas.groupsHelp": "画像は複数のグループに表示される場合があります。フレームの合計は重複を除いた枚数です。",
+  "canvas.matrixHelp": "行 / 列。空のセルには結果がありません。",
+  "canvas.imagesCount": "{count, plural, other {#枚の画像}}",
+  "canvas.browseGroup": "グループを閲覧",
+  "canvas.branchGroup": "グループから分岐",
+  "canvas.groupGone": "開いていたグループは利用できなくなりました。すべてのグループを表示します。",
+  "canvas.backOverview": "全体表示に戻る",
+  "canvas.orderGroups": "グループの並べ替え",
+  "canvas.mostImages": "画像が多い順",
+  "canvas.nameOrder": "名前",
+  "canvas.newMatchesHelp": "新しく条件に一致した画像は自動的に表示されます。フィルターで結果を絞り込めます。",
+  "canvas.noFrameMatches": "このフレームに一致する画像はありません。",
+  "canvas.addSmartFrame": "ライブラリ全体からスマートフレームを追加",
+  "canvas.noGroupImages": "このグループに画像はありません。"
 }

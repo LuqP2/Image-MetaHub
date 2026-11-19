@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, one {# image in frame} other {# images in frame}}",
   "canvas.filtersButton": "Filters{count, plural, =0 {} other { (#)}}",
   "canvas.moreFilters": " · +{count} filters",
-  "canvas.unavailableReferences": "{count, plural, one {# reference unavailable} other {# references unavailable}}"
+  "canvas.unavailableReferences": "{count, plural, one {# reference unavailable} other {# references unavailable}}",
+  "canvas.groupsHelp": "Images can appear in multiple groups. Frame totals count unique images.",
+  "canvas.matrixHelp": "Rows / columns. Empty cells have no results.",
+  "canvas.imagesCount": "{count, plural, one {# image} other {# images}}",
+  "canvas.browseGroup": "Browse group",
+  "canvas.branchGroup": "Branch group",
+  "canvas.groupGone": "The opened group is no longer available. Showing all groups.",
+  "canvas.backOverview": "Back to overview",
+  "canvas.orderGroups": "Order groups",
+  "canvas.mostImages": "Most images",
+  "canvas.nameOrder": "Name",
+  "canvas.newMatchesHelp": "New matching images appear automatically. Use Filters to narrow the results.",
+  "canvas.noFrameMatches": "No images match this frame.",
+  "canvas.addSmartFrame": "Add Smart Frame from the entire library",
+  "canvas.noGroupImages": "No images in this group."
 }

@@ -7,7 +7,7 @@ import { getHiddenSensitiveTagSet, isVisibleWithSafeMode } from '../utils/safeMo
 import { useBoardQueries } from '../hooks/useBoardQueries';
 import { useBoardQueryStore } from '../store/useBoardQueryStore';
 import { BoardQueryContext } from './boards/BoardQueryContext';
-import { replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
+import { createSmartFrame, replaceSmartFrameWithSnapshot, updateSmartFrameQuery, reconnectSmartFrameSource } from '../services/boards/smartFrameOperations';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { BoardAssetReference } from '../services/boards/types';
 import { ExternalLink, Star } from 'lucide-react';
@@ -27,9 +27,9 @@ import { boardMediaType, createBoardAssetReference, resolveLiveBoardImage } from
 import { getBoardReferenceBaseline } from '../services/boards/referenceSync';
 import { updateObjects } from '../services/boards/operations';
 import type { BoardAssetObject } from '../services/boards/types';
-import type { BoardPoint } from '../services/boards/layout';
+import { findFreeBoardPosition, type BoardPoint } from '../services/boards/layout';
 
-export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onExploreLibrary, onOpenPromptLibrary }: { onOpenPromptLibrary?(id: string): void; onExploreLibrary?(boardId: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
+export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages, onOpenPromptLibrary }: { onOpenPromptLibrary?(id: string): void; loading: boolean; onOpenImage(image: IndexedImage, navigationImages: IndexedImage[]): void; onCompareImages(images: IndexedImage[]): void }) {
   const { t } = useTranslation();
   const { images, directories, resolve } = useBoardAssets(loading);
   const boardId = useBoardStore(state => state.activeBoardId);
@@ -117,7 +117,21 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
       : updateSmartFrameQuery(reconnectSmartFrameSource(document, frameId, captured.source), frameId, captured.criteria));
   };
   const queryActions = { images: imagesById, collections, retry: retryQueries,
-    create: () => { if (editable && boardId) onExploreLibrary?.(boardId); }, snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
+    create: (center: BoardPoint) => {
+      try {
+        ensureEditable();
+        const state = useBoardStore.getState();
+        if (!state.sessions[boardId!]) return;
+        const id = crypto.randomUUID();
+        state.executeOperation(boardId!, document => createSmartFrame(document, {
+          id, ...findFreeBoardPosition(document.objects, { width: 640, height: 420 }, { x: center.x - 320, y: center.y - 210 }),
+        }));
+        state.setSelection(boardId!, [id]);
+        state.requestReveal(boardId!, [id], true);
+        useBoardUIStore.getState().setFilterTarget(null);
+        setError(null);
+      } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    }, snapshot: (id: string) => runQueryAction(() => snapshotQuery(id)),
     useCurrentFilters: (id: string) => runQueryAction(() => applyCurrentView(id)),
     open: (imageId: string, frameId: string, navigationIds?: string[]) => {
       const result = useBoardQueryStore.getState().results[boardId!]?.[frameId];

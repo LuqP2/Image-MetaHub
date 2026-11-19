@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, other {框架中有 # 張影像}}",
   "canvas.filtersButton": "篩選{count, plural, =0 {} other {（#）}}",
   "canvas.moreFilters": " · 另有 {count} 個篩選條件",
-  "canvas.unavailableReferences": "{count, plural, other {# 個參照無法使用}}"
+  "canvas.unavailableReferences": "{count, plural, other {# 個參照無法使用}}",
+  "canvas.groupsHelp": "影像可出現在多個群組中。框架總數按不重複影像計算。",
+  "canvas.matrixHelp": "列 / 欄。空儲存格沒有結果。",
+  "canvas.imagesCount": "{count, plural, other {# 張影像}}",
+  "canvas.browseGroup": "瀏覽群組",
+  "canvas.branchGroup": "分支群組",
+  "canvas.groupGone": "開啟的群組已無法使用。正在顯示所有群組。",
+  "canvas.backOverview": "返回概覽",
+  "canvas.orderGroups": "群組排序",
+  "canvas.mostImages": "影像最多",
+  "canvas.nameOrder": "名稱",
+  "canvas.newMatchesHelp": "新的符合影像會自動出現。使用篩選條件縮小結果範圍。",
+  "canvas.noFrameMatches": "沒有影像符合此框架。",
+  "canvas.addSmartFrame": "從整個圖庫新增智慧框架",
+  "canvas.noGroupImages": "此群組中沒有影像。"
 }

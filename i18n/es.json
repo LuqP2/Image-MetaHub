@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, one {# imagen en el marco} other {# imágenes en el marco}}",
   "canvas.filtersButton": "Filtros{count, plural, =0 {} other { (#)}}",
   "canvas.moreFilters": " · +{count} filtros",
-  "canvas.unavailableReferences": "{count, plural, one {# referencia no disponible} other {# referencias no disponibles}}"
+  "canvas.unavailableReferences": "{count, plural, one {# referencia no disponible} other {# referencias no disponibles}}",
+  "canvas.groupsHelp": "Las imágenes pueden aparecer en varios grupos. El total del marco cuenta imágenes únicas.",
+  "canvas.matrixHelp": "Filas / columnas. Las celdas vacías no tienen resultados.",
+  "canvas.imagesCount": "{count, plural, one {# imagen} other {# imágenes}}",
+  "canvas.browseGroup": "Explorar grupo",
+  "canvas.branchGroup": "Crear rama del grupo",
+  "canvas.groupGone": "El grupo abierto ya no está disponible. Mostrando todos los grupos.",
+  "canvas.backOverview": "Volver a la vista general",
+  "canvas.orderGroups": "Ordenar grupos",
+  "canvas.mostImages": "Más imágenes",
+  "canvas.nameOrder": "Nombre",
+  "canvas.newMatchesHelp": "Las nuevas imágenes coincidentes aparecen automáticamente. Usa Filtros para limitar los resultados.",
+  "canvas.noFrameMatches": "Ninguna imagen coincide con este marco.",
+  "canvas.addSmartFrame": "Añadir un marco inteligente de toda la biblioteca",
+  "canvas.noGroupImages": "No hay imágenes en este grupo."
 }

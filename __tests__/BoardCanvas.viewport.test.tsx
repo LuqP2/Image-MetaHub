@@ -202,12 +202,12 @@ it('offers the two empty-board paths and focuses the reference library', () => {
   const board = createBoardDocument(); useBoardStore.getState().adoptBoard(board);
   const create = vi.fn();
   render(<><input aria-label="Search canvas library" /><BoardQueryContext.Provider value={{ images: new Map(), collections: [], open: vi.fn(), create, retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn() }}>
-    <BoardEditorContext.Provider value={{ editable: true, connecting: false, begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={board.id} /></BoardEditorContext.Provider>
+    <BoardEditorContext.Provider value={{ editable: true, connecting: false, getVisibleCenter: () => ({ x: 450, y: 300 }), begin: vi.fn(), change: vi.fn(), commit: vi.fn(), cancel: vi.fn() }}><BoardCanvas boardId={board.id} /></BoardEditorContext.Provider>
   </BoardQueryContext.Provider></>);
   fireEvent.click(screen.getByRole('button', { name: 'Add references' })); runFrames();
   expect(useBoardUIStore.getState().libraryOpen).toBe(true);
   expect(document.activeElement).toBe(screen.getByLabelText('Search canvas library'));
-  fireEvent.click(screen.getByRole('button', { name: 'Explore library' })); expect(create).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: 'Add Smart Frame' })); expect(create).toHaveBeenCalledWith({ x: 450, y: 300 });
 });
 
 

@@ -14,6 +14,7 @@ import { useBoardStore } from '../store/useBoardStore';
 import { useBoardHotkeys } from '../hooks/useBoardHotkeys';
 import { exportBoardFile, importBoardFile } from '../services/boards/boardService';
 import { getBoardBounds } from '../services/boards/layout';
+import { boardVisibleArea, visibleBoardCenter } from '../services/boards/viewport';
 import { updateObjects } from '../services/boards/operations';
 import type { BoardAssetObject } from '../services/boards/types';
 import BoardList from './boards/BoardList';
@@ -100,11 +101,12 @@ function BoardWorkspaceContent({ editable: hasEditAccess, resolveAsset, onOpenAs
   }, []);
   useEffect(() => { run(() => useBoardStore.getState().loadBoardList()); }, [run]);
   const actions = useMemo<BoardEditorActions>(() => ({ editable, connecting, tool, setTool, editingObjectId, editObject, inspectSelection, reportError: setError, exportPng: setPngScope, resolveAsset, openAsset: onOpenAsset, dropAssets: onDropAssets,
+    getVisibleCenter: () => stage.current ? visibleBoardCenter(flow.getViewport(), boardVisibleArea(stage.current)) : undefined,
     begin: () => { if (boardId && editable) useBoardStore.getState().beginInteraction(boardId); },
     change: update => { if (boardId && editable) useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [update])); },
     commit: () => { if (boardId) useBoardStore.getState().commitInteraction(boardId); },
     cancel: () => { if (boardId) useBoardStore.getState().cancelInteraction(boardId); },
-  }), [boardId, editable, connecting, tool, editingObjectId, inspectSelection, resolveAsset, onOpenAsset, onDropAssets]);
+  }), [boardId, editable, connecting, tool, editingObjectId, inspectSelection, resolveAsset, onOpenAsset, onDropAssets, flow]);
   const openSelection = useCallback(() => {
     if (!boardId) return;
     const current = useBoardStore.getState().sessions[boardId];

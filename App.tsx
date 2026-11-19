@@ -4892,7 +4892,7 @@ export default function App() {
                     }}
                   />
                 ) : libraryView === 'canvas' ? (
-                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onOpenPromptLibrary={id => { setSourcePromptId(id); setLibraryView('prompts'); }} onExploreLibrary={libraryCanvas.explore} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
+                  <React.Suspense fallback={<div className="p-6">Loading Canvas…</div>}><CanvasWorkspace onOpenPromptLibrary={id => { setSourcePromptId(id); setLibraryView('prompts'); }} loading={isStartupHydrating || isLoading} onOpenImage={handleOpenBoardImage} onCompareImages={handleOpenFindSimilarCompare} /></React.Suspense>
                 ) : libraryView === 'editor' ? (
                   editorImage ? (
                     <ImageEditorWorkspace

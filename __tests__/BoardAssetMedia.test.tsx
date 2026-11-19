@@ -5,6 +5,7 @@ import { formatMessage, languages } from '../i18n/messages.mjs';
 import BoardAssetNode from '../components/boards/BoardAssetNode';
 import BoardVideoPreview from '../components/boards/BoardVideoPreview';
 import BoardToolbar from '../components/boards/BoardToolbar';
+import { BoardEditorContext } from '../components/boards/BoardEditorContext';
 import { useBoardStore } from '../store/useBoardStore';
 import { BoardEditorContext, type BoardEditorActions } from '../components/boards/BoardEditorContext';
 import { addAssets } from '../services/boards/operations';
@@ -70,7 +71,7 @@ describe('Canvas asset media', () => {
     useSettingsStore.getState().setCanvasAutoplayVideos(false);
     const board = createBoardDocument();
     useBoardStore.getState().adoptBoard(board);
-    const { container } = render(<><BoardToolbar boardId={board.id} editable tool="select" setTool={vi.fn()} /><BoardVideoPreview image={image} /></>);
+    const { container } = render(<><BoardEditorContext.Provider value={{ editable: true, connecting: false, begin() {}, change() {}, commit() {}, cancel() {} }}><BoardToolbar boardId={board.id} editable tool="select" setTool={vi.fn()} /></BoardEditorContext.Provider><BoardVideoPreview image={image} /></>);
     act(() => intersect([{ isIntersecting: true }]));
     await waitFor(() => expect(container.querySelector('video')?.src).toBe('imh-media://clip.mp4'));
     const video = container.querySelector('video')!;

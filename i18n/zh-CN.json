@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, other {框架中有 # 张图像}}",
   "canvas.filtersButton": "筛选{count, plural, =0 {} other {（#）}}",
   "canvas.moreFilters": " · 另有 {count} 个筛选条件",
-  "canvas.unavailableReferences": "{count, plural, other {# 个引用不可用}}"
+  "canvas.unavailableReferences": "{count, plural, other {# 个引用不可用}}",
+  "canvas.groupsHelp": "图像可出现在多个分组中。框架总数按不重复图像计数。",
+  "canvas.matrixHelp": "行 / 列。空单元格没有结果。",
+  "canvas.imagesCount": "{count, plural, other {# 张图像}}",
+  "canvas.browseGroup": "浏览分组",
+  "canvas.branchGroup": "分支分组",
+  "canvas.groupGone": "打开的分组已不可用。正在显示所有分组。",
+  "canvas.backOverview": "返回概览",
+  "canvas.orderGroups": "分组排序",
+  "canvas.mostImages": "图像最多",
+  "canvas.nameOrder": "名称",
+  "canvas.newMatchesHelp": "新的匹配图像会自动出现。使用筛选条件缩小结果范围。",
+  "canvas.noFrameMatches": "没有图像匹配此框架。",
+  "canvas.addSmartFrame": "从整个图库添加智能框架",
+  "canvas.noGroupImages": "此分组中没有图像。"
 }

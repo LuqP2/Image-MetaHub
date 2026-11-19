@@ -1954,5 +1954,19 @@
   "canvas.imagesInFrame": "{count, plural, one {# Bild im Rahmen} other {# Bilder im Rahmen}}",
   "canvas.filtersButton": "Filter{count, plural, =0 {} other { (#)}}",
   "canvas.moreFilters": " · +{count} Filter",
-  "canvas.unavailableReferences": "{count, plural, one {# Referenz nicht verfügbar} other {# Referenzen nicht verfügbar}}"
+  "canvas.unavailableReferences": "{count, plural, one {# Referenz nicht verfügbar} other {# Referenzen nicht verfügbar}}",
+  "canvas.groupsHelp": "Bilder können in mehreren Gruppen erscheinen. Rahmensummen zählen eindeutige Bilder.",
+  "canvas.matrixHelp": "Zeilen / Spalten. Leere Zellen haben keine Ergebnisse.",
+  "canvas.imagesCount": "{count, plural, one {# Bild} other {# Bilder}}",
+  "canvas.browseGroup": "Gruppe durchsuchen",
+  "canvas.branchGroup": "Gruppe verzweigen",
+  "canvas.groupGone": "Die geöffnete Gruppe ist nicht mehr verfügbar. Alle Gruppen werden angezeigt.",
+  "canvas.backOverview": "Zurück zur Übersicht",
+  "canvas.orderGroups": "Gruppen sortieren",
+  "canvas.mostImages": "Meiste Bilder",
+  "canvas.nameOrder": "Name",
+  "canvas.newMatchesHelp": "Neue passende Bilder erscheinen automatisch. Mit Filtern die Ergebnisse eingrenzen.",
+  "canvas.noFrameMatches": "Keine Bilder passen zu diesem Rahmen.",
+  "canvas.addSmartFrame": "Smart Frame aus der gesamten Bibliothek hinzufügen",
+  "canvas.noGroupImages": "Keine Bilder in dieser Gruppe."
 }

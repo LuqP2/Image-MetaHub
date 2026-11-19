@@ -29,20 +29,22 @@ export default memo(function BoardSmartFrameNode({ data, selected }: NodeProps<B
   if (data.object.type !== 'smart-frame') return null;
   const frame = data.object;
   const criteria = [...frame.groupConstraints.map(boardConstraintLabel), ...summarizeBoardCriteria(frame.criteria, t)];
+  const unfilteredLibrary = frame.source.kind === 'library' && criteria.length === 0;
   return <div aria-busy={result?.status === 'loading' || result?.status === 'updating'} className="board-smart-frame" style={{ borderColor: frame.color }}>
     <BoardNodeControls selected={!!selected} />
     <header><strong><BoardRichText text={frame.title} /></strong><span>{result?.status === 'ready' ? t('canvas.imagesInFrame', { count: result.totalCount }) : result?.status === 'error' || result?.status === 'source-missing' ? t('canvas.unavailableState') : t('imageViewer.provenance.loading')}</span>
-      <button className="board-button nodrag nopan" data-board-filter-trigger={frame.id} disabled={!editor.editable} aria-label={t('canvas.filtersFor', { title: frame.title })} onClick={() => {
+      <button className={`board-button nodrag nopan${unfilteredLibrary ? ' board-filter-primary' : ''}`} data-board-filter-trigger={frame.id} disabled={!editor.editable} aria-label={t('canvas.filtersFor', { title: frame.title })} onClick={() => {
         if (!boardId) return;
         const ui = useBoardUIStore.getState(); ui.setFilterTarget(ui.filterTarget?.frameId === frame.id && ui.filterTarget.boardId === boardId ? null : { boardId, frameId: frame.id });
       }}>{t('canvas.filtersButton', { count: criteria.length })}</button>
     </header>
     <div className="board-frame-context"><span>{boardSourceLabel(frame.source, objects)}</span><small>{boardSourceMode(frame.source)}</small></div>
+    {unfilteredLibrary && <small className="board-frame-hint">{t('canvas.newMatchesHelp')}</small>}
     {criteria.length > 0 && <small className="board-frame-criteria" title={criteria.join(' · ')}>{criteria.slice(0, 2).join(' · ')}{criteria.length > 2 ? t('canvas.moreFilters', { count: criteria.length - 2 }) : ''}</small>}
     {result?.error && <div role="alert">{result.error}<button className="board-button nodrag" onClick={() => actions?.retry()}>{t('generationQueue.retry')}</button></div>}
     {!!result?.unavailableReferences && <small>{t('canvas.unavailableReferences', { count: result.unavailableReferences })}</small>}
     {shown?.status === 'ready' && shown.grouped?.kind === 'groups' && <BoardSmartFrameGroups key={JSON.stringify(frame.layout)} frameId={frame.id} groups={shown.grouped.groups} />}
     {shown?.status === 'ready' && shown.grouped?.kind === 'matrix' && <BoardSmartFrameMatrix key={JSON.stringify(frame.layout)} frameId={frame.id} matrix={shown.grouped} />}
-    {shown?.status === 'ready' && !shown.grouped && <BoardSmartFrameResults imageIds={shown.imageIds} frameId={frame.id} />}
+    {shown?.status === 'ready' && !shown.grouped && <BoardSmartFrameResults imageIds={shown.imageIds} frameId={frame.id} emptyMessage={t('canvas.noFrameMatches')} />}
   </div>;
 });

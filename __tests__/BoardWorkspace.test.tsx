@@ -1,5 +1,6 @@
 import { useSettingsStore } from '../store/useSettingsStore';
 import { formatMessage, languages } from '../i18n/messages.mjs';
+import { BoardQueryContext } from '../components/boards/BoardQueryContext';
 import { useBoardUIStore } from '../store/useBoardUIStore';
 import { useBoardEditor } from '../components/boards/BoardEditorContext';
 import React from 'react';
@@ -10,8 +11,8 @@ import { addText, addAssets, createFrame, updateObjects } from '../services/boar
 import { boardLocator } from './helpers/boardFixtures';
 import { useBoardStore } from '../store/useBoardStore';
 
-const mock = vi.hoisted(() => ({ documents: new Map(), exported: vi.fn(), setViewport: vi.fn() }));
-vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), useReactFlow: () => ({ setViewport: mock.setViewport }) }));
+const mock = vi.hoisted(() => ({ documents: new Map(), exported: vi.fn(), setViewport: vi.fn(), getViewport: vi.fn(() => ({ x: 120, y: -80, zoom: 0.5 })) }));
+vi.mock('@xyflow/react', async importOriginal => ({ ...await importOriginal<typeof import('@xyflow/react')>(), useReactFlow: () => ({ setViewport: mock.setViewport, getViewport: mock.getViewport }) }));
 vi.mock('../services/boards/boardService', () => ({
   boardService: {
     list: async () => [...mock.documents.values()].map(document => ({ ...document, objectCount: document.objects.length })),
@@ -202,4 +203,21 @@ it('keeps the replacement library visible while a narrow inspector is requested'
   expect(screen.getByText('Replacement browser')).toBeTruthy();
   expect(screen.queryByLabelText('Board inspector')).toBeNull();
   expect((screen.getByRole('button', { name: 'Toggle library' }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+
+it('creates from the live stage center with pan/zoom and returns the toolbar to Select', async () => {
+  await useBoardStore.getState().createBoard('Smart Frame');
+  const create = vi.fn();
+  await act(async () => { render(<BoardQueryContext.Provider value={{ images: new Map(), collections: [], open: vi.fn(), create, retry: vi.fn(), snapshot: vi.fn(), useCurrentFilters: vi.fn() }}><BoardWorkspace editable assetPanel={<p>Library</p>} /></BoardQueryContext.Provider>); });
+  const stage = document.querySelector('.board-stage-container')!;
+  vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ x: 300, y: 50, left: 300, top: 50, right: 1300, bottom: 750, width: 1000, height: 700, toJSON() {} });
+  fireEvent.click(screen.getByRole('button', { name: 'Rectangle', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Smart Frame', exact: true }));
+  expect(create).toHaveBeenLastCalledWith({ x: 760, y: 860 });
+  expect(screen.getByRole('button', { name: 'Select', exact: true }).getAttribute('aria-pressed')).toBe('true');
+  // A panel resize changes the real stage width. Creation reads fresh geometry.
+  vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ x: 300, y: 50, left: 300, top: 50, right: 900, bottom: 550, width: 600, height: 500, toJSON() {} });
+  fireEvent.click(screen.getByRole('button', { name: 'Smart Frame', exact: true }));
+  expect(create).toHaveBeenLastCalledWith({ x: 360, y: 660 });
 });
