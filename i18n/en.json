@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "The selected items could not be added. Check the composition and try again.",
   "promptLibrary.addPromptCount": "{count, plural, one {Add # prompt} other {Add # prompts}}",
   "promptLibrary.addBlockCount": "{count, plural, one {Add # block} other {Add # blocks}}",
-  "promptLibrary.addItemCount": "{count, plural, one {Add # item} other {Add # items}}"
+  "promptLibrary.addItemCount": "{count, plural, one {Add # item} other {Add # items}}",
+  "promptLibrary.blockRequired": "A non-empty block is required.",
+  "promptLibrary.invalidImport": "Invalid import.",
+  "promptLibrary.invalidImportedFolder": "Invalid imported folder.",
+  "promptLibrary.unknownKind": "Unknown item kind.",
+  "promptLibrary.selectedMissing": "A selected item no longer exists.",
+  "promptLibrary.revisionChanged": "This item changed in another window. Reload or save as a copy.",
+  "promptLibrary.unknownOperation": "Unknown prompt library operation.",
+  "promptLibrary.storageUnavailable": "Saved-prompt desktop storage is unavailable.",
+  "promptLibrary.loadLibraryFailed": "Could not load prompt library.",
+  "promptLibrary.loadSavedFailed": "Could not load saved prompts."
 }

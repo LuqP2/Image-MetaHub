@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "无法添加所选项目。请检查组合后重试。",
   "promptLibrary.addPromptCount": "{count, plural, other {添加 # 个提示词}}",
   "promptLibrary.addBlockCount": "{count, plural, other {添加 # 个文本块}}",
-  "promptLibrary.addItemCount": "{count, plural, other {添加 # 个项目}}"
+  "promptLibrary.addItemCount": "{count, plural, other {添加 # 个项目}}",
+  "promptLibrary.blockRequired": "文本块不能为空。",
+  "promptLibrary.invalidImport": "导入数据无效。",
+  "promptLibrary.invalidImportedFolder": "导入的文件夹无效。",
+  "promptLibrary.unknownKind": "未知项目类型。",
+  "promptLibrary.selectedMissing": "所选项目已不存在。",
+  "promptLibrary.revisionChanged": "此项目已在其他窗口更改。请重新加载或另存为副本。",
+  "promptLibrary.unknownOperation": "未知提示词库操作。",
+  "promptLibrary.storageUnavailable": "桌面端提示词存储不可用。",
+  "promptLibrary.loadLibraryFailed": "无法加载提示词库。",
+  "promptLibrary.loadSavedFailed": "无法加载已保存的提示词。"
 }

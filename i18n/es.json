@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "No se pudieron añadir los elementos seleccionados. Revisa la composición e inténtalo de nuevo.",
   "promptLibrary.addPromptCount": "{count, plural, one {Añadir # prompt} other {Añadir # prompts}}",
   "promptLibrary.addBlockCount": "{count, plural, one {Añadir # bloque} other {Añadir # bloques}}",
-  "promptLibrary.addItemCount": "{count, plural, one {Añadir # elemento} other {Añadir # elementos}}"
+  "promptLibrary.addItemCount": "{count, plural, one {Añadir # elemento} other {Añadir # elementos}}",
+  "promptLibrary.blockRequired": "Se requiere un bloque con contenido.",
+  "promptLibrary.invalidImport": "Importación no válida.",
+  "promptLibrary.invalidImportedFolder": "Carpeta importada no válida.",
+  "promptLibrary.unknownKind": "Tipo de elemento desconocido.",
+  "promptLibrary.selectedMissing": "Un elemento seleccionado ya no existe.",
+  "promptLibrary.revisionChanged": "Este elemento cambió en otra ventana. Recarga o guarda una copia.",
+  "promptLibrary.unknownOperation": "Operación de biblioteca de prompts desconocida.",
+  "promptLibrary.storageUnavailable": "El almacenamiento de prompts de escritorio no está disponible.",
+  "promptLibrary.loadLibraryFailed": "No se pudo cargar la biblioteca de prompts.",
+  "promptLibrary.loadSavedFailed": "No se pudieron cargar los prompts guardados."
 }

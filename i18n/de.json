@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "Ausgewählte Elemente konnten nicht hinzugefügt werden. Die Komposition prüfen und erneut versuchen.",
   "promptLibrary.addPromptCount": "{count, plural, one {# Prompt hinzufügen} other {# Prompts hinzufügen}}",
   "promptLibrary.addBlockCount": "{count, plural, one {# Baustein hinzufügen} other {# Bausteine hinzufügen}}",
-  "promptLibrary.addItemCount": "{count, plural, one {# Element hinzufügen} other {# Elemente hinzufügen}}"
+  "promptLibrary.addItemCount": "{count, plural, one {# Element hinzufügen} other {# Elemente hinzufügen}}",
+  "promptLibrary.blockRequired": "Ein nicht leerer Baustein ist erforderlich.",
+  "promptLibrary.invalidImport": "Ungültiger Import.",
+  "promptLibrary.invalidImportedFolder": "Ungültiger importierter Ordner.",
+  "promptLibrary.unknownKind": "Unbekannter Elementtyp.",
+  "promptLibrary.selectedMissing": "Ein ausgewähltes Element existiert nicht mehr.",
+  "promptLibrary.revisionChanged": "Dieses Element wurde in einem anderen Fenster geändert. Neu laden oder als Kopie speichern.",
+  "promptLibrary.unknownOperation": "Unbekannter Prompt-Bibliotheksvorgang.",
+  "promptLibrary.storageUnavailable": "Desktop-Speicher für gespeicherte Prompts ist nicht verfügbar.",
+  "promptLibrary.loadLibraryFailed": "Prompt-Bibliothek konnte nicht geladen werden.",
+  "promptLibrary.loadSavedFailed": "Gespeicherte Prompts konnten nicht geladen werden."
 }

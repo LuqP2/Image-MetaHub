@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "Não foi possível adicionar os itens selecionados. Verifique a composição e tente novamente.",
   "promptLibrary.addPromptCount": "{count, plural, one {Adicionar # prompt} other {Adicionar # prompts}}",
   "promptLibrary.addBlockCount": "{count, plural, one {Adicionar # bloco} other {Adicionar # blocos}}",
-  "promptLibrary.addItemCount": "{count, plural, one {Adicionar # item} other {Adicionar # itens}}"
+  "promptLibrary.addItemCount": "{count, plural, one {Adicionar # item} other {Adicionar # itens}}",
+  "promptLibrary.blockRequired": "É necessário um bloco com conteúdo.",
+  "promptLibrary.invalidImport": "Importação inválida.",
+  "promptLibrary.invalidImportedFolder": "Pasta importada inválida.",
+  "promptLibrary.unknownKind": "Tipo de item desconhecido.",
+  "promptLibrary.selectedMissing": "Um item selecionado não existe mais.",
+  "promptLibrary.revisionChanged": "Este item foi alterado em outra janela. Recarregue ou salve como cópia.",
+  "promptLibrary.unknownOperation": "Operação desconhecida da Biblioteca de Prompts.",
+  "promptLibrary.storageUnavailable": "O armazenamento de prompts do aplicativo desktop está indisponível.",
+  "promptLibrary.loadLibraryFailed": "Não foi possível carregar a Biblioteca de Prompts.",
+  "promptLibrary.loadSavedFailed": "Não foi possível carregar os prompts salvos."
 }

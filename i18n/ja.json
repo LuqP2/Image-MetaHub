@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "選択したアイテムを追加できませんでした。構成を確認して再試行してください。",
   "promptLibrary.addPromptCount": "{count, plural, other {プロンプトを # 件追加}}",
   "promptLibrary.addBlockCount": "{count, plural, other {ブロックを # 件追加}}",
-  "promptLibrary.addItemCount": "{count, plural, other {アイテムを # 件追加}}"
+  "promptLibrary.addItemCount": "{count, plural, other {アイテムを # 件追加}}",
+  "promptLibrary.blockRequired": "空でないブロックが必要です。",
+  "promptLibrary.invalidImport": "インポートデータが無効です。",
+  "promptLibrary.invalidImportedFolder": "インポートしたフォルダーが無効です。",
+  "promptLibrary.unknownKind": "不明なアイテムの種類です。",
+  "promptLibrary.selectedMissing": "選択したアイテムは存在しません。",
+  "promptLibrary.revisionChanged": "このアイテムは別のウィンドウで変更されました。再読み込みするか、コピーとして保存してください。",
+  "promptLibrary.unknownOperation": "不明なプロンプトライブラリの操作です。",
+  "promptLibrary.storageUnavailable": "デスクトップ版のプロンプト保存機能を利用できません。",
+  "promptLibrary.loadLibraryFailed": "プロンプトライブラリを読み込めませんでした。",
+  "promptLibrary.loadSavedFailed": "保存済みプロンプトを読み込めませんでした。"
 }

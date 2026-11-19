@@ -5,6 +5,9 @@ import PromptLibraryBrowser from '../components/promptLibrary/PromptLibraryBrows
 import PromptFolders from '../components/promptLibrary/PromptFolders';
 import PromptImportExportDialog from '../components/promptLibrary/PromptImportExportDialog';
 import PromptLibraryFiltersPanel from '../components/promptLibrary/PromptLibraryFilters';
+import PromptEditor from '../components/promptLibrary/PromptEditor';
+import PromptPreview from '../components/promptLibrary/PromptPreview';
+import { clearDraft, getDraft } from '../services/promptLibrary/sessionDraft';
 import { useSavedPromptStore } from '../store/useSavedPromptStore';
 import { emptyEditor } from '../services/promptLibrary/core.mjs';
 import { emptyFilters } from '../services/promptLibrary/search';
@@ -13,12 +16,29 @@ import { formatMessage, languages } from '../i18n/messages.mjs';
 import type { SavedPrompt } from '../types';
 
 vi.mock('../hooks/usePromptLibraryPreview', () => ({ usePromptLibraryPreview: () => ({ url: null }) }));
+vi.mock('../hooks/useFeatureAccess', () => ({ useFeatureAccess: () => ({ canUseAdvancedPromptLibrary: true, showProModal: vi.fn() }) }));
 vi.mock('react-virtualized-auto-sizer', () => ({ default: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) => children({ width: 500, height: 500 }) }));
 
 const originalMutate = useSavedPromptStore.getState().mutate;
-afterEach(() => { cleanup(); useSettingsStore.setState({ language: 'en' }); useSavedPromptStore.setState({ mutate: originalMutate }); });
+afterEach(() => { cleanup(); clearDraft(); useSettingsStore.setState({ language: 'en' }); useSavedPromptStore.setState({ mutate: originalMutate }); });
 
 describe('Prompt Library localized cards and folder forms', () => {
+  it.each(languages)('creates a field in the negative channel and localizes every diagnostic in %s', async language => {
+    clearDraft(); useSettingsStore.setState({ language });
+    const t = (key, values?) => formatMessage(language, key, values);
+    const view = render(<PromptEditor initial={{ positivePrompt: 'original positive', negativePrompt: 'original negative 海' }} kind="prompt" onSaved={vi.fn()} onClose={vi.fn()} onDirty={vi.fn()} onViewSource={vi.fn()} />);
+    const negative = screen.getByRole('textbox', { name: t('promptLibrary.negativePrompt'), exact: true }) as HTMLTextAreaElement;
+    negative.setSelectionRange(0, negative.value.length);
+    fireEvent.contextMenu(negative);
+    fireEvent.click(screen.getByRole('menuitem', { name: t('promptLibrary.makeField') }));
+    await waitFor(() => expect(getDraft()?.draft.editor?.document?.negative[0].text).toBe('{{subject}}'));
+    expect(getDraft()?.draft.editor?.document?.positive[0].text).toBe('original positive');
+    expect(getDraft()?.draft.editor?.document?.variables[0].defaultValue).toBe('original negative 海');
+    view.unmount();
+    render(<PromptPreview result={{ positivePrompt: '', negativePrompt: '', errors: ['Define variable subject_2.', 'Fill Original 海.'] }} />);
+    expect(screen.getByRole('alert').textContent).toBe(t('promptLibrary.defineVariable', { variable: 'subject_2' }) + ' ' + t('promptLibrary.fillField', { field: 'Original 海' }));
+  });
+
   it.each(languages)('imports the same CSV payload and retains filter enums in %s', async language => {
     useSettingsStore.setState({ language });
     const t = (key, values?) => formatMessage(language, key, values);
@@ -45,7 +65,7 @@ describe('Prompt Library localized cards and folder forms', () => {
     useSettingsStore.setState({ language });
     const t = (key, values?) => formatMessage(language, key, values);
     const title = 'Original {title} 海';
-    const item: SavedPrompt = { id: 'original', createdAt: 1, sourceCreatedAt: null, positivePrompt: 'cat {{subject_2}}', negativePrompt: 'blur', textBasis: 'authored', source: null, editor: { ...emptyEditor(), title, tags: ['original-tag'], metadata: { model: 'OriginalModel.safetensors' } } };
+    const item: SavedPrompt = { id: 'original', createdAt: 1, sourceCreatedAt: null, positivePrompt: 'cat {{subject_2}}', negativePrompt: 'blur', textBasis: 'authored', source: null, editor: { ...emptyEditor(), title, tags: ['original-tag'], metadata: { model: 'OriginalModel.safetensors', generator: '', sampler: '', scheduler: '', loras: [] } } };
     const before = JSON.stringify(item);
     const onOpen = vi.fn(), onContextAction = vi.fn(), onFilters = vi.fn();
     render(<PromptLibraryBrowser all={[item]} visible={[item]} filters={emptyFilters} onFilters={onFilters} selected={new Set()} selectionMode={false} onSelectionMode={vi.fn()} showFilters={false} onToggleFilters={vi.fn()} onOpen={onOpen} onSelect={vi.fn()} onFavorite={vi.fn()} onContextAction={onContextAction} canReplaceSelection />);

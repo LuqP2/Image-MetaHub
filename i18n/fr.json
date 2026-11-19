@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "Les éléments sélectionnés n’ont pas pu être ajoutés. Vérifiez la composition et réessayez.",
   "promptLibrary.addPromptCount": "{count, plural, one {Ajouter # prompt} other {Ajouter # prompts}}",
   "promptLibrary.addBlockCount": "{count, plural, one {Ajouter # bloc} other {Ajouter # blocs}}",
-  "promptLibrary.addItemCount": "{count, plural, one {Ajouter # élément} other {Ajouter # éléments}}"
+  "promptLibrary.addItemCount": "{count, plural, one {Ajouter # élément} other {Ajouter # éléments}}",
+  "promptLibrary.blockRequired": "Un bloc non vide est requis.",
+  "promptLibrary.invalidImport": "Importation invalide.",
+  "promptLibrary.invalidImportedFolder": "Dossier importé invalide.",
+  "promptLibrary.unknownKind": "Type d’élément inconnu.",
+  "promptLibrary.selectedMissing": "Un élément sélectionné n’existe plus.",
+  "promptLibrary.revisionChanged": "Cet élément a été modifié dans une autre fenêtre. Rechargez-le ou enregistrez une copie.",
+  "promptLibrary.unknownOperation": "Opération de bibliothèque de prompts inconnue.",
+  "promptLibrary.storageUnavailable": "Le stockage des prompts de l’application de bureau est indisponible.",
+  "promptLibrary.loadLibraryFailed": "Impossible de charger la bibliothèque de prompts.",
+  "promptLibrary.loadSavedFailed": "Impossible de charger les prompts enregistrés."
 }

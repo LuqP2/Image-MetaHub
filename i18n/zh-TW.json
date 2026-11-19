@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "無法新增所選項目。請檢查組合後重試。",
   "promptLibrary.addPromptCount": "{count, plural, other {新增 # 個提示詞}}",
   "promptLibrary.addBlockCount": "{count, plural, other {新增 # 個文字區塊}}",
-  "promptLibrary.addItemCount": "{count, plural, other {新增 # 個項目}}"
+  "promptLibrary.addItemCount": "{count, plural, other {新增 # 個項目}}",
+  "promptLibrary.blockRequired": "文字區塊不能為空。",
+  "promptLibrary.invalidImport": "匯入資料無效。",
+  "promptLibrary.invalidImportedFolder": "匯入的資料夾無效。",
+  "promptLibrary.unknownKind": "未知項目類型。",
+  "promptLibrary.selectedMissing": "所選項目已不存在。",
+  "promptLibrary.revisionChanged": "此項目已在其他視窗變更。請重新載入或另存為副本。",
+  "promptLibrary.unknownOperation": "未知提示詞庫操作。",
+  "promptLibrary.storageUnavailable": "無法使用桌面版提示詞儲存空間。",
+  "promptLibrary.loadLibraryFailed": "無法載入提示詞庫。",
+  "promptLibrary.loadSavedFailed": "無法載入已儲存的提示詞。"
 }

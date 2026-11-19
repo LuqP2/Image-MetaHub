@@ -2536,5 +2536,15 @@
   "promptLibrary.selectedAddFailed": "선택한 항목을 추가하지 못했습니다. 구성을 확인하고 다시 시도하세요.",
   "promptLibrary.addPromptCount": "{count, plural, other {프롬프트 #개 추가}}",
   "promptLibrary.addBlockCount": "{count, plural, other {블록 #개 추가}}",
-  "promptLibrary.addItemCount": "{count, plural, other {항목 #개 추가}}"
+  "promptLibrary.addItemCount": "{count, plural, other {항목 #개 추가}}",
+  "promptLibrary.blockRequired": "내용이 있는 블록이 필요합니다.",
+  "promptLibrary.invalidImport": "잘못된 가져오기 데이터입니다.",
+  "promptLibrary.invalidImportedFolder": "가져온 폴더가 올바르지 않습니다.",
+  "promptLibrary.unknownKind": "알 수 없는 항목 유형입니다.",
+  "promptLibrary.selectedMissing": "선택한 항목이 더 이상 존재하지 않습니다.",
+  "promptLibrary.revisionChanged": "다른 창에서 이 항목이 변경되었습니다. 다시 불러오거나 사본으로 저장하세요.",
+  "promptLibrary.unknownOperation": "알 수 없는 프롬프트 라이브러리 작업입니다.",
+  "promptLibrary.storageUnavailable": "데스크톱 프롬프트 저장소를 사용할 수 없습니다.",
+  "promptLibrary.loadLibraryFailed": "프롬프트 라이브러리를 불러오지 못했습니다.",
+  "promptLibrary.loadSavedFailed": "저장된 프롬프트를 불러오지 못했습니다."
 }
