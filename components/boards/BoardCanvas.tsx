@@ -155,7 +155,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
     onDrop={event => {
       if (event.dataTransfer.types.includes(PROMPT_DRAG_TYPE)) {
         event.preventDefault(); event.stopPropagation();
-        if (editor.editable) { try { prompts.add(readPromptDrag(event.dataTransfer), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch (cause) { editor.reportError?.(cause instanceof Error ? cause.message : 'Could not add prompt.'); } }
+        if (editor.editable) { try { prompts.add(readPromptDrag(event.dataTransfer), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch (cause) { editor.reportError?.(cause instanceof Error ? cause.message : t('canvas.addPromptFailed')); } }
         return;
       }
       if (hasStackCardDrag(event.dataTransfer)) {
@@ -163,7 +163,7 @@ function BoardCanvasContent({ boardId, onFitAll }: { boardId: string; onFitAll: 
         const source = getStackCardDrag(event.dataTransfer);
         clearStackCardDrag(); clearInternalImageDragData();
         if (!editor.editable || !source) return;
-        if (source.boardId !== boardId) { editor.reportError?.('Move stack cards within their original Canvas.'); return; }
+        if (source.boardId !== boardId) { editor.reportError?.(t('canvas.originalStack')); return; }
         if ((event.target as HTMLElement).closest<HTMLElement>('.react-flow__node')?.dataset.id === source.stackId) return;
         const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
         useBoardStore.getState().executeOperation(boardId, document => extractStackMember(document, source.stackId, source.objectId, point));
