@@ -6,7 +6,7 @@ import { SettingsPanel } from './SettingsPanel';
 export const ShortcutsSettingsPanel: React.FC = () => {
   const { t } = useTranslation();
   return (
-    <SettingsPanel title={t("settings.shortcuts.shortcuts")} description={t("settings.shortcuts.customizeKeyboardShortcuts")}>
+    <SettingsPanel title={t("settings.shortcuts.shortcuts")}>
       <HotkeySettings />
     </SettingsPanel>
   );

@@ -140,7 +140,7 @@ export const AppearanceSettingsPanel: React.FC = () => {
   const setClassicMode = useSettingsStore((state) => state.setClassicMode);
 
   return (
-    <SettingsPanel title={t("settings.appearance.appearance")} description={t("settings.appearance.chooseTheAppThemeAndMotionPreferences")}>
+    <SettingsPanel title={t("settings.appearance.appearance")}>
       <SettingsSectionCard title={t("settings.appearance.theme")}>
         <ThemeSelector />
       </SettingsSectionCard>

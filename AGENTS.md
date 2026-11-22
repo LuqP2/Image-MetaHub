@@ -1,5 +1,10 @@
 This document provides guidance for AI assistants working on the Image MetaHub codebase.
 
+## Interface Copy
+
+- Keep interface text direct and useful. Avoid redundant subtitles, obvious explanations of tab names or controls, and filler describing how the interface is organized. The user finds these condescending and irritating.
+- Add explanatory text only when it provides information needed to make a decision or use a non-obvious feature. Settings headings should stand on their own; do not reintroduce the removed introductory descriptions in Settings, General, Library, Visual Search, Appearance, or Shortcuts.
+
 ## Project Overview
 
 Image MetaHub is a desktop application (Electron + React + TypeScript) for browsing, searching, and organizing AI-generated images locally. It focuses on performance with large collections, powerful metadata filtering, and complete privacy.
