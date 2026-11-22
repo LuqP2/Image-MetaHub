@@ -131,7 +131,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           step={options.step}
           min="0"
           max={options.max}
-          placeholder="Min"
           value={localFilters[key]?.min ?? ''}
           onChange={(event) => {
             const raw = event.target.value;
@@ -154,7 +153,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           step={options.step}
           min="0"
           max={options.max}
-          placeholder="Max"
           value={localFilters[key]?.max ?? ''}
           onChange={(event) => {
             const raw = event.target.value;
