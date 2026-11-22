@@ -17,7 +17,7 @@ export function GeneralSettingsPanel({ focusSection }: { focusSection: SettingsF
       exrSection.current?.focus({ preventScroll: true });
     }
   }, [focusSection]);
-  return <SettingsPanel title={t("settings.general.general")} description={t("settings.general.manageOptionalAppComponents")}>
+  return <SettingsPanel title={t("settings.general.general")}>
     <SettingRow
       label={t("settings.general.language")}
       control={

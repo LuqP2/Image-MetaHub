@@ -111,7 +111,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex items-center justify-between border-b border-gray-700/80 px-4 py-4 md:px-6">
           <div>
             <h1 className="text-xl font-semibold text-gray-100 md:text-2xl">{t("settings.navigation.settings")}</h1>
-            <p className="text-sm text-gray-400">{t("settings.navigation.organizedByTaskSoTheCommonPath")}</p>
           </div>
           <button
             type="button"

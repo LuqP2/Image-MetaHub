@@ -228,7 +228,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   };
 
   return (
-    <SettingsPanel title={t("settings.library.library")} description={t("settings.library.performanceIndexingStartupChecksAndCacheStorage")}>
+    <SettingsPanel title={t("settings.library.library")}>
       <SettingsSectionCard title={t("settings.library.startup")}>
         <SettingRow
           label={t("settings.library.fileMonitoring")}

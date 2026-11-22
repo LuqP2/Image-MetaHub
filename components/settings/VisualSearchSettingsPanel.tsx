@@ -118,7 +118,6 @@ export const VisualSearchSettingsPanel: React.FC = () => {
   return (
     <SettingsPanel
       title={t("settings.visualSearch.localVisualSearch")}
-      description={t("settings.visualSearch.buildALocalVisualIndexForFind")}
     >
       <SettingsSectionCard title={t("settings.visualSearch.localVisualSearchSection")}>
         <SettingRow
