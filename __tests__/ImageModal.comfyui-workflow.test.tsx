@@ -181,7 +181,7 @@ describe('ImageModal ComfyUI workflow action', () => {
 
     act(() => useSettingsStore.setState({ language: 'ja' }));
     expect(screen.getByTitle(image.name)).toBeTruthy();
-    expect(screen.getByRole('dialog', { name: `画像ビューア：${image.name}` })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: `画像ビューアー：${image.name}` })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: '画像を閉じる' }).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: '次の画像' }));
     expect(onNavigateNext).toHaveBeenCalledTimes(1);
