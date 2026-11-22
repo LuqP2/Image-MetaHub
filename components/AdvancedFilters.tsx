@@ -109,28 +109,29 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   const renderNumberRange = (
     label: string,
     key: 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb',
-    options: { step?: string; max?: string; compactHeader?: boolean }
+    options: { step?: string; max?: string }
   ) => (
-    <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-      <div className={`mb-3 flex items-start justify-between gap-2 ${options.compactHeader ? 'min-h-0' : 'min-h-[4.5rem]'}`}>
-        <h4 className="text-sm font-semibold leading-5 text-gray-100">{label}</h4>
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-gray-300">{label}</span>
         {localFilters[key] && (
           <button
             type="button"
             onClick={() => updateFilter(key, null)}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+            className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-rose-300"
             title={t('librarySearch.clearNamedFilter', { label: label.toLowerCase() })}
           >
-            <X size={14} />
+            <X size={12} />
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-1.5">
         <input
           type="number"
           step={options.step}
           min="0"
           max={options.max}
+          placeholder="Min"
           value={localFilters[key]?.min ?? ''}
           onChange={(event) => {
             const raw = event.target.value;
@@ -146,13 +147,14 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               max: currentMax === null || currentMax === undefined ? null : Math.max(parsed, currentMax),
             });
           }}
-          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+          className="ui-input tabular-nums"
         />
         <input
           type="number"
           step={options.step}
           min="0"
           max={options.max}
+          placeholder="Max"
           value={localFilters[key]?.max ?? ''}
           onChange={(event) => {
             const raw = event.target.value;
@@ -168,7 +170,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               max: parsed,
             });
           }}
-          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+          className="ui-input tabular-nums"
         />
       </div>
     </div>
@@ -215,45 +217,47 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="space-y-4 px-4 pb-4">
-              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.generation')}</h3>
+            <div className="space-y-4 px-3 pb-4 pt-1">
+              {/* Generation */}
+              <div className="space-y-2.5 border-t border-gray-700/40 pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t('librarySearch.generation')}</h3>
                   {(localFilters.steps || localFilters.cfg) && (
                     <button
                       type="button"
                       onClick={() => setLocalFilters((prev) => normalizeFilters({ ...prev, steps: undefined, cfg: undefined }))}
-                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-rose-300"
                       title={t('librarySearch.clearGenerationFilters')}
                     >
-                      <X size={14} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {renderNumberRange(t('librarySearch.steps'), 'steps', { max: '100', compactHeader: true })}
-                  {renderNumberRange('CFG', 'cfg', { step: '0.1', max: '20', compactHeader: true })}
+                <div className="space-y-2.5">
+                  {renderNumberRange(t('librarySearch.steps'), 'steps', { max: '100' })}
+                  {renderNumberRange('CFG', 'cfg', { step: '0.1', max: '20' })}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.dimensions')}</h3>
+              {/* Dimensions */}
+              <div className="space-y-2 border-t border-gray-700/40 pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t('librarySearch.dimensions')}</h3>
                   {localFilters.dimension && (
                     <button
                       type="button"
                       onClick={() => updateFilter('dimension', null)}
-                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-rose-300"
                       title={t('librarySearch.clearDimensionsFilter')}
                     >
-                      <X size={14} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
                 <select
                   value={localFilters.dimension || ''}
                   onChange={(event) => updateFilter('dimension', event.target.value || null)}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+                  className="ui-select w-full"
                 >
                   <option value="">{t('librarySearch.allDimensions')}</option>
                   {availableDimensions.map((dimension) => (
@@ -262,21 +266,22 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 </select>
               </div>
 
-              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.date')}</h3>
+              {/* Date */}
+              <div className="space-y-2 border-t border-gray-700/40 pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t('librarySearch.date')}</h3>
                   {(localFilters.date?.from || localFilters.date?.to) && (
                     <button
                       type="button"
                       onClick={() => updateFilter('date', null)}
-                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-rose-300"
                       title={t('librarySearch.clearDateRange')}
                     >
-                      <X size={14} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <input
                     type="date"
                     value={localFilters.date?.from || ''}
@@ -284,7 +289,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       from: event.target.value || '',
                       to: localFilters.date?.to || '',
                     })}
-                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+                    className="ui-input"
                   />
                   <input
                     type="date"
@@ -293,14 +298,15 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       from: localFilters.date?.from || '',
                       to: event.target.value || '',
                     })}
-                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+                    className="ui-input"
                   />
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">{t('librarySearch.type')}</h3>
+              {/* Type: Generation Mode + Media Type as clean toggle pills */}
+              <div className="space-y-2.5 border-t border-gray-700/40 pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t('librarySearch.type')}</h3>
                   {(generationModes.length > 0 || mediaTypes.length > 0) && (
                     <button
                       type="button"
@@ -309,62 +315,75 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         generationModes: [],
                         mediaTypes: [],
                       }))}
-                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-rose-300"
                       title={t('librarySearch.clearMetadataAndFileTypeFilters')}
                     >
-                      <X size={14} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">{t('librarySearch.generationMode')}</h4>
-                    <div className="mt-3 space-y-2">
-                      {([
-                        ['txt2img', 'txt2img'],
-                        ['img2img', 'img2img'],
-                      ] as const).map(([value, label]) => (
-                        <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={generationModes.includes(value)}
-                            onChange={() => toggleMultiSelectFilter('generationModes', value)}
-                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-                          />
-                          <div className="text-sm text-gray-200">{label}</div>
-                        </label>
-                      ))}
-                    </div>
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium text-gray-400">{t('librarySearch.generationMode')}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ['txt2img', 'txt2img'],
+                      ['img2img', 'img2img'],
+                    ] as const).map(([value, label]) => {
+                      const active = generationModes.includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => toggleMultiSelectFilter('generationModes', value)}
+                          className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                            active
+                              ? 'border-accent/50 bg-accent/15 text-accent'
+                              : 'border-gray-700/60 bg-gray-800/50 text-gray-300 hover:border-gray-600 hover:text-gray-100'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
 
-                  <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">{t('librarySearch.mediaType')}</h4>
-                    <div className="mt-3 space-y-2">
-                      {([
-                        ['image', t('librarySearch.images')],
-                        ['video', t('librarySearch.videos')],
-                        ['audio', t('librarySearch.audio')],
-                        ['model3d', t('librarySearch.3dModels')],
-                      ] as const).map(([value, label]) => (
-                        <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={mediaTypes.includes(value)}
-                            onChange={() => toggleMultiSelectFilter('mediaTypes', value)}
-                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-                          />
-                          <div className="text-sm text-gray-200">{label}</div>
-                        </label>
-                      ))}
-                    </div>
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium text-gray-400">{t('librarySearch.mediaType')}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ['image', t('librarySearch.images')],
+                      ['video', t('librarySearch.videos')],
+                      ['audio', t('librarySearch.audio')],
+                      ['model3d', t('librarySearch.3dModels')],
+                    ] as const).map(([value, label]) => {
+                      const active = mediaTypes.includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => toggleMultiSelectFilter('mediaTypes', value)}
+                          className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                            active
+                              ? 'border-accent/50 bg-accent/15 text-accent'
+                              : 'border-gray-700/60 bg-gray-800/50 text-gray-300 hover:border-gray-600 hover:text-gray-100'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">MetaHub</h3>
+              {/* MetaHub */}
+              <div className="space-y-2.5 border-t border-gray-700/40 pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">MetaHub</h3>
                   {(localFilters.hasVerifiedTelemetry || localFilters.telemetryState || localFilters.generationTimeMs || localFilters.stepsPerSecond || localFilters.vramPeakMb) && (
                     <button
                       type="button"
@@ -376,14 +395,14 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         stepsPerSecond: undefined,
                         vramPeakMb: undefined,
                       }))}
-                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-rose-300"
                       title={t('librarySearch.clearMetahubFilters')}
                     >
-                      <X size={14} />
+                      <X size={12} />
                     </button>
                   )}
                 </div>
-                <label className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
+                <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs text-gray-300 hover:text-gray-100">
                   <input
                     type="checkbox"
                     checked={localFilters.hasVerifiedTelemetry === true}
@@ -392,13 +411,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       telemetryState: undefined,
                       hasVerifiedTelemetry: event.target.checked ? true : undefined,
                     }))}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
+                    className="ui-checkbox"
                   />
-                  <div>
-                    <div className="text-sm text-gray-200">{t('librarySearch.metahubSaveNodeOnly')}</div>
-                  </div>
+                  <span>{t('librarySearch.metahubSaveNodeOnly')}</span>
                 </label>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="space-y-2.5">
                   {renderNumberRange(t('librarySearch.generationTimeMs'), 'generationTimeMs', { step: '50' })}
                   {renderNumberRange(t('librarySearch.speedItS'), 'stepsPerSecond', { step: '0.1' })}
                   {renderNumberRange(t('librarySearch.vramPeakMb'), 'vramPeakMb', { step: '1' })}

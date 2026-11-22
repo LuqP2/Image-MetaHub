@@ -20,9 +20,11 @@ interface ExploreWorkspaceProps {
   onNavigateToLibrary: () => void;
   /** Opens the model→prompt-overlap picker (the "Match prompts" action on model cards). */
   onFindMatchingPrompts?: (modelName: string) => void;
+  /** When embedded inside the Library view switcher, omit duplicate dimension tabs. */
+  embedded?: boolean;
 }
 
-const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary, onFindMatchingPrompts }) => {
+const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary, onFindMatchingPrompts, embedded = false }) => {
   const { t: tr } = useTranslation();
   const DIMENSIONS: { id: ExploreDimension; label: string; icon: typeof Box }[] = [
     { id: 'models', label: tr('libraryGallery.models'), icon: Box },
@@ -209,35 +211,34 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Dimension selector */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 px-6 py-4">
-        <div className="inline-flex rounded-xl border border-gray-800 bg-gray-900/60 p-1">
+      {/* Dimension selector / contextual action bar */}
+      {(!embedded || exploreDimension === 'clusters' || exploreDimension === 'collections') && (
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-gray-700/50 ${embedded ? 'px-5 py-2.5' : 'px-6 py-3.5'}`}>
+        {!embedded ? (
+        <div className="ui-segmented">
           {DIMENSIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setExploreDimension(id)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                exploreDimension === id
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
+              className={`ui-segmented-item ${exploreDimension === id ? 'ui-segmented-item-active text-accent' : ''}`}
               aria-pressed={exploreDimension === id}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-3.5 w-3.5" />
               {label}
             </button>
           ))}
         </div>
+        ) : <div />}
 
         {exploreDimension === 'clusters' && (
           <button
             type="button"
             onClick={handleGenerateClusters}
             disabled={!canGenerateClusters}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-btn"
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-3.5 w-3.5" />
             {isClustering ? tr('explore.clusteringProgress') : tr('explore.generateClusters')}
           </button>
         )}
@@ -246,12 +247,13 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
           <button
             type="button"
             onClick={() => setIsCreateModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500/40 hover:text-white"
+            className="ui-btn-primary"
           >
-            <FolderOpen className="h-4 w-4" />
+            <FolderOpen className="h-3.5 w-3.5" />
             {tr('explore.newCollection')}</button>
         )}
       </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-6">
         {exploreDimension === 'models' &&
@@ -289,7 +291,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                             onFindMatchingPrompts(entry.name);
                           }
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-accent/50 bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-accent/15"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-accent/50 bg-black/75 px-2.5 py-1 text-[11px] font-semibold text-accent transition-colors hover:border-accent hover:bg-accent/20"
                         title={tr('explore.findMatchingPrompts', { modelName: entry.name })}
                         aria-label={tr('explore.findMatchingPrompts', { modelName: entry.name })}
                       >

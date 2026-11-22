@@ -9,7 +9,7 @@ import { getRenameBasename, renameIndexedImage } from '../services/imageRenameSe
 import { copyImageToClipboard, copyTextToClipboard, showInExplorer } from '../utils/imageUtils';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
-import { AlertTriangle, ArrowLeft, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink, Bookmark } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Ban, Copy, Pencil, Pin, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, SlidersHorizontal, Workflow, Image as ImageIcon, ExternalLink, Bookmark } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -4220,40 +4220,44 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {canEditImage && (
             <>
-              {onOpenImageEditor && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!canUseImageEditor) {
-                      showProModal('image_editor');
-                      return;
-                    }
-                    onOpenImageEditor(liveImage);
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100 dark:hover:border-indigo-400/50 dark:hover:bg-indigo-500/20"
-                >
-                  <ImageIcon className="h-4 w-4" />
-                  {t('imageViewer.navigation.openEditor')}
-                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
-                </button>
-              )}
+              {(onOpenImageEditor || !isAdjustmentPanelOpen) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {onOpenImageEditor && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canUseImageEditor) {
+                          showProModal('image_editor');
+                          return;
+                        }
+                        onOpenImageEditor(liveImage);
+                      }}
+                      className={`ui-btn h-8 ${isAdjustmentPanelOpen ? 'col-span-2' : ''}`}
+                    >
+                      <ImageIcon className="h-3.5 w-3.5 text-gray-400" />
+                      <span className="truncate">{t('imageViewer.navigation.openEditor')}</span>
+                      {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
+                    </button>
+                  )}
 
-              {!isAdjustmentPanelOpen && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!canUseImageEditor) {
-                      showProModal('image_editor');
-                      return;
-                    }
-                    setIsAdjustmentPanelOpen(true);
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 transition-colors hover:border-cyan-400 hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-100 dark:hover:border-cyan-400/50 dark:hover:bg-cyan-500/20"
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                  {translateViewer('imageViewer.details.adjustImage')}
-                  {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
-                </button>
+                  {!isAdjustmentPanelOpen && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canUseImageEditor) {
+                          showProModal('image_editor');
+                          return;
+                        }
+                        setIsAdjustmentPanelOpen(true);
+                      }}
+                      className={`ui-btn h-8 ${!onOpenImageEditor ? 'col-span-2' : ''}`}
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5 text-gray-400" />
+                      <span className="truncate">{translateViewer('imageViewer.details.adjustImage')}</span>
+                      {!canUseDuringTrialOrPro && initialized && <ProBadge size="sm" />}
+                    </button>
+                  )}
+                </div>
               )}
 
               {isAdjustmentPanelOpen && canUseImageEditor && (
@@ -4299,14 +4303,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </motion.button>
                 <div className="h-5 w-px shrink-0 bg-gray-700/70" />
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
+                <div className="h-5 w-px shrink-0 bg-gray-700/70" />
                 <button
                   type="button"
                   onClick={handleToggleRejected}
-                  className={`max-w-full rounded border px-2 py-1 text-xs font-medium ${isRejected ? 'border-amber-500/60 bg-amber-900/30 text-amber-200' : 'border-gray-700 text-gray-400 hover:border-amber-500/60 hover:text-amber-200'}`}
+                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70 ${isRejected ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'text-gray-500 hover:bg-gray-800 hover:text-amber-300'}`}
                   aria-pressed={isRejected}
+                  aria-label={isRejected ? translateViewer('imageViewer.details.rejectedRestore') : translateViewer('imageViewer.details.rejectCandidate')}
                   title={isRejected ? translateViewer('imageViewer.details.restoreCandidate') : translateViewer('imageViewer.details.rejectHint')}
                 >
-                  {isRejected ? translateViewer('imageViewer.details.rejectedRestore') : translateViewer('imageViewer.details.rejectCandidate')}
+                  <Ban className="h-4 w-4" />
                 </button>
               </div>
 
@@ -4328,7 +4334,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   excludedTags={currentTags}
                   suggestionLimit={tagSuggestionLimit}
                   placeholder={t('imageViewer.preview.addTag')}
-                  inputClassName="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                  inputClassName="ui-input"
                   dropdownClassName="absolute z-10 mt-1 max-h-32 w-full overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 shadow-lg"
                   optionClassName="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
                   activeOptionClassName="bg-gray-700 text-white"
@@ -4371,9 +4377,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   </div>
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] uppercase tracking-wider text-purple-300">{t('imageViewer.preview.autoTags')}</p>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">{t('imageViewer.preview.autoTags')}</p>
                     {currentAutoTags.length > 0 && (
                       <button type="button" className="ml-auto text-xs text-gray-400 hover:text-red-400" onClick={() => {
                         if (window.confirm(t('imageViewer.preview.deleteAutoTags'))) void handleRemoveAutoTag();
@@ -4385,7 +4391,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       type="button"
                       onClick={() => void handleAutoTagImage()}
                       disabled={!liveImage.prompt?.trim() || isAutoTagging || requestedAutoTagImageId !== null}
-                      className="text-xs text-purple-300 hover:text-purple-100 disabled:cursor-not-allowed disabled:text-gray-500"
+                      className="text-xs font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:text-gray-500 disabled:no-underline"
                       title={!liveImage.prompt?.trim()
                         ? translateViewer('imageViewer.details.noPromptAutoTag')
                         : currentAutoTags.length > 0
@@ -4402,18 +4408,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   {currentAutoTags.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {currentAutoTags.map(tag => (
-                        <div key={`auto-${tag}`} className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 rounded-full overflow-hidden">
+                        <div key={`auto-${tag}`} className="inline-flex items-center overflow-hidden rounded-md border border-gray-700/70 bg-gray-800/70">
                           <button
                             onClick={() => handlePromoteAutoTag(tag)}
-                            className="px-2 py-0.5 text-purple-300 hover:bg-blue-600/30 hover:text-blue-200 transition-all"
+                            className="px-1.5 py-0.5 text-gray-400 transition-colors hover:bg-accent/20 hover:text-accent"
                             title={translateViewer('imageViewer.details.promoteTag')}
                           >
                             <ArrowUp size={12} />
                           </button>
-                          <span className="text-purple-300 text-xs">{tag}</span>
+                          <span className="px-1 text-xs text-gray-200">{tag}</span>
                           <button
                             onClick={() => handleRemoveAutoTag(tag)}
-                            className="px-2 py-0.5 text-purple-300 hover:bg-red-600/30 hover:text-red-200 transition-all"
+                            className="px-1.5 py-0.5 text-gray-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
                             title={translateViewer('imageViewer.details.removeAutoTag')}
                           >
                             <X size={12} />
@@ -4846,7 +4852,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   setIsGenerateModalOpen(true);
                 }}
                 disabled={canUseA1111 && !effectiveMetadata?.prompt}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="ui-btn-primary h-9 w-full"
               >
                 {isGenerating && canUseA1111 ? (
                   <>
@@ -4957,7 +4963,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }
                   onOpenComfyUIWorkflow?.(generationImage);
                 }}
-                className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="ui-btn-primary mb-2 h-9 w-full"
               >
                 <Workflow className="w-4 h-4" />
                 <span>{translateViewer('imageViewer.details.openComfy')}</span>
