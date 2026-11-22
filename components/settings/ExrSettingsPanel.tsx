@@ -63,7 +63,7 @@ export function ExrSettingsPanel() {
         {downloading && <div role="status" className="space-y-1 text-sm text-gray-300"><p>{status.phase === 'downloading' ? t("settings.general.downloading") : status.phase === 'verifying' ? t("settings.general.verifying") : t("settings.general.installing")} · {Math.round((status.receivedBytes ?? 0) / 1048576)} MB</p><progress className="w-full" value={status.receivedBytes ?? 0} max={status.downloadBytes || 1} /></div>}
       </>}
     </SettingsSectionCard>
-    {profile && settings && api && <details className="rounded-2xl border border-gray-700/80 bg-gray-900/70 p-4 md:p-5">
+    {profile && settings && api && <details className="ui-disclosure rounded-2xl border border-gray-700/80 bg-gray-900/70 p-4 md:p-5">
       <summary className="cursor-pointer text-base font-semibold text-gray-100">{t("settings.general.colorSettings")}</summary>
       <div className="mt-4 space-y-3">
       <label className="block text-sm text-gray-300">{t("settings.general.applyTo")} <select aria-label={t("settings.general.profileScope")} className={`${control} ml-2 max-w-full`} value={scope} onChange={e => setScope(e.target.value)}>

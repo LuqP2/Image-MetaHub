@@ -289,7 +289,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
                             onFindMatchingPrompts(entry.name);
                           }
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/40 bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-500/20"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-accent/50 bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-accent/15"
                         title={tr('explore.findMatchingPrompts', { modelName: entry.name })}
                         aria-label={tr('explore.findMatchingPrompts', { modelName: entry.name })}
                       >

@@ -567,12 +567,12 @@ export const ComparisonSurface: FC<ComparisonModalProps & { onGenerate?: (reques
               </div>
             </div>
 
-            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
+            <div className="rounded-lg border border-accent/60 bg-cyan-500/5 p-3">
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-100">{t('comparison.metadataDelta')}</h3>
               {metadataDifferences.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {metadataDifferences.slice(0, 12).map((field) => (
-                    <span key={field} className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-xs text-cyan-100">
+                    <span key={field} className="rounded-full border border-accent/60 bg-cyan-400/10 px-2 py-1 text-xs text-cyan-100">
                       {Object.hasOwn(metadataLabels, field) ? t(metadataLabels[field]) : getFieldLabel(field)}
                     </span>
                   ))}

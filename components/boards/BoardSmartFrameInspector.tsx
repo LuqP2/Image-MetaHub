@@ -41,7 +41,7 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
     <div className="board-query-identity"><small>{frame.source.kind === 'snapshot' ? t('canvas.snapshotFixedFiles') : t('canvas.dynamicFollows')}{result?.status === 'ready' ? t('canvas.frameImages', { count: result.totalCount }) : ''}</small><label>{t('imageViewer.collection.title')}<input className="board-input" value={frame.title} disabled={!editable} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateObjects(document, [{ id: frame.id, title: event.target.value }]))} /></label></div>
     {error && <p role="alert">{error}</p>}
     <Section title={t('canvas.source')} defaultOpen stateKey={`${boardId}:source`}>
-    <label>{t('canvas.source')}<select className="board-input" disabled={!editable} value={sourceValue} onChange={event => {
+    <label>{t('canvas.source')}<select className="board-select" disabled={!editable} value={sourceValue} onChange={event => {
       const value = event.target.value;
       run(document => reconnectSmartFrameSource(document, frame.id, value === 'library' ? { kind: 'library' } : value.startsWith('frame:') ? { kind: 'frame', frameId: value.slice(6) } : { kind: 'collection', collectionId: value.slice(11) }));
     }}>
@@ -58,9 +58,9 @@ export default function BoardSmartFrameInspector({ boardId, frame, editable }: {
     </Section>
     <Section title={t('shell.filters')} defaultOpen stateKey={`${boardId}:filters`}>
     {frame.groupConstraints.length > 0 && <section aria-label={t('canvas.localGroupFilters')}><h3>{t('canvas.groupFilters')}</h3>
-      {frame.groupConstraints.map((constraint, index) => <div key={index}>
+      {frame.groupConstraints.map((constraint, index) => <div key={index} className="board-chip-row">
         <span title={constraint.kind === 'exact' ? constraint.value : undefined}>{boardGroupingLabel(constraint.dimension, t)}: {boardConstraintLabel(constraint)}</span>
-        <button className="board-button" disabled={!editable} onClick={() => run(document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, position) => position !== index) }]))}>{t('canvas.removeGroupFilter')}</button>
+        <button className="board-button board-button--ghost" disabled={!editable} onClick={() => run(document => updateObjects(document, [{ id: frame.id, groupConstraints: frame.groupConstraints.filter((_, position) => position !== index) }]))}>{t('canvas.removeGroupFilter')}</button>
       </div>)}
     </section>}
     <h3>{t('canvas.localFilters')}</h3>

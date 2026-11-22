@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "Affiche les anciens onglets Vue Modèles, Bibliothèque intelligente, Collections et Vue Nœuds. Ils ouvrent la vue unifiée Explorer plutôt que des écrans distincts.",
   "settings.appearance.system": "Système (par défaut)",
   "settings.appearance.theme": "Thème",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "Utilise Ayu Dark ou Ayu Light selon l'apparence du système.",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "Utilise Dark ou Light selon l’apparence du système.",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "Utilise des animations d'interface discrètes, notamment lors de la réduction et de la restauration des fenêtres modales.",
   "settings.general.applyTo": "Appliquer à",
   "settings.general.autoLinearSrgbIfUnknown": "Auto (sRGB linéaire si inconnu)",

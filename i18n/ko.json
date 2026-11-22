@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "기존 모델 보기, 스마트 라이브러리, 컬렉션 및 노드 보기 탭을 표시합니다. 모든 탭에서 별도 화면 대신 통합된 탐색 화면이 열립니다.",
   "settings.appearance.system": "시스템(기본값)",
   "settings.appearance.theme": "테마",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "시스템 모양에 맞춰 Ayu Dark 또는 Ayu Light를 사용합니다.",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "시스템 모양에 맞춰 Dark 또는 Light를 사용합니다.",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "모달 최소화 및 복원 등 가벼운 인터페이스 애니메이션을 사용합니다.",
   "settings.general.applyTo": "적용 대상",
   "settings.general.autoLinearSrgbIfUnknown": "자동(알 수 없는 경우 선형 sRGB)",

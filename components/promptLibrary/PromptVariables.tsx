@@ -3,8 +3,8 @@ import { useTranslation } from '../../i18n/useTranslation';
 import React, { useId, useState } from 'react';
 import type { PromptVariable } from '../../types';
 import { copyTextToClipboard } from '../../utils/imageUtils';
-export const fieldClass = 'w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-accent focus:outline-none';
-export const buttonClass = 'app-top-pill px-3 py-2 text-xs disabled:opacity-40 disabled:cursor-not-allowed';
+export const fieldClass = 'ui-input';
+export const buttonClass = 'ui-btn';
 export function SuggestedValues({ variable, onChange }: { variable: PromptVariable; onChange: (options: string[]) => void }) {
   const { t } = useTranslation();
   return <label className="block space-y-1 text-xs">
@@ -50,7 +50,7 @@ export function VariableDefinitions({ variables, onChange, disabled = false }: {
       </div>
       <div className="flex flex-wrap items-center gap-2"><code className="text-xs text-accent">{'{{' + v.name + '}}'}</code><button type="button" className={buttonClass} disabled={disabled || !v.name.trim()} onClick={async () => { const response = await copyTextToClipboard('{{' + v.name + '}}'); setCopyStatus(response.success ? 'promptLibrary.placeholderCopied' : response.error || 'promptLibrary.placeholderFailed'); }}>{t('promptLibrary.copyPlaceholder')}</button></div>
       <SuggestedValues variable={v} onChange={options => change(i, { options })} />
-      <details className="space-y-2 text-xs text-gray-400"><summary className="cursor-pointer">{t('promptLibrary.advancedSettings')}</summary>
+      <details className="ui-disclosure space-y-2 text-xs text-gray-400"><summary className="cursor-pointer">{t('promptLibrary.advancedSettings')}</summary>
         <label className="block text-xs">{t('promptLibrary.defaultValue')}<input
             className={fieldClass}
             value={v.defaultValue}

@@ -1,7 +1,7 @@
 export const themeOptions = [
-  { id: 'system', name: 'System (Default)', dark: null, colors: ['#0b0e14', '#e6b450', '#f3f4f6'] },
+  { id: 'system', name: 'System (Default)', dark: null, colors: ['#0b0c0e', '#3b82f6', '#f3f4f6'] },
   { id: 'light', name: 'Light', dark: false, colors: ['#ffffff', '#2563eb', '#111827'] },
-  { id: 'dark', name: 'Dark', dark: true, colors: ['#0a0a0a', '#3b82f6', '#f3f4f6'] },
+  { id: 'dark', name: 'Dark', dark: true, colors: ['#0b0c0e', '#3b82f6', '#f3f4f6'] },
   { id: 'dracula', name: 'Dracula', dark: true, colors: ['#282a36', '#bd93f9', '#f8f8f2'] },
   { id: 'nord', name: 'Nord', dark: true, colors: ['#2e3440', '#88c0d0', '#d8dee9'] },
   { id: 'ocean', name: 'Ocean', dark: true, colors: ['#0f172a', '#38bdf8', '#e2e8f0'] },
@@ -21,6 +21,6 @@ export const themeOptions = [
 export type ThemeId = (typeof themeOptions)[number]['id'];
 
 export const resolveTheme = (theme: ThemeId, systemShouldUseDark: boolean) => {
-  const resolvedId = theme === 'system' ? (systemShouldUseDark ? 'ayu' : 'ayu-light') : theme;
+  const resolvedId = theme === 'system' ? (systemShouldUseDark ? 'dark' : 'light') : theme;
   return { id: resolvedId, dark: themeOptions.find((option) => option.id === resolvedId)?.dark ?? false };
 };

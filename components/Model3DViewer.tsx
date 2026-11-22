@@ -3,7 +3,7 @@ import { formatMessage } from '../i18n/messages.mjs';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { positionModel3DLight } from '../services/model3DLighting';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette, RotateCcw, Sun } from 'lucide-react';
+import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette, RotateCcw, Sun, X } from 'lucide-react';
 import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
 import type { IndexedImage } from '../types';
 import { getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
@@ -367,6 +367,8 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<RuntimeState | null>(null);
   const backgroundUrlRef = useRef<string | null>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
+  const [hasBackgroundImage, setHasBackgroundImage] = useState(false);
   const [preferences, setPreferences] = useState<ViewerPreferences>(loadPreferences);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -728,6 +730,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
       if (backgroundUrlRef.current) {
         URL.revokeObjectURL(backgroundUrlRef.current);
         backgroundUrlRef.current = null;
+        setHasBackgroundImage(false);
       }
     };
   }, [applyMaterialMode, directoryPath, extension, fitCamera, image.contentModifiedMs, image.handle, image.id, image.name, image.lastModified]);
@@ -742,9 +745,12 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
     if (backgroundUrlRef.current) URL.revokeObjectURL(backgroundUrlRef.current);
     backgroundUrlRef.current = file ? URL.createObjectURL(file) : null;
     if (!file) {
+      setHasBackgroundImage(false);
+      if (backgroundInputRef.current) backgroundInputRef.current.value = '';
       runtime.scene.background = new runtime.THREE.Color(preferences.backgroundColor);
       return;
     }
+    setHasBackgroundImage(true);
     const backgroundUrl = backgroundUrlRef.current;
     const texture = await new runtime.THREE.TextureLoader().loadAsync(backgroundUrl);
     if (runtimeRef.current !== runtime || backgroundUrlRef.current !== backgroundUrl) {
@@ -836,12 +842,17 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
           </button>
           <label className={controlButton} title={t('imageViewer.model3d.backgroundColor')}>
             <Palette size={14} />
-            <input type="color" aria-label={t('imageViewer.model3d.backgroundColor')} value={preferences.backgroundColor} onChange={(event) => updatePreference('backgroundColor', event.target.value)} className="h-5 w-6 border-0 bg-transparent p-0" />
+            <input type="color" aria-label={t('imageViewer.model3d.backgroundColor')} value={preferences.backgroundColor} onChange={(event) => { if (hasBackgroundImage) void setBackgroundImage(null); updatePreference('backgroundColor', event.target.value); }} className="h-5 w-6 border-0 bg-transparent p-0" />
           </label>
           <label className={controlButton} title={t('imageViewer.model3d.uploadBackground')}>
             <ImageIcon size={14} /> {t('imageViewer.model3d.background')}
-            <input type="file" aria-label={t('imageViewer.model3d.uploadBackground')} accept="image/*" className="hidden" onChange={(event) => void setBackgroundImage(event.target.files?.[0] || null)} />
+            <input ref={backgroundInputRef} type="file" aria-label={t('imageViewer.model3d.uploadBackground')} accept="image/*" className="hidden" onChange={(event) => void setBackgroundImage(event.target.files?.[0] || null)} />
           </label>
+          {hasBackgroundImage && (
+            <button type="button" className={controlButton} onClick={() => void setBackgroundImage(null)} title={t('libraryGallery.clear')} aria-label={t('libraryGallery.clear')}>
+              <X size={14} />
+            </button>
+          )}
           <label className={controlButton} title={t('imageViewer.model3d.materialMode')}>
             <Box size={14} />
             <select aria-label={t('imageViewer.model3d.materialMode')} value={preferences.materialMode} onChange={(event) => updatePreference('materialMode', event.target.value as MaterialMode)} className="rounded bg-gray-950 text-gray-100 outline-none [color-scheme:dark]">

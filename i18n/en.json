@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "Show the old Model View, Smart Library, Collections and Node View tabs. They open the unified Explore surface — no separate screens.",
   "settings.appearance.system": "System (Default)",
   "settings.appearance.theme": "Theme",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "Uses Ayu Dark or Ayu Light to match your system appearance.",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "Uses Dark or Light to match your system appearance.",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "Use small interface animations, including modal minimize and restore.",
   "settings.general.applyTo": "Apply to",
   "settings.general.autoLinearSrgbIfUnknown": "Auto (Linear sRGB if unknown)",

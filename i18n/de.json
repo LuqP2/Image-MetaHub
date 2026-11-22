@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "Zeigt die alten Tabs „Modellansicht“, „Intelligente Bibliothek“, „Sammlungen“ und „Node-Ansicht“ an. Sie öffnen die einheitliche Ansicht „Entdecken“ statt separater Bildschirme.",
   "settings.appearance.system": "System (Standard)",
   "settings.appearance.theme": "Design",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "Verwendet Ayu Dark oder Ayu Light passend zum Erscheinungsbild Ihres Systems.",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "Verwendet Dark oder Light passend zur Systemdarstellung.",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "Verwendet dezente Oberflächenanimationen, einschließlich Minimieren und Wiederherstellen von Dialogfenstern.",
   "settings.general.applyTo": "Anwenden auf",
   "settings.general.autoLinearSrgbIfUnknown": "Automatisch (Linear sRGB, falls unbekannt)",

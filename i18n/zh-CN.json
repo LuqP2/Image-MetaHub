@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "显示旧版“模型视图”、“智能图库”、“收藏集”和“节点视图”标签页。它们均会打开统一的“探索”界面，而非独立页面。",
   "settings.appearance.system": "跟随系统（默认）",
   "settings.appearance.theme": "主题",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "根据系统外观自动切换 Ayu Dark 或 Ayu Light。",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "根据系统外观自动使用 Dark 或 Light。",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "使用轻量界面动画，包括弹窗的最小化与还原效果。",
   "settings.general.applyTo": "应用于",
   "settings.general.autoLinearSrgbIfUnknown": "自动（未知时使用线性 sRGB）",
