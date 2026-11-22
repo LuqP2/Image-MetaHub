@@ -22,9 +22,11 @@ interface ExploreWorkspaceProps {
   onFindMatchingPrompts?: (modelName: string) => void;
   /** When embedded inside the Library view switcher, omit duplicate dimension tabs. */
   embedded?: boolean;
+  /** Optional leading controls (Library view switcher) rendered inline on the same header row. */
+  leadingControls?: React.ReactNode;
 }
 
-const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary, onFindMatchingPrompts, embedded = false }) => {
+const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary, onFindMatchingPrompts, embedded = false, leadingControls }) => {
   const { t: tr } = useTranslation();
   const DIMENSIONS: { id: ExploreDimension; label: string; icon: typeof Box }[] = [
     { id: 'models', label: tr('libraryGallery.models'), icon: Box },
@@ -212,8 +214,8 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Dimension selector / contextual action bar */}
-      {(!embedded || exploreDimension === 'clusters' || exploreDimension === 'collections') && (
-      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-gray-700/50 ${embedded ? 'px-5 py-2.5' : 'px-6 py-3.5'}`}>
+      {(!embedded || Boolean(leadingControls) || exploreDimension === 'clusters' || exploreDimension === 'collections') && (
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-gray-700/50 ${embedded ? 'px-5 py-2' : 'px-6 py-3.5'}`}>
         {!embedded ? (
         <div className="ui-segmented">
           {DIMENSIONS.map(({ id, label, icon: Icon }) => (
@@ -229,7 +231,7 @@ const ExploreWorkspace: React.FC<ExploreWorkspaceProps> = ({ onNavigateToLibrary
             </button>
           ))}
         </div>
-        ) : <div />}
+        ) : (leadingControls ?? <div />)}
 
         {exploreDimension === 'clusters' && (
           <button

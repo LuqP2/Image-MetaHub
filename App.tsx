@@ -4547,49 +4547,46 @@ export default function App() {
                     }}
                   />
                 )}
-                {!relatedImages && (libraryView === 'library' || libraryView === 'explore') && (
-                  <div className="flex items-center gap-2 border-b border-gray-700/50 bg-gray-900/40 px-5 py-2">
-                    <div className="ui-segmented" role="group" aria-label={t('settings.library.library')}>
-                      <button
-                        type="button"
-                        aria-pressed={libraryView === 'library'}
-                        onClick={() => {
-                          resetLibraryGridScrollPosition();
-                          setLibraryView('library');
-                        }}
-                        className={`ui-segmented-item ${libraryView === 'library' ? 'ui-segmented-item-active text-accent' : ''}`}
-                      >
-                        {t('libraryGallery.all')}
-                      </button>
-                      {([
-                        ['collections', t('libraryGallery.collections')],
-                        ['clusters', t('libraryGallery.clusters')],
-                        ['models', t('libraryGallery.models')],
-                      ] as const).map(([dim, label]) => {
-                        const active = libraryView === 'explore' && exploreDimension === dim;
-                        return (
-                          <button
-                            key={dim}
-                            type="button"
-                            aria-pressed={active}
-                            onClick={() => {
-                              setExploreDimension(dim);
-                              setLibraryView('explore');
-                            }}
-                            className={`ui-segmented-item ${active ? 'ui-segmented-item-active text-accent' : ''}`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
                 {!relatedImages && libraryView === 'library' && (
                   <VisualSearchOnboarding hasImages={safeFilteredImages.length > 0} />
                 )}
                 {!relatedImages && (libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
+                    leadingControls={
+                      libraryView === 'library' ? (
+                        <div className="ui-segmented" role="group" aria-label={t('settings.library.library')}>
+                          <button
+                            type="button"
+                            aria-pressed={true}
+                            onClick={() => {
+                              resetLibraryGridScrollPosition();
+                              setLibraryView('library');
+                            }}
+                            className="ui-segmented-item ui-segmented-item-active text-accent"
+                          >
+                            {t('libraryGallery.all')}
+                          </button>
+                          {([
+                            ['collections', t('libraryGallery.collections')],
+                            ['clusters', t('libraryGallery.clusters')],
+                            ['models', t('libraryGallery.models')],
+                          ] as const).map(([dim, label]) => (
+                            <button
+                              key={dim}
+                              type="button"
+                              aria-pressed={false}
+                              onClick={() => {
+                                setExploreDimension(dim);
+                                setLibraryView('explore');
+                              }}
+                              className="ui-segmented-item"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : undefined
+                    }
                     canvasAction={window.electronAPI && libraryView === 'library' ? libraryCanvas.action : undefined}
                     isLibraryView={libraryView === 'library'}
                     onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
@@ -4839,6 +4836,39 @@ export default function App() {
                 ) : libraryView === 'explore' ? (
                   <ExploreWorkspace
                     embedded
+                    leadingControls={
+                      <div className="ui-segmented" role="group" aria-label={t('settings.library.library')}>
+                        <button
+                          type="button"
+                          aria-pressed={false}
+                          onClick={() => {
+                            resetLibraryGridScrollPosition();
+                            setLibraryView('library');
+                          }}
+                          className="ui-segmented-item"
+                        >
+                          {t('libraryGallery.all')}
+                        </button>
+                        {([
+                          ['collections', t('libraryGallery.collections')],
+                          ['clusters', t('libraryGallery.clusters')],
+                          ['models', t('libraryGallery.models')],
+                        ] as const).map(([dim, label]) => {
+                          const active = exploreDimension === dim;
+                          return (
+                            <button
+                              key={dim}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => setExploreDimension(dim)}
+                              className={`ui-segmented-item ${active ? 'ui-segmented-item-active text-accent' : ''}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    }
                     onNavigateToLibrary={() => {
                       resetLibraryGridScrollPosition();
                       setLibraryView('library');
