@@ -71,6 +71,7 @@ import ImageLineageSection from './ImageLineageSection';
 import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
+import { TeamReviewPanel } from './team/TeamReviewPanel';
 import TagInputCombobox from './TagInputCombobox';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
@@ -4315,6 +4316,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <Ban className="h-4 w-4" />
                 </button>
               </div>
+
+              <TeamReviewPanel image={image} directories={directories} />
 
               {/* Tags Pills */}
               <div className="space-y-2">

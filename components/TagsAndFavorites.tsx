@@ -1,6 +1,7 @@
 import { useTranslation } from '../i18n/useTranslation';
 import LibraryRatingFilter from './LibraryRatingFilter';
 import LibraryFavoriteFilter from './LibraryFavoriteFilter';
+import { TeamReviewFilter } from './team/TeamReviewFilter';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -443,6 +444,7 @@ const TagsAndFavorites: React.FC = () => {
           >
             <div className="px-4 pb-4 space-y-3">
               <LibraryRatingFilter selectedRatings={selectedRatings} onChange={setSelectedRatings} counts={quickRatingCounts} />
+              <TeamReviewFilter />
 
               {/* Favorites Toggle */}
               {totalFavoriteCount > 0 && (

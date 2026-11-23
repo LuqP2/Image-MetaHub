@@ -119,6 +119,13 @@ export type TeamOpEvent =
   | TeamSetShadowPatchOp
   | TeamAssetMovedOp;
 
+export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+export type TeamOpInput = DistributiveOmit<
+  TeamOpEvent,
+  'opId' | 'workspaceId' | 'deviceId' | 'lamportClock' | 'createdAt'
+>;
+
 /**
  * Immutable write-once batch file stored in `.imh-team/ops/<deviceId>/<seq>-<shortHash>.json`.
  * Never modified after creation to stay safe on NAS/SMB, Dropbox, Google Drive, and Syncthing.

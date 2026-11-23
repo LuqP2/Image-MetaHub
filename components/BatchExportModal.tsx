@@ -11,6 +11,8 @@ import {
 } from '../types';
 import { getUnsupportedModel3DBatchExportError } from '../utils/model3DTransfer';
 import { getRelativeImagePath } from '../utils/imagePaths';
+import { useTeamWorkspaceStore } from '../store/useTeamWorkspaceStore';
+import { filterApprovedDeliveryImages } from '../services/team/reviewService';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -97,6 +99,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [output, setOutput] = useState<BatchOutput>('folder');
   const [metadataPolicy, setMetadataPolicy] = useState<MetadataExportPolicy>('preserve');
   const [applyShadowEdits, setApplyShadowEdits] = useState(true);
+  const [approvedOnly, setApprovedOnly] = useState(false);
+  const teamWorkspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
+  const teamAssetStatesByWorkspace = useTeamWorkspaceStore((state) => state.assetStatesByWorkspace);
+  const hasActiveTeamWorkspace = Object.keys(teamWorkspacesById).length > 0;
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<ExportStatus | null>(null);
   const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
@@ -128,6 +134,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setOutput('folder');
       setMetadataPolicy('preserve');
       setApplyShadowEdits(true);
+      setApprovedOnly(false);
       setProgress(null);
       setActiveExportId(null);
       setExportPath(null);
@@ -140,8 +147,15 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     activeExportIdRef.current = activeExportId;
   }, [activeExportId]);
 
-  const exportCount = source === 'selected' ? selectedImages.length : filteredImages.length;
-  const imagesToExport = source === 'selected' ? selectedImages : filteredImages;
+  const baseImagesToExport = source === 'selected' ? selectedImages : filteredImages;
+  const approvedImagesInSource = useMemo(
+    () => (hasActiveTeamWorkspace
+      ? filterApprovedDeliveryImages(baseImagesToExport, directories, teamWorkspacesById, teamAssetStatesByWorkspace)
+      : []),
+    [hasActiveTeamWorkspace, baseImagesToExport, directories, teamWorkspacesById, teamAssetStatesByWorkspace],
+  );
+  const imagesToExport = approvedOnly && hasActiveTeamWorkspace ? approvedImagesInSource : baseImagesToExport;
+  const exportCount = imagesToExport.length;
   const unsupportedRewriteCount = useMemo(() => (
     imagesToExport.filter((image) => {
       const ext = image.name.includes('.') ? image.name.slice(image.name.lastIndexOf('.')).toLowerCase() : '';
@@ -403,6 +417,28 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <p className="text-xs text-amber-300/90">
                 {t('batchExport.selectionNotice')}
               </p>
+            )}
+            {hasActiveTeamWorkspace && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-3 py-2 text-xs">
+                <label className="flex items-center gap-2 text-emerald-100 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={approvedOnly}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setApprovedOnly(next);
+                      if (next) {
+                        setMetadataPolicy('strip');
+                      }
+                    }}
+                    className="rounded border-emerald-600 bg-gray-900 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <span>Client Delivery Pack — Approved only ({approvedImagesInSource.length})</span>
+                </label>
+                {approvedOnly && (
+                  <span className="text-[11px] text-emerald-300">Metadata stripped</span>
+                )}
+              </div>
             )}
           </div>
 

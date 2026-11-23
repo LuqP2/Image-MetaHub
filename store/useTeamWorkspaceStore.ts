@@ -4,6 +4,7 @@ import type {
   TeamAssetState,
   TeamMemberProfile,
   TeamOpEvent,
+  TeamOpInput,
   TeamWorkspaceSummary,
   WorkspaceAssetIdentity,
 } from '../services/team/teamWorkspaceTypes';
@@ -21,9 +22,11 @@ interface TeamWorkspaceStoreState {
   workspacesById: Record<string, TeamWorkspaceSummary>;
   assetStatesByWorkspace: Record<string, Record<string, TeamAssetState>>;
   syncingWorkspaceIds: Record<string, boolean>;
+  reviewStatusFilter: 'all' | 'approved' | 'needs_changes' | 'in_review' | 'rejected' | 'conflict' | 'unreviewed';
   error: string | null;
 
   initialize: () => Promise<void>;
+  setReviewStatusFilter: (filter: 'all' | 'approved' | 'needs_changes' | 'in_review' | 'rejected' | 'conflict' | 'unreviewed') => void;
   detectWorkspace: (rootPath: string) => Promise<{ manifest: TeamWorkspaceSummary['manifest']; rootPath: string } | null>;
   initWorkspace: (rootPath: string, name?: string) => Promise<TeamWorkspaceSummary | null>;
   openWorkspace: (rootPath: string) => Promise<TeamWorkspaceSummary | null>;
@@ -31,7 +34,7 @@ interface TeamWorkspaceStoreState {
   updateProfile: (profile: Partial<Pick<TeamMemberProfile, 'displayName' | 'initials' | 'color'>>) => Promise<TeamMemberProfile | null>;
   syncNow: (workspaceId?: string) => Promise<void>;
   refreshWorkspaceOps: (workspaceId: string) => Promise<void>;
-  queueOp: (workspaceId: string, op: Omit<TeamOpEvent, 'opId' | 'workspaceId' | 'deviceId' | 'lamportClock' | 'createdAt'>, flushNow?: boolean) => Promise<TeamOpEvent | null>;
+  queueOp: (workspaceId: string, op: TeamOpInput, flushNow?: boolean) => Promise<TeamOpEvent | null>;
   upsertAssetIdentities: (workspaceId: string, identities: WorkspaceAssetIdentity[]) => Promise<void>;
   getWorkspaceForRootPath: (rootPath: string) => TeamWorkspaceSummary | null;
 }
@@ -56,7 +59,10 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
   workspacesById: {},
   assetStatesByWorkspace: {},
   syncingWorkspaceIds: {},
+  reviewStatusFilter: 'all',
   error: null,
+
+  setReviewStatusFilter: (reviewStatusFilter) => set({ reviewStatusFilter }),
 
   initialize: async () => {
     const bridge = typeof window !== 'undefined' ? window.electronAPI?.team : undefined;

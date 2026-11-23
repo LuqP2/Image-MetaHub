@@ -24,6 +24,7 @@ import ImageLineageSection from './ImageLineageSection';
 import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
+import { TeamReviewPanel } from './team/TeamReviewPanel';
 import TagInputCombobox from './TagInputCombobox';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getRecentTagChips } from '../utils/tagSuggestions';
@@ -688,6 +689,8 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               <div className="h-5 w-px bg-gray-700/70" />
               <RatingStars rating={activeImage.rating ?? null} onChange={handleSetRating} size={16} />
             </div>
+
+            <TeamReviewPanel image={activeImage} directories={directories} />
 
             {/* Tags Pills */}
             <div className="space-y-2">
