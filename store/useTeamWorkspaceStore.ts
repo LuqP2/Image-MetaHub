@@ -2,9 +2,16 @@ import { create } from 'zustand';
 import { reduceTeamOps } from '../services/team/teamOpsReducer';
 import type {
   TeamAssetState,
+  TeamBoardEnvelope,
+  TeamBoardSaveResult,
+  TeamBoardSummary,
+  TeamExpectedModelEntry,
   TeamMemberProfile,
+  TeamModelsManifest,
   TeamOpEvent,
   TeamOpInput,
+  TeamSharedPrompt,
+  TeamSharedPromptInput,
   TeamWorkspaceSummary,
   WorkspaceAssetIdentity,
 } from '../services/team/teamWorkspaceTypes';
@@ -21,6 +28,9 @@ interface TeamWorkspaceStoreState {
   localProfile: TeamMemberProfile | null;
   workspacesById: Record<string, TeamWorkspaceSummary>;
   assetStatesByWorkspace: Record<string, Record<string, TeamAssetState>>;
+  teamPromptsByWorkspace: Record<string, TeamSharedPrompt[]>;
+  teamBoardsByWorkspace: Record<string, TeamBoardSummary[]>;
+  modelsManifestByWorkspace: Record<string, TeamModelsManifest | null>;
   syncingWorkspaceIds: Record<string, boolean>;
   reviewStatusFilter: 'all' | 'approved' | 'needs_changes' | 'in_review' | 'rejected' | 'conflict' | 'unreviewed';
   error: string | null;
@@ -36,6 +46,13 @@ interface TeamWorkspaceStoreState {
   refreshWorkspaceOps: (workspaceId: string) => Promise<void>;
   queueOp: (workspaceId: string, op: TeamOpInput, flushNow?: boolean) => Promise<TeamOpEvent | null>;
   upsertAssetIdentities: (workspaceId: string, identities: WorkspaceAssetIdentity[]) => Promise<void>;
+  refreshTeamResources: (workspaceId: string) => Promise<void>;
+  saveTeamPrompt: (workspaceId: string, prompt: TeamSharedPromptInput) => Promise<TeamSharedPrompt | null>;
+  deleteTeamPrompt: (workspaceId: string, promptId: string) => Promise<boolean>;
+  loadTeamBoard: (workspaceId: string, boardId: string) => Promise<TeamBoardEnvelope | null>;
+  saveTeamBoard: (args: { workspaceId: string; boardId?: string; name: string; document: Record<string, unknown>; expectedRevision?: number; expectedHash?: string | null; forceOverwrite?: boolean }) => Promise<TeamBoardSaveResult | null>;
+  deleteTeamBoard: (workspaceId: string, boardId: string) => Promise<boolean>;
+  writeModelsManifest: (workspaceId: string, models: TeamExpectedModelEntry[]) => Promise<TeamModelsManifest | null>;
   getWorkspaceForRootPath: (rootPath: string) => TeamWorkspaceSummary | null;
 }
 
@@ -58,6 +75,9 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
   localProfile: null,
   workspacesById: {},
   assetStatesByWorkspace: {},
+  teamPromptsByWorkspace: {},
+  teamBoardsByWorkspace: {},
+  modelsManifestByWorkspace: {},
   syncingWorkspaceIds: {},
   reviewStatusFilter: 'all',
   error: null,
@@ -81,6 +101,7 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
           localProfile: summary.localProfile,
         }));
         void get().refreshWorkspaceOps(summary.manifest.workspaceId);
+        void get().refreshTeamResources(summary.manifest.workspaceId);
       });
     }
 
@@ -103,7 +124,10 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
       error: null,
     });
 
-    await Promise.all(Object.keys(workspacesById).map((id) => get().refreshWorkspaceOps(id)));
+    await Promise.all(Object.keys(workspacesById).map(async (id) => {
+      await get().refreshWorkspaceOps(id);
+      await get().refreshTeamResources(id);
+    }));
   },
 
   detectWorkspace: async (rootPath) => {
@@ -128,6 +152,7 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
       error: null,
     }));
     await get().refreshWorkspaceOps(summary.manifest.workspaceId);
+    await get().refreshTeamResources(summary.manifest.workspaceId);
     return summary;
   },
 
@@ -146,6 +171,7 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
       error: null,
     }));
     await get().refreshWorkspaceOps(summary.manifest.workspaceId);
+    await get().refreshTeamResources(summary.manifest.workspaceId);
     return summary;
   },
 
@@ -185,7 +211,10 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
     });
     try {
       await bridge.syncNow(workspaceId);
-      await Promise.all(targetIds.map((id) => get().refreshWorkspaceOps(id)));
+      await Promise.all(targetIds.map(async (id) => {
+        await get().refreshWorkspaceOps(id);
+        await get().refreshTeamResources(id);
+      }));
     } finally {
       set((state) => {
         const next = { ...state.syncingWorkspaceIds };
@@ -227,6 +256,96 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
     const bridge = window.electronAPI?.team;
     if (!bridge) return;
     await bridge.upsertAssetIdentities({ workspaceId, identities });
+  },
+
+  refreshTeamResources: async (workspaceId) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return;
+    const [promptsRes, boardsRes, manifestRes] = await Promise.all([
+      bridge.listPrompts(workspaceId),
+      bridge.listBoards(workspaceId),
+      bridge.readModelsManifest(workspaceId),
+    ]);
+    set((state) => ({
+      teamPromptsByWorkspace: promptsRes.success && Array.isArray(promptsRes.data)
+        ? { ...state.teamPromptsByWorkspace, [workspaceId]: promptsRes.data }
+        : state.teamPromptsByWorkspace,
+      teamBoardsByWorkspace: boardsRes.success && Array.isArray(boardsRes.data)
+        ? { ...state.teamBoardsByWorkspace, [workspaceId]: boardsRes.data }
+        : state.teamBoardsByWorkspace,
+      modelsManifestByWorkspace: manifestRes.success
+        ? { ...state.modelsManifestByWorkspace, [workspaceId]: manifestRes.data ?? null }
+        : state.modelsManifestByWorkspace,
+    }));
+  },
+
+  saveTeamPrompt: async (workspaceId, prompt) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return null;
+    const res = await bridge.savePrompt({ workspaceId, prompt });
+    if (!res.success || !res.data) {
+      set({ error: res.error || 'Failed to save team prompt.' });
+      return null;
+    }
+    await get().refreshTeamResources(workspaceId);
+    return res.data;
+  },
+
+  deleteTeamPrompt: async (workspaceId, promptId) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return false;
+    const res = await bridge.deletePrompt({ workspaceId, promptId });
+    if (res.success && res.data?.deleted) {
+      await get().refreshTeamResources(workspaceId);
+      return true;
+    }
+    return false;
+  },
+
+  loadTeamBoard: async (workspaceId, boardId) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return null;
+    const res = await bridge.loadBoard({ workspaceId, boardId });
+    return res.success ? (res.data ?? null) : null;
+  },
+
+  saveTeamBoard: async (args) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return null;
+    const res = await bridge.saveBoard(args);
+    if (!res.success || !res.data) {
+      set({ error: res.error || 'Failed to save team board.' });
+      return null;
+    }
+    if (res.data.saved) {
+      await get().refreshTeamResources(args.workspaceId);
+    }
+    return res.data;
+  },
+
+  deleteTeamBoard: async (workspaceId, boardId) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return false;
+    const res = await bridge.deleteBoard({ workspaceId, boardId });
+    if (res.success && res.data?.deleted) {
+      await get().refreshTeamResources(workspaceId);
+      return true;
+    }
+    return false;
+  },
+
+  writeModelsManifest: async (workspaceId, models) => {
+    const bridge = window.electronAPI?.team;
+    if (!bridge) return null;
+    const res = await bridge.writeModelsManifest({ workspaceId, models });
+    if (!res.success || !res.data) {
+      set({ error: res.error || 'Failed to write project models manifest.' });
+      return null;
+    }
+    set((state) => ({
+      modelsManifestByWorkspace: { ...state.modelsManifestByWorkspace, [workspaceId]: res.data! },
+    }));
+    return res.data;
   },
 
   getWorkspaceForRootPath: (rootPath) => {

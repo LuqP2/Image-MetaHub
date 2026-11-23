@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw, Users, FolderCheck, X } from 'lucide-react';
 import { useTeamWorkspaceStore } from '../../store/useTeamWorkspaceStore';
+import { TeamSharedResourcesTabs } from './TeamSharedResourcesTabs';
 
 interface TeamWorkspaceModalProps {
   isOpen: boolean;
@@ -89,7 +90,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 text-gray-100 shadow-2xl">
+      <div className={`w-full ${activeWorkspace ? 'max-w-xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 text-gray-100 shadow-2xl`}>
         <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-blue-400" />
@@ -211,6 +212,8 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
               >
                 Save profile
               </button>
+
+              <TeamSharedResourcesTabs workspaceId={activeWorkspace.manifest.workspaceId} />
             </div>
           )}
 

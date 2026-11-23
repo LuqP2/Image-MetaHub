@@ -32,6 +32,26 @@ function defaultColorForDevice(deviceId) {
   return PROFILE_COLORS[Math.abs(hash) % PROFILE_COLORS.length];
 }
 
+function sanitizeSafeId(value, fallbackPrefix) {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 80);
+  return cleaned || `${fallbackPrefix}-${crypto.randomUUID()}`;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hashCanonical(value) {
+  return crypto.createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
 async function writeJsonAtomic(filePath, data) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp.${crypto.randomBytes(6).toString('hex')}`;
@@ -470,6 +490,219 @@ export class TeamWorkspaceService {
       .filter(Boolean);
   }
 
+  // --- Phase 3: Shared Team Prompt Library (.imh-team/prompts/<id>.json) ---
+
+  async listTeamPrompts(workspaceId) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const promptsDir = path.join(active.rootPath, TEAM_DIR_NAME, 'prompts');
+    if (!fs.existsSync(promptsDir)) return [];
+
+    const files = (await fsp.readdir(promptsDir))
+      .filter((name) => name.endsWith('.json') && !name.includes('.tmp.') && !name.includes('conflicted copy'));
+
+    const prompts = [];
+    for (const file of files) {
+      const parsed = await readJsonSafe(path.join(promptsDir, file));
+      if (parsed && typeof parsed.id === 'string' && typeof parsed.positivePrompt === 'string') {
+        prompts.push(parsed);
+      }
+    }
+    return prompts.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  }
+
+  async saveTeamPrompt(workspaceId, input) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+
+    const promptId = sanitizeSafeId(input?.id, 'prompt');
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'prompts', `${promptId}.json`);
+    const existing = await readJsonSafe(filePath);
+    const nowIso = new Date().toISOString();
+
+    const record = {
+      id: promptId,
+      workspaceId,
+      title: String(input?.title || 'Untitled Prompt').trim().slice(0, 120) || 'Untitled Prompt',
+      positivePrompt: String(input?.positivePrompt || ''),
+      negativePrompt: String(input?.negativePrompt || ''),
+      tags: Array.isArray(input?.tags)
+        ? Array.from(new Set(input.tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean)))
+        : [],
+      category: typeof input?.category === 'string' && input.category.trim() ? input.category.trim() : null,
+      revision: Number(existing?.revision ?? 0) + 1,
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso,
+      updatedByDeviceId: this.localProfile.deviceId,
+      updatedByName: this.localProfile.displayName,
+      sourceRelativePath: typeof input?.sourceRelativePath === 'string' ? input.sourceRelativePath : null,
+    };
+
+    await writeJsonAtomic(filePath, record);
+    this.#notifyUpdated(workspaceId);
+    return record;
+  }
+
+  async deleteTeamPrompt(workspaceId, promptId) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const safeId = sanitizeSafeId(promptId, 'prompt');
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'prompts', `${safeId}.json`);
+    try {
+      await fsp.unlink(filePath);
+      this.#notifyUpdated(workspaceId);
+      return { id: safeId, deleted: true };
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { id: safeId, deleted: false };
+      throw error;
+    }
+  }
+
+  // --- Phase 3: Shared Team Canvas Boards (.imh-team/boards/<id>.imhboard.json) ---
+  // Uses optimistic revision + contentHash concurrency (no TTL locks).
+
+  async listTeamBoards(workspaceId) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const boardsDir = path.join(active.rootPath, TEAM_DIR_NAME, 'boards');
+    if (!fs.existsSync(boardsDir)) return [];
+
+    const files = (await fsp.readdir(boardsDir))
+      .filter((name) => name.endsWith('.imhboard.json') && !name.includes('.tmp.') && !name.includes('conflicted copy'));
+
+    const summaries = [];
+    for (const file of files) {
+      const parsed = await readJsonSafe(path.join(boardsDir, file));
+      if (parsed && parsed.format === 'image-metahub-team-board' && typeof parsed.boardId === 'string') {
+        summaries.push({
+          boardId: parsed.boardId,
+          workspaceId: parsed.workspaceId,
+          name: parsed.name,
+          revision: parsed.revision,
+          contentHash: parsed.contentHash,
+          updatedAt: parsed.updatedAt,
+          updatedByDeviceId: parsed.updatedByDeviceId,
+          updatedByName: parsed.updatedByName,
+        });
+      }
+    }
+    return summaries.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  }
+
+  async loadTeamBoard(workspaceId, boardId) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const safeId = sanitizeSafeId(boardId, 'board');
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'boards', `${safeId}.imhboard.json`);
+    const parsed = await readJsonSafe(filePath);
+    if (!parsed || parsed.format !== 'image-metahub-team-board') {
+      return null;
+    }
+    return parsed;
+  }
+
+  async saveTeamBoard(workspaceId, { boardId, name, document, expectedRevision = 0, expectedHash = null, forceOverwrite = false }) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+
+    const safeId = sanitizeSafeId(boardId, 'board');
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'boards', `${safeId}.imhboard.json`);
+    const current = await readJsonSafe(filePath);
+
+    if (current && current.format === 'image-metahub-team-board' && !forceOverwrite) {
+      const revisionMismatch = Number(current.revision) !== Number(expectedRevision);
+      const hashMismatch = Boolean(expectedHash && current.contentHash && current.contentHash !== expectedHash);
+      if (revisionMismatch || hashMismatch) {
+        return {
+          saved: false,
+          conflict: true,
+          remote: current,
+        };
+      }
+    }
+
+    const nextRevision = Number(current?.revision ?? 0) + 1;
+    const contentHash = hashCanonical(document ?? {});
+    const nowIso = new Date().toISOString();
+
+    const envelope = {
+      format: 'image-metahub-team-board',
+      schemaVersion: TEAM_SCHEMA_VERSION,
+      boardId: safeId,
+      workspaceId,
+      name: String(name || 'Team Board').trim().slice(0, 120) || 'Team Board',
+      revision: nextRevision,
+      contentHash,
+      updatedAt: nowIso,
+      updatedByDeviceId: this.localProfile.deviceId,
+      updatedByName: this.localProfile.displayName,
+      document: document ?? {},
+    };
+
+    await writeJsonAtomic(filePath, envelope);
+    this.#notifyUpdated(workspaceId);
+    return { saved: true, conflict: false, envelope };
+  }
+
+  async deleteTeamBoard(workspaceId, boardId) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const safeId = sanitizeSafeId(boardId, 'board');
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'boards', `${safeId}.imhboard.json`);
+    try {
+      await fsp.unlink(filePath);
+      this.#notifyUpdated(workspaceId);
+      return { boardId: safeId, deleted: true };
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { boardId: safeId, deleted: false };
+      throw error;
+    }
+  }
+
+  // --- Phase 3: Team Project Models Manifest (.imh-team/manifest/expected-models.json) ---
+
+  async readModelsManifest(workspaceId) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'manifest', 'expected-models.json');
+    const parsed = await readJsonSafe(filePath);
+    if (!parsed || !Array.isArray(parsed.models)) {
+      return null;
+    }
+    return parsed;
+  }
+
+  async writeModelsManifest(workspaceId, models) {
+    const active = this.activeWorkspaces.get(workspaceId);
+    if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
+    const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'manifest', 'expected-models.json');
+    const sanitized = Array.isArray(models)
+      ? models
+          .filter((m) => m && typeof m.name === 'string' && m.name.trim())
+          .map((m) => ({
+            name: m.name.trim(),
+            type: typeof m.type === 'string' && m.type.trim() ? m.type.trim() : 'checkpoint',
+            sha256: typeof m.sha256 === 'string' && m.sha256.trim() ? m.sha256.trim().toLowerCase() : null,
+            civitaiUrl: typeof m.civitaiUrl === 'string' && m.civitaiUrl.trim() ? m.civitaiUrl.trim() : null,
+            huggingFaceUrl: typeof m.huggingFaceUrl === 'string' && m.huggingFaceUrl.trim() ? m.huggingFaceUrl.trim() : null,
+            notes: typeof m.notes === 'string' && m.notes.trim() ? m.notes.trim() : null,
+          }))
+      : [];
+
+    const manifest = {
+      schemaVersion: TEAM_SCHEMA_VERSION,
+      workspaceId,
+      updatedAt: new Date().toISOString(),
+      updatedByDeviceId: this.localProfile.deviceId,
+      updatedByName: this.localProfile.displayName,
+      models: sanitized,
+    };
+
+    await writeJsonAtomic(filePath, manifest);
+    this.#notifyUpdated(workspaceId);
+    return manifest;
+  }
+
   async reconcileAllActive() {
     const results = [];
     for (const workspaceId of this.activeWorkspaces.keys()) {
@@ -518,6 +751,9 @@ export class TeamWorkspaceService {
       const watchTargets = [
         path.join(active.rootPath, TEAM_DIR_NAME, 'ops'),
         path.join(active.rootPath, TEAM_DIR_NAME, 'members'),
+        path.join(active.rootPath, TEAM_DIR_NAME, 'prompts'),
+        path.join(active.rootPath, TEAM_DIR_NAME, 'boards'),
+        path.join(active.rootPath, TEAM_DIR_NAME, 'manifest'),
       ];
       try {
         active.watcher = chokidar.watch(watchTargets, {

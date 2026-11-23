@@ -508,6 +508,15 @@ export interface ElectronAPI {
     listOps: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamOpEvent[]; code?: string; error?: string }>;
     listAssetIdentities: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').WorkspaceAssetIdentity[]; code?: string; error?: string }>;
     upsertAssetIdentities: (args: { workspaceId: string; identities: import('./services/team/teamWorkspaceTypes').WorkspaceAssetIdentity[] }) => Promise<{ success: boolean; data?: null; code?: string; error?: string }>;
+    listPrompts: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamSharedPrompt[]; code?: string; error?: string }>;
+    savePrompt: (args: { workspaceId: string; prompt: import('./services/team/teamWorkspaceTypes').TeamSharedPromptInput }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamSharedPrompt; code?: string; error?: string }>;
+    deletePrompt: (args: { workspaceId: string; promptId: string }) => Promise<{ success: boolean; data?: { id: string; deleted: boolean }; code?: string; error?: string }>;
+    listBoards: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamBoardSummary[]; code?: string; error?: string }>;
+    loadBoard: (args: { workspaceId: string; boardId: string }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamBoardEnvelope | null; code?: string; error?: string }>;
+    saveBoard: (args: { workspaceId: string; boardId?: string; name: string; document: Record<string, unknown>; expectedRevision?: number; expectedHash?: string | null; forceOverwrite?: boolean }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamBoardSaveResult; code?: string; error?: string }>;
+    deleteBoard: (args: { workspaceId: string; boardId: string }) => Promise<{ success: boolean; data?: { boardId: string; deleted: boolean }; code?: string; error?: string }>;
+    readModelsManifest: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamModelsManifest | null; code?: string; error?: string }>;
+    writeModelsManifest: (args: { workspaceId: string; models: import('./services/team/teamWorkspaceTypes').TeamExpectedModelEntry[] }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamModelsManifest; code?: string; error?: string }>;
     onWorkspaceUpdated: (callback: (summary: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary) => void) => () => void;
   };
   boardsPickExternalFile?: (input: string | { boardId: string; defaultPath?: string }) => Promise<import('./services/boards/types').BoardApiResult<string | null>>;
@@ -519,6 +528,7 @@ export interface ElectronAPI {
   boardsReadMediaMetadata?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<{ video?: any; audio?: any }>>;
   boardsReadModel3DMetadata?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<any>>;
   boardsGenerateThumbnail?: (input: { boardId: string; filePath: string; maxEdge?: number; quality?: number }) => Promise<import('./services/boards/types').BoardApiResult<{ data: Uint8Array | ArrayBuffer; mimeType: string }>>;
+  boardsExrInspect?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/exr/contracts').ExrAssetInfo>>;
   boardsExrPreview?: (input: { boardId: string; request: import('./services/exr/contracts').ExrPreviewRequest }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/exr/contracts').ExrPreviewResult>>;
   boardsLinkPreview?: (url: string) => Promise<import('./services/boards/types').BoardApiResult<{ title: string; imageData?: string }>>;
   boardsFonts?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;

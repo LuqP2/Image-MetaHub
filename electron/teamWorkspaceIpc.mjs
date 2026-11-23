@@ -55,6 +55,15 @@ export function registerTeamWorkspaceIpc({ ipcMain, app, getMainWindow, logger =
   register('team:list-ops', (workspaceId) => service.listOps(workspaceId));
   register('team:list-asset-identities', (workspaceId) => service.listAssetIdentities(workspaceId));
   register('team:upsert-asset-identities', (args) => service.upsertAssetIdentities(args.workspaceId, args.identities));
+  register('team:list-prompts', (workspaceId) => service.listTeamPrompts(workspaceId));
+  register('team:save-prompt', (args) => service.saveTeamPrompt(args.workspaceId, args.prompt));
+  register('team:delete-prompt', (args) => service.deleteTeamPrompt(args.workspaceId, args.promptId));
+  register('team:list-boards', (workspaceId) => service.listTeamBoards(workspaceId));
+  register('team:load-board', (args) => service.loadTeamBoard(args.workspaceId, args.boardId));
+  register('team:save-board', (args) => service.saveTeamBoard(args.workspaceId, args));
+  register('team:delete-board', (args) => service.deleteTeamBoard(args.workspaceId, args.boardId));
+  register('team:read-models-manifest', (workspaceId) => service.readModelsManifest(workspaceId));
+  register('team:write-models-manifest', (args) => service.writeModelsManifest(args.workspaceId, args.models));
 
   return {
     service,

@@ -342,6 +342,7 @@ const electronAPI = {
   boardsReadMediaMetadata: (input) => ipcRenderer.invoke('boards:read-media-metadata', input),
   boardsReadModel3DMetadata: (input) => ipcRenderer.invoke('boards:read-model3d-metadata', input),
   boardsGenerateThumbnail: (input) => ipcRenderer.invoke('boards:generate-thumbnail', input),
+  boardsExrInspect: (input) => ipcRenderer.invoke('boards:exr-inspect', input),
   boardsExrPreview: (input) => ipcRenderer.invoke('boards:exr-preview', input),
   boardsLinkPreview: (url) => ipcRenderer.invoke('boards:link-preview', url),
   boardsFonts: () => ipcRenderer.invoke('boards:fonts'),
@@ -544,6 +545,15 @@ const electronAPI = {
     listOps: (workspaceId) => ipcRenderer.invoke('team:list-ops', workspaceId),
     listAssetIdentities: (workspaceId) => ipcRenderer.invoke('team:list-asset-identities', workspaceId),
     upsertAssetIdentities: (args) => ipcRenderer.invoke('team:upsert-asset-identities', args),
+    listPrompts: (workspaceId) => ipcRenderer.invoke('team:list-prompts', workspaceId),
+    savePrompt: (args) => ipcRenderer.invoke('team:save-prompt', args),
+    deletePrompt: (args) => ipcRenderer.invoke('team:delete-prompt', args),
+    listBoards: (workspaceId) => ipcRenderer.invoke('team:list-boards', workspaceId),
+    loadBoard: (args) => ipcRenderer.invoke('team:load-board', args),
+    saveBoard: (args) => ipcRenderer.invoke('team:save-board', args),
+    deleteBoard: (args) => ipcRenderer.invoke('team:delete-board', args),
+    readModelsManifest: (workspaceId) => ipcRenderer.invoke('team:read-models-manifest', workspaceId),
+    writeModelsManifest: (args) => ipcRenderer.invoke('team:write-models-manifest', args),
     onWorkspaceUpdated: (callback) => {
       const listener = (_event, summary) => callback(summary);
       ipcRenderer.on('team-workspace-updated', listener);

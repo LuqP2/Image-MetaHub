@@ -205,3 +205,73 @@ export interface TeamWorkspaceSummary {
   members: TeamMemberProfile[];
   syncStatus: TeamWorkspaceSyncStatus;
 }
+
+export interface TeamSharedPrompt {
+  id: string;
+  workspaceId: string;
+  title: string;
+  positivePrompt: string;
+  negativePrompt: string;
+  tags: string[];
+  category?: string | null;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedByDeviceId: string;
+  updatedByName: string;
+  sourceRelativePath?: string | null;
+}
+
+export interface TeamSharedPromptInput {
+  id?: string;
+  title: string;
+  positivePrompt: string;
+  negativePrompt?: string;
+  tags?: string[];
+  category?: string | null;
+  sourceRelativePath?: string | null;
+}
+
+export interface TeamBoardSummary {
+  boardId: string;
+  workspaceId: string;
+  name: string;
+  revision: number;
+  contentHash: string;
+  updatedAt: string;
+  updatedByDeviceId: string;
+  updatedByName: string;
+}
+
+export interface TeamBoardEnvelope extends TeamBoardSummary {
+  format: 'image-metahub-team-board';
+  schemaVersion: number;
+  document: Record<string, unknown>;
+}
+
+export type TeamBoardSaveResult =
+  | { saved: true; conflict: false; envelope: TeamBoardEnvelope }
+  | { saved: false; conflict: true; remote: TeamBoardEnvelope };
+
+export interface TeamExpectedModelEntry {
+  name: string;
+  type: string;
+  sha256?: string | null;
+  civitaiUrl?: string | null;
+  huggingFaceUrl?: string | null;
+  notes?: string | null;
+}
+
+export interface TeamModelsManifest {
+  schemaVersion: number;
+  workspaceId: string;
+  updatedAt: string;
+  updatedByDeviceId: string;
+  updatedByName: string;
+  models: TeamExpectedModelEntry[];
+}
+
+export interface TeamModelsComparison {
+  installed: TeamExpectedModelEntry[];
+  missing: TeamExpectedModelEntry[];
+}
