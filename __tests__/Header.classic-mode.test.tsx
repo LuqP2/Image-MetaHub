@@ -135,8 +135,8 @@ describe('Header classic mode', () => {
     expect(screen.queryByRole('button', { name: /model view/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /smart library/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /node view/i })).toBeNull();
-    // The unified Explore tab is always present.
-    expect(screen.getByRole('button', { name: /explore/i })).toBeTruthy();
+    // Explore views live inside Library, not as a separate top-level tab.
+    expect(screen.queryByRole('button', { name: /explore/i })).toBeNull();
   });
 
   it('opens Prompts and Library from their text tabs', () => {

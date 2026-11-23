@@ -11,13 +11,14 @@ import { getEffectiveModelPresentation, getModelLocalMetadata, modelInspectorSea
 import { getModelManagerState, addModelSource, cancelModelJob, checkModelUpdates, identifyModels, managerMessage, removeModelSource, scanModelSources, setModelInterval, showModelUpdates, updateModelSource, useModelManager } from '../services/modelLibrary/manager';
 import { linkedModelLocationIds, modelUpdateCounts } from '../services/modelLibrary/huggingFaceTracking';
 import { ModelUpdatesPanel } from './UnifiedModelUpdatesPanel';
-import { executeModelCommand, modelButton, modelInput, modelSelect } from './ModelManagerPanels';
+import { executeModelCommand, modelButton, modelInput } from './ModelManagerPanels';
 import ModelDetailsPanels from './ModelDetailsPanels';
 import type { ModelInspectorItem, ModelKind, ModelLocation, ModelSource } from '../services/modelLibrary/types';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { createInspectorSyncQueue } from '../services/modelLibrary/storageView';
 
 const formatBytes = (size: number) => size >= 1024 ** 3 ? `${(size / 1024 ** 3).toFixed(1)} GB` : `${(size / 1024 ** 2).toFixed(1)} MB`;
+const modelSelect = 'ui-select w-full';
 const selectionButton = (active: boolean) => `ui-segmented-item ${active ? 'ui-segmented-item-active' : ''}`;
 
 export default function ModelsWorkspace() {
