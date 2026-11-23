@@ -76,6 +76,7 @@ const subscriptionSnapshot = (subscription) => ({
   cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
   items: {
     data: (subscription?.items?.data || []).map((item) => ({
+      quantity: Number.isFinite(Number(item?.quantity)) ? Math.trunc(Number(item.quantity)) : 1,
       price: {
         id: objectId(item?.price ?? item?.plan),
         product: objectId(item?.price?.product ?? item?.plan?.product),
@@ -211,17 +212,46 @@ function chargeRefundSnapshot(charge, event, recordedAt) {
 }
 
 function planForPrice(priceId, config) {
+  if (!priceId) return null;
   if (priceId === config.monthlyPriceId || config.monthlyHistoricalPriceIds.includes(priceId)) return 'monthly';
   if (priceId === config.annualPriceId || config.annualHistoricalPriceIds.includes(priceId)) return 'annual';
+  if (config.teamMonthlyPriceId && priceId === config.teamMonthlyPriceId) return 'monthly';
+  if (config.teamAnnualPriceId && priceId === config.teamAnnualPriceId) return 'annual';
   if (priceId === config.lifetimePriceId) return 'lifetime';
   return null;
+}
+
+function tierForPrice(priceId, config) {
+  if (!priceId) return 'pro';
+  if (
+    (config.teamMonthlyPriceId && priceId === config.teamMonthlyPriceId)
+    || (config.teamAnnualPriceId && priceId === config.teamAnnualPriceId)
+  ) {
+    return 'teams';
+  }
+  return 'pro';
+}
+
+function isManagedSubscriptionProduct(productId, config) {
+  if (!productId) return false;
+  if (productId === config.subscriptionProductId) return true;
+  if (config.teamProductId && productId === config.teamProductId) return true;
+  return false;
 }
 
 function subscriptionProductItems(subscription, config) {
   return (subscription?.items?.data || []).filter((item) => {
     const productId = objectId(item?.price?.product ?? item?.plan?.product);
-    return productId === config.subscriptionProductId;
+    return isManagedSubscriptionProduct(productId, config);
   });
+}
+
+function subscriptionItemQuantity(subscription, priceId, config) {
+  const match = subscriptionProductItems(subscription, config).find(
+    (item) => objectId(item?.price ?? item?.plan) === priceId,
+  );
+  const qty = Number(match?.quantity ?? 1);
+  return Number.isInteger(qty) && qty >= 1 ? qty : 1;
 }
 
 function priceFromSubscription(subscription, config) {
@@ -240,15 +270,20 @@ function priceFromSubscription(subscription, config) {
 function selectPaidSubscriptionLine(lines, config) {
   const productLines = (lines || []).filter((line) => {
     const productId = objectId(line?.pricing?.price_details?.product ?? line?.price?.product);
-    return productId === config.subscriptionProductId;
+    return isManagedSubscriptionProduct(productId, config);
   });
   const matches = productLines.filter((line) => {
     const details = line?.parent?.subscription_item_details;
     const priceId = objectId(line?.pricing?.price_details?.price ?? line?.price);
     const plan = planForPrice(priceId, config);
+    const tier = tierForPrice(priceId, config);
+    const quantity = Number(line?.quantity ?? 1);
+    const validQuantity = tier === 'teams'
+      ? (Number.isInteger(quantity) && quantity >= 1)
+      : quantity === 1;
     return line?.parent?.type === 'subscription_item_details'
       && details?.proration === false
-      && Number(line?.quantity ?? 1) === 1
+      && validQuantity
       && (plan === 'monthly' || plan === 'annual')
       && Number.isFinite(Number(line?.period?.start))
       && Number.isFinite(Number(line?.period?.end));
@@ -259,9 +294,13 @@ function selectPaidSubscriptionLine(lines, config) {
   if (matches.length !== 1) return null;
   const line = matches[0];
   const priceId = objectId(line.pricing?.price_details?.price ?? line.price);
+  const tier = tierForPrice(priceId, config);
+  const quantity = Math.max(1, Math.trunc(Number(line?.quantity ?? 1)));
   return {
     priceId,
     plan: planForPrice(priceId, config),
+    tier,
+    seatLimit: tier === 'teams' ? quantity : null,
     periodStart: toIso(line.period.start),
     periodEnd: toIso(line.period.end),
   };
@@ -272,8 +311,11 @@ export function createStripeBillingConfig(env) {
     expectedLivemode: String(env.STRIPE_LIVEMODE ?? 'true').toLowerCase() === 'true',
     accountId: String(env.STRIPE_ACCOUNT_ID || ''),
     subscriptionProductId: String(env.STRIPE_SUBSCRIPTION_PRODUCT_ID || ''),
+    teamProductId: String(env.STRIPE_TEAM_PRODUCT_ID || ''),
     monthlyPriceId: String(env.STRIPE_MONTHLY_PRICE_ID || ''),
     annualPriceId: String(env.STRIPE_ANNUAL_PRICE_ID || ''),
+    teamMonthlyPriceId: String(env.STRIPE_TEAM_MONTHLY_PRICE_ID || ''),
+    teamAnnualPriceId: String(env.STRIPE_TEAM_ANNUAL_PRICE_ID || ''),
     monthlyHistoricalPriceIds: parsePriceIds(env.STRIPE_MONTHLY_HISTORICAL_PRICE_IDS),
     annualHistoricalPriceIds: parsePriceIds(env.STRIPE_ANNUAL_HISTORICAL_PRICE_IDS),
     lifetimePriceId: String(env.STRIPE_LIFETIME_PRICE_ID || ''),
@@ -351,6 +393,8 @@ export class StripeBillingService {
   async prepareCandidateLicense({
     email,
     plan,
+    tier = 'pro',
+    seatLimit = null,
     expiresAt,
     stripeCustomerId,
     stripeSubscriptionId = null,
@@ -362,6 +406,8 @@ export class StripeBillingService {
     const prepared = await this.licenseService.prepareLicense({
       email,
       plan,
+      tier,
+      seatLimit,
       status: 'active',
       source: 'stripe',
       expiresAt,
@@ -490,6 +536,16 @@ export class StripeBillingService {
       await this.repository.applySubscriptionDeleted(command);
     } else {
       await this.repository.recordSubscriptionSnapshot(command);
+      if (priceId && tierForPrice(priceId, this.config) === 'teams') {
+        const seatLimit = subscriptionItemQuantity(subscription, priceId, this.config);
+        const existingLicense = await this.repository.findLicenseByStripeSubscriptionId?.(subscription.id);
+        if (existingLicense && existingLicense.seatLimit !== seatLimit) {
+          await this.licenseService.updateLicense(existingLicense.id, {
+            tier: 'teams',
+            seatLimit,
+          });
+        }
+      }
     }
   }
 
@@ -529,6 +585,8 @@ export class StripeBillingService {
     const prepared = await this.prepareCandidateLicense({
       email,
       plan: paidLine.plan,
+      tier: paidLine.tier,
+      seatLimit: paidLine.seatLimit,
       expiresAt: paidLine.periodEnd,
       stripeCustomerId: objectId(invoice.customer),
       stripeSubscriptionId: subscriptionId,

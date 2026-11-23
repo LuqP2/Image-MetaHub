@@ -174,6 +174,7 @@ describe('D1 Stripe billing reducer', () => {
     databases.push(sqlite);
     sqlite.exec(await fs.readFile(path.join(migrationsDirectory, '0001_initial.sql'), 'utf8'));
     sqlite.exec(await fs.readFile(path.join(migrationsDirectory, '0002_stripe_billing.sql'), 'utf8'));
+    sqlite.exec(await fs.readFile(path.join(migrationsDirectory, '0003_teams_seats.sql'), 'utf8'));
     const database = new SqliteD1Database(sqlite);
     return {
       sqlite,

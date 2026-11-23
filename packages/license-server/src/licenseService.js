@@ -9,6 +9,7 @@ import {
 import { LicenseError, requireValue } from './errors.js';
 
 const PLANS = new Set(['lifetime', 'monthly', 'annual']);
+const TIERS = new Set(['pro', 'teams']);
 const STATUSES = new Set(['active', 'revoked', 'cancelled', 'expired']);
 const SOURCES = new Set(['legacy_reissue', 'manual', 'stripe']);
 const REFRESH_INTERVAL_MS = {
@@ -64,11 +65,21 @@ export class LicenseService {
   async buildLicenseRecord(input, plaintextKey) {
     const now = this.nowDate();
     const plan = input.plan ?? 'lifetime';
+    const tier = input.tier ?? 'pro';
     requireValue(PLANS.has(plan), 'invalid_request', 'Unsupported license plan.');
+    requireValue(TIERS.has(tier), 'invalid_request', 'Unsupported license tier.');
     requireValue(SOURCES.has(input.source), 'invalid_request', 'Unsupported license source.');
     const expiresAt = plan === 'lifetime'
       ? null
       : isoTimestamp(input.expiresAt, 'expiresAt', { nullable: false, future: true, nowMs: now.getTime() });
+    const requestedSeatLimit = input.seatLimit === undefined || input.seatLimit === null
+      ? null
+      : Number(input.seatLimit);
+    requireValue(
+      requestedSeatLimit === null || (Number.isInteger(requestedSeatLimit) && requestedSeatLimit >= 1),
+      'invalid_request',
+      'seatLimit must be a positive integer or null.',
+    );
     const requestedMaxActivations = input.maxActivations === undefined || input.maxActivations === null
       ? null
       : Number(input.maxActivations);
@@ -77,7 +88,14 @@ export class LicenseService {
       'invalid_request',
       'maxActivations must be a positive integer or null.',
     );
-    const maxActivations = plan === 'lifetime' ? null : requestedMaxActivations;
+    // Commercial Teams rule: 1 commercial seat = 1 active machine activation.
+    const seatLimit = tier === 'teams' ? (requestedSeatLimit ?? requestedMaxActivations) : requestedSeatLimit;
+    if (tier === 'teams') {
+      requireValue(Number.isInteger(seatLimit) && seatLimit >= 1, 'invalid_request', 'Teams licenses require a positive seatLimit.');
+    }
+    const maxActivations = tier === 'teams'
+      ? seatLimit
+      : (plan === 'lifetime' ? null : requestedMaxActivations);
     const status = input.status ?? 'active';
     requireValue(STATUSES.has(status), 'invalid_request', 'Unsupported license status.');
 
@@ -86,6 +104,9 @@ export class LicenseService {
       keyHash: await sha256Hex(normalizeImh2LicenseKey(plaintextKey), this.cryptoApi),
       emailLookup: await emailLookup(normalizeEmail(input.email), this.emailPepper, this.cryptoApi),
       plan,
+      tier,
+      orgName: optionalString(input.orgName, 160),
+      seatLimit,
       status,
       source: input.source,
       createdAt: now.toISOString(),
@@ -163,6 +184,9 @@ export class LicenseService {
     return issueActivationCertificate({
       licenseId: license.id,
       plan: license.plan,
+      tier: license.tier ?? 'pro',
+      orgName: license.orgName ?? null,
+      seatLimit: license.seatLimit ?? null,
       installationId,
       issuedAt: issuedAt.toISOString(),
       expiresAt: license.expiresAt,
@@ -170,7 +194,7 @@ export class LicenseService {
     }, this.signingPrivateKey, this.cryptoApi);
   }
 
-  async activate({ email, licenseKey, installationId, appVersion, platform }) {
+  async activate({ email, licenseKey, installationId, appVersion, platform, deviceLabel }) {
     requireValue(typeof installationId === 'string' && installationId.length >= 8 && installationId.length <= 200, 'invalid_request', 'Invalid request.');
     const [keyHash, lookup, installationHash] = await Promise.all([
       sha256Hex(normalizeImh2LicenseKey(licenseKey), this.cryptoApi),
@@ -190,6 +214,7 @@ export class LicenseService {
       lastSeenAt: now.toISOString(),
       appVersion: optionalString(appVersion, 100),
       platform: optionalString(platform, 100),
+      deviceLabel: optionalString(deviceLabel, 120),
     }, license.maxActivations, now.toISOString());
     if (!activation) {
       const current = await this.repository.findLicenseById(license.id);
@@ -201,6 +226,9 @@ export class LicenseService {
     return {
       certificate: await this.issueCertificate(license, installationId, now),
       plan: license.plan,
+      tier: license.tier ?? 'pro',
+      orgName: license.orgName ?? null,
+      seatLimit: license.seatLimit ?? null,
       expiresAt: license.expiresAt,
     };
   }
@@ -238,6 +266,9 @@ export class LicenseService {
     return {
       certificate: await this.issueCertificate(license, payload.installationId, now),
       plan: license.plan,
+      tier: license.tier ?? 'pro',
+      orgName: license.orgName ?? null,
+      seatLimit: license.seatLimit ?? null,
       expiresAt: license.expiresAt,
     };
   }
@@ -248,6 +279,51 @@ export class LicenseService {
     const now = this.nowDate().toISOString();
     await this.repository.deactivateActivation(payload.licenseId, installationHash, now);
     return { deactivated: true };
+  }
+
+  async listTeamSeats({ email, licenseKey }) {
+    const [keyHash, lookup] = await Promise.all([
+      sha256Hex(normalizeImh2LicenseKey(licenseKey), this.cryptoApi),
+      emailLookup(normalizeEmail(email), this.emailPepper, this.cryptoApi),
+    ]);
+    const license = await this.repository.findLicenseForActivation(keyHash, lookup);
+    if (!license) throw new LicenseError('invalid_credentials', 'Invalid email or license key.', 401);
+    const activations = await this.repository.listActivationsForLicense(license.id);
+    const activeSeats = activations.filter((a) => !a.deactivatedAt).length;
+    return {
+      licenseId: license.id,
+      tier: license.tier ?? 'pro',
+      plan: license.plan,
+      status: license.status,
+      orgName: license.orgName ?? null,
+      seatLimit: license.seatLimit ?? license.maxActivations ?? null,
+      activeSeats,
+      activations: activations.map((a) => ({
+        id: a.id,
+        deviceLabel: a.deviceLabel ?? null,
+        platform: a.platform ?? null,
+        appVersion: a.appVersion ?? null,
+        createdAt: a.createdAt,
+        lastSeenAt: a.lastSeenAt,
+        deactivatedAt: a.deactivatedAt ?? null,
+      })),
+    };
+  }
+
+  async revokeTeamSeat({ email, licenseKey, activationId }) {
+    requireValue(typeof activationId === 'string' && activationId.trim().length > 0, 'invalid_request', 'activationId is required.');
+    const [keyHash, lookup] = await Promise.all([
+      sha256Hex(normalizeImh2LicenseKey(licenseKey), this.cryptoApi),
+      emailLookup(normalizeEmail(email), this.emailPepper, this.cryptoApi),
+    ]);
+    const license = await this.repository.findLicenseForActivation(keyHash, lookup);
+    if (!license) throw new LicenseError('invalid_credentials', 'Invalid email or license key.', 401);
+    const revoked = await this.repository.revokeActivationById(
+      license.id,
+      activationId.trim(),
+      this.nowDate().toISOString(),
+    );
+    return { revoked };
   }
 
   async updateLicense(id, input) {
@@ -261,16 +337,37 @@ export class LicenseService {
       patch.status = input.status;
     }
     const nextPlan = input.plan ?? current.plan;
+    const nextTier = input.tier ?? current.tier ?? 'pro';
     if (input.plan !== undefined) {
       requireValue(PLANS.has(input.plan), 'invalid_request', 'Unsupported license plan.');
       patch.plan = input.plan;
+    }
+    if (input.tier !== undefined) {
+      requireValue(TIERS.has(input.tier), 'invalid_request', 'Unsupported license tier.');
+      patch.tier = input.tier;
+    }
+    if (input.orgName !== undefined) {
+      patch.orgName = optionalString(input.orgName, 160);
     }
     if (input.expiresAt !== undefined || input.plan !== undefined) {
       patch.expiresAt = nextPlan === 'lifetime'
         ? null
         : isoTimestamp(input.expiresAt ?? current.expiresAt, 'expiresAt', { nullable: false, nowMs: now.getTime() });
     }
-    if (nextPlan === 'lifetime') {
+    if (input.seatLimit !== undefined) {
+      const value = input.seatLimit === null ? null : Number(input.seatLimit);
+      requireValue(value === null || (Number.isInteger(value) && value >= 1), 'invalid_request', 'Invalid seat limit.');
+      patch.seatLimit = value;
+      if (nextTier === 'teams' && value !== null) {
+        patch.maxActivations = value;
+      }
+    }
+    if (nextTier === 'teams') {
+      const effectiveSeats = patch.seatLimit ?? current.seatLimit ?? input.maxActivations ?? current.maxActivations;
+      requireValue(Number.isInteger(effectiveSeats) && effectiveSeats >= 1, 'invalid_request', 'Teams licenses require a positive seatLimit.');
+      patch.seatLimit = effectiveSeats;
+      patch.maxActivations = effectiveSeats;
+    } else if (nextPlan === 'lifetime') {
       patch.maxActivations = null;
     } else if (input.maxActivations !== undefined) {
       const value = input.maxActivations === null ? null : Number(input.maxActivations);

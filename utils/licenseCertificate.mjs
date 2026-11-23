@@ -59,6 +59,12 @@ export function validateActivationPayload(payload, options = {}) {
   if (!['lifetime', 'monthly', 'annual'].includes(payload.plan)) {
     throw new Error('Certificate plan is invalid.');
   }
+  if (payload.tier !== undefined && !['pro', 'teams'].includes(payload.tier)) {
+    throw new Error('Certificate tier is invalid.');
+  }
+  if (payload.seatLimit !== undefined && payload.seatLimit !== null && (!Number.isInteger(payload.seatLimit) || payload.seatLimit < 1)) {
+    throw new Error('Certificate seatLimit is invalid.');
+  }
   if (typeof payload.installationId !== 'string' || payload.installationId.length < 8) {
     throw new Error('Certificate installation binding is invalid.');
   }
@@ -102,6 +108,9 @@ export async function issueActivationCertificate(payload, privateKeyBase64Url, c
     certificate: CERTIFICATE_PREFIX,
     licenseId: payload.licenseId,
     plan: payload.plan,
+    ...(payload.tier === 'teams' ? { tier: 'teams' } : {}),
+    ...(payload.tier === 'teams' && payload.orgName ? { orgName: payload.orgName } : {}),
+    ...(payload.tier === 'teams' && Number.isInteger(payload.seatLimit) ? { seatLimit: payload.seatLimit } : {}),
     installationId: payload.installationId,
     issuedAt: payload.issuedAt,
     expiresAt: payload.expiresAt ?? null,

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { getTrialPeriod, TRIAL_DURATION_DAYS, TRIAL_EXTENSION_DAYS } from '../utils/trialPeriod.mjs';
-import type { LicenseClientStatus, LicensePlan } from '../types';
+import type { LicenseClientStatus, LicensePlan, LicenseTier } from '../types';
 
 let suppressElectronStorageWrites = false;
 
@@ -66,6 +66,9 @@ interface LicenseState {
   licenseKey: string | null;
   licenseEmail: string | null;
   licensePlan: LicensePlan | null;
+  licenseTier: LicenseTier | null;
+  licenseOrgName: string | null;
+  licenseSeatLimit: number | null;
   licenseExpiresAt: string | null;
   licenseMessage: string | null;
 
@@ -91,6 +94,9 @@ const clearStoredLicenseState = () => ({
   licenseKey: null,
   licenseEmail: null,
   licensePlan: null,
+  licenseTier: null as LicenseTier | null,
+  licenseOrgName: null as string | null,
+  licenseSeatLimit: null as number | null,
   licenseExpiresAt: null,
   licenseMessage: null,
 });
@@ -101,6 +107,9 @@ const stateFromAuthority = (status: LicenseClientStatus) => ({
   licenseKey: null,
   licenseEmail: status.licenseEmail,
   licensePlan: status.plan,
+  licenseTier: (status.tier ?? (status.authorized ? 'pro' : null)) as LicenseTier | null,
+  licenseOrgName: status.orgName ?? null,
+  licenseSeatLimit: status.seatLimit ?? null,
   licenseExpiresAt: status.expiresAt,
   licenseMessage: status.message,
 });

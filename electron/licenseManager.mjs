@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { verifyActivationCertificate } from '../utils/licenseCertificate.mjs';
 
@@ -15,6 +16,9 @@ const emptyStatus = (overrides = {}) => ({
   authorized: false,
   licenseStatus: 'free',
   plan: null,
+  tier: null,
+  orgName: null,
+  seatLimit: null,
   licenseEmail: null,
   expiresAt: null,
   refreshAfter: null,
@@ -32,6 +36,9 @@ const comparableStatus = (status) => JSON.stringify({
   authorized: status.authorized,
   licenseStatus: status.licenseStatus,
   plan: status.plan,
+  tier: status.tier ?? null,
+  orgName: status.orgName ?? null,
+  seatLimit: status.seatLimit ?? null,
   licenseEmail: status.licenseEmail,
   expiresAt: status.expiresAt,
   refreshAfter: status.refreshAfter,
@@ -228,6 +235,9 @@ export class LicenseManager {
       authorized: true,
       licenseStatus: payload.plan === 'lifetime' ? 'lifetime' : 'pro',
       plan: payload.plan,
+      tier: payload.tier ?? 'pro',
+      orgName: payload.orgName ?? null,
+      seatLimit: payload.seatLimit ?? null,
       licenseEmail: this.licenseEmail,
       expiresAt: payload.expiresAt,
       refreshAfter: payload.refreshAfter,
@@ -398,6 +408,7 @@ export class LicenseManager {
       installationId: this.installationId,
       appVersion: this.appVersion,
       platform: this.platform,
+      deviceLabel: (() => { try { return os.hostname(); } catch { return null; } })(),
     });
     if (!response.ok) {
       this.lastMessage = response.transient

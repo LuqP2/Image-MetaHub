@@ -26,7 +26,12 @@ const isDevelopmentBuild =
 export const isDevProLicenseOverride = (): boolean =>
   isDevelopmentBuild &&
   typeof window !== 'undefined' &&
-  localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
+  (localStorage.getItem('IMH_DEV_LICENSE') === 'pro' || localStorage.getItem('IMH_DEV_LICENSE') === 'teams');
+
+export const isDevTeamsLicenseOverride = (): boolean =>
+  isDevelopmentBuild &&
+  typeof window !== 'undefined' &&
+  localStorage.getItem('IMH_DEV_LICENSE') === 'teams';
 
 export type ProModalBlockedAttempts = Record<ProFeature, number>;
 
@@ -149,6 +154,7 @@ export const useFeatureAccess = () => {
 
   // Compute status (CENTRALIZED LOGIC HERE!)
   const isPro = devOverride || hasProLicense;
+  const isTeams = isDevTeamsLicenseOverride() || (hasProLicense && licenseStore.licenseTier === 'teams');
   const trialPeriod = getTrialPeriod(licenseStore);
 
   const isTrialActive = isInitialized &&
@@ -172,6 +178,7 @@ export const useFeatureAccess = () => {
   const canUseModelManager = canUseDuringTrialOrPro;
 
   // Feature flags (all Pro features have same access requirements)
+  const canUseTeams = allowDuringInit || isTeams || isTrialActive;
   const canUseA1111 = allowDuringInit || canUseDuringTrialOrPro;
   const canUseComfyUI = allowDuringInit || canUseDuringTrialOrPro;
   const canUseComparison = allowDuringInit || canUseDuringTrialOrPro;
@@ -195,11 +202,12 @@ export const useFeatureAccess = () => {
 
   // Optional derived label for status indicators
   const statusLabel = useMemo(() => {
+    if (isTeams) return 'Teams License';
     if (isPro) return 'Pro License';
     if (isTrialActive) return `Pro Trial (${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left)`;
     if (isExpired) return 'Trial expired';
     return 'Free Version';
-  }, [isPro, isTrialActive, isExpired, trialDaysRemaining]);
+  }, [isTeams, isPro, isTrialActive, isExpired, trialDaysRemaining]);
 
   const startTrial = async () => {
     const activated = await licenseStore.activateTrial();
@@ -217,6 +225,11 @@ export const useFeatureAccess = () => {
   return {
     canUseAdvancedPromptLibrary: allowDuringInit || canUseDuringTrialOrPro,
     canUseCanvas: allowDuringInit || canUseDuringTrialOrPro,
+    canUseTeams,
+    isTeams,
+    licenseTier: licenseStore.licenseTier,
+    licenseOrgName: licenseStore.licenseOrgName,
+    licenseSeatLimit: licenseStore.licenseSeatLimit,
     // Feature flags
     canUseA1111,
     canUseComfyUI,

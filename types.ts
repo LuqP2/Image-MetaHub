@@ -461,10 +461,15 @@ export interface DesktopRuntimeInfo {
 
 export type LicensePlan = 'lifetime' | 'monthly' | 'annual';
 
+export type LicenseTier = 'pro' | 'teams';
+
 export interface LicenseClientStatus {
   authorized: boolean;
   licenseStatus: 'free' | 'pro' | 'lifetime';
   plan: LicensePlan | null;
+  tier?: LicenseTier | null;
+  orgName?: string | null;
+  seatLimit?: number | null;
   licenseEmail: string | null;
   expiresAt: string | null;
   refreshAfter: string | null;
