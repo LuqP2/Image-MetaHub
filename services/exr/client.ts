@@ -31,9 +31,18 @@ export async function resolveExrPath(image: IndexedImage, directoryPath?: string
   return result.path;
 }
 export async function loadExrPreview(image: IndexedImage, directoryPath?: string, options: Partial<ExrPreviewRequest> = {}): Promise<ExrPreviewResult> {
+  const boardId = (image.handle as FileSystemFileHandle & { _boardId?: string })?._boardId;
+  const request: ExrPreviewRequest = { ...options, requestId: options.requestId ?? crypto.randomUUID(), filePath: await resolveExrPath(image, directoryPath) };
+  if (boardId) {
+    const boardPreview = window.electronAPI?.boardsExrPreview;
+    if (!boardPreview) throw new Error('EXR support is available in the desktop app.');
+    const reply = await boardPreview({ boardId, request });
+    if (reply.success === false) throw new Error(reply.error || 'EXR operation failed');
+    return reply.data;
+  }
   const api = window.electronAPI?.exr;
   if (!api) throw new Error('EXR support is available in the desktop app.');
-  return unwrapExr(await api.preview({ ...options, requestId: options.requestId ?? crypto.randomUUID(), filePath: await resolveExrPath(image, directoryPath) }));
+  return unwrapExr(await api.preview(request));
 }
 export function openExrSettings() {
   window.dispatchEvent(new CustomEvent('imh-open-exr-settings'));

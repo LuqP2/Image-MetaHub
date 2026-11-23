@@ -221,6 +221,7 @@ const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 const MODEL_3D_METADATA_MAX_BYTES = 16 * 1024 * 1024;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
+const BOARD_MEDIA_PROTOCOL_SCHEME = 'imh-board-media';
 const THUMBNAIL_PROTOCOL_SCHEME = 'imh-thumb';
 const MODEL_PROTOCOL_SCHEME = 'imh-model';
 const THUMBNAIL_CACHE_VERSION = 2;
@@ -243,6 +244,16 @@ protocol.registerSchemesAsPrivileged([
   { scheme: MODEL_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   {
     scheme: MEDIA_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    scheme: BOARD_MEDIA_PROTOCOL_SCHEME,
     privileges: {
       standard: true,
       secure: true,
@@ -405,6 +416,15 @@ const buildMediaProtocolUrl = (filePath) => {
   return `${MEDIA_PROTOCOL_SCHEME}://local/?path=${encodeURIComponent(normalizedFilePath)}`;
 };
 
+const buildBoardMediaProtocolUrl = (boardId, filePath) => {
+  const normalizedFilePath = path.resolve(filePath);
+  const params = new URLSearchParams({
+    boardId: String(boardId || ''),
+    path: normalizedFilePath,
+  });
+  return `${BOARD_MEDIA_PROTOCOL_SCHEME}://local/?${params.toString()}`;
+};
+
 const normalizeThumbnailExtension = (extension) => {
   const normalized = String(extension || 'webp').replace(/^\./, '').toLowerCase();
   return THUMBNAIL_ALLOWED_EXTENSIONS.has(normalized) ? normalized : 'webp';
@@ -484,6 +504,36 @@ const registerMediaProtocol = () => {
         errorMessage: redactDiagnosticText(error?.message),
         ...safeDetails,
       });
+      callback({ error: -2 });
+    }
+  });
+};
+
+const registerBoardMediaProtocol = () => {
+  protocol.registerFileProtocol(BOARD_MEDIA_PROTOCOL_SCHEME, async (request, callback) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const boardId = requestUrl.searchParams.get('boardId');
+      const requestedPath = requestUrl.searchParams.get('path');
+      if (!boardId || !requestedPath) {
+        callback({ error: -6 });
+        return;
+      }
+
+      const normalizedFilePath = path.resolve(requestedPath);
+      if (path.extname(normalizedFilePath).toLowerCase() === '.exr') {
+        callback({ error: -10 });
+        return;
+      }
+
+      if (!boardExternalAccess.allows(boardId, normalizedFilePath)) {
+        callback({ error: -10 });
+        return;
+      }
+
+      await fs.access(normalizedFilePath);
+      callback({ path: normalizedFilePath });
+    } catch {
       callback({ error: -2 });
     }
   });
@@ -3534,6 +3584,7 @@ app.whenReady().then(async () => {
   exrRuntime = registerExrIpc({ app, ipcMain, protocol, dialog, BrowserWindow, isPathAllowed: isReadPathAllowed, cacheRoot: getCacheRootPath, translate: (key) => formatMessage(appLanguage, key) });
   registerProcessDiagnostics();
   registerMediaProtocol();
+  registerBoardMediaProtocol();
   registerThumbnailProtocol();
   registerModelProtocol();
   protocol.registerFileProtocol(MODEL_MEDIA_SCHEME, (request, callback) => {
@@ -4257,7 +4308,7 @@ const isPathAllowed = (filePath) => {
   return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
 };
 
-const isReadPathAllowed = filePath => isPathAllowed(filePath) || boardExternalAccess.allows(filePath);
+const isReadPathAllowed = filePath => isPathAllowed(filePath);
 
 const isModelLibraryPathAllowed = (filePath) => {
   return isModelLibraryPathWithinRoots(filePath, modelLibraryRootPaths);
@@ -7731,7 +7782,67 @@ function setupFileOperationHandlers() {
   };
 
   registerComparisonIpc({ ipcMain, BrowserWindow, settingsWindows: comparisonSettingsWindows, getTitle: () => formatMessage(appLanguage, 'comparison.windowTitle'), getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.js'), indexPath: path.join(__dirname, 'dist', 'index.html'), isDev, configureNavigation: configureDetachedViewerNavigationHandlers });
-  boardPersistence = registerBoardIpc({ ipcMain, app, dialog, BrowserWindow, clipboard: electron.clipboard, getMainWindow: () => mainWindow, authorizeExternalFile: file => boardExternalAccess.authorize(file) });
+  const readBoardMediaMetadata = async (filePath) => {
+    try {
+      const metadata = await readMediaMetadataWithFfprobe(filePath);
+      return metadata;
+    } catch (error) {
+      const extension = typeof filePath === 'string' ? path.extname(filePath).toLowerCase() : '';
+      if (extension === '.mp4' || extension === '.mov' || extension === '.m4v') {
+        const basic = await readBasicMp4Metadata(filePath).catch(() => null);
+        if (basic) {
+          return {
+            video: {
+              frame_rate: null,
+              frame_count: null,
+              duration_seconds: basic.duration_seconds,
+              width: basic.width,
+              height: basic.height,
+              codec: null,
+              format: 'mp4',
+            },
+            audio: null,
+          };
+        }
+      }
+      throw error;
+    }
+  };
+  const generateBoardThumbnail = async ({ filePath, maxEdge = 320, quality = 82 }) => {
+    let image;
+    if (typeof nativeImage.createThumbnailFromPath === 'function') {
+      image = await nativeImage.createThumbnailFromPath(filePath, { width: maxEdge, height: maxEdge });
+    } else {
+      image = nativeImage.createFromPath(filePath);
+    }
+    if (!image || image.isEmpty()) throw new Error('Failed to decode image for thumbnail generation.');
+    const { width, height } = image.getSize();
+    const safeWidth = Math.max(1, width || maxEdge);
+    const safeHeight = Math.max(1, height || maxEdge);
+    const scale = Math.min(1, maxEdge / Math.max(safeWidth, safeHeight));
+    const resizedImage = scale < 1
+      ? image.resize({ width: Math.max(1, Math.round(safeWidth * scale)), height: Math.max(1, Math.round(safeHeight * scale)), quality: 'better' })
+      : image;
+    const lowerExt = path.extname(filePath).toLowerCase();
+    const preserveAlpha = lowerExt === '.png' || lowerExt === '.webp' || lowerExt === '.gif';
+    if (preserveAlpha) return { data: resizedImage.toPNG(), mimeType: 'image/png' };
+    const jpegQuality = Math.max(1, Math.min(100, Math.round(quality)));
+    return { data: resizedImage.toJPEG(jpegQuality), mimeType: 'image/jpeg' };
+  };
+  boardPersistence = registerBoardIpc({
+    ipcMain,
+    app,
+    dialog,
+    BrowserWindow,
+    clipboard: electron.clipboard,
+    getMainWindow: () => mainWindow,
+    externalAccess: boardExternalAccess,
+    buildBoardMediaUrl: buildBoardMediaProtocolUrl,
+    readMediaMetadata: readBoardMediaMetadata,
+    readModel3DMetadata,
+    generateThumbnail: generateBoardThumbnail,
+    getExrRuntime: () => exrRuntime,
+  });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;
   ipcMain.on('boards:dirty', (event, dirty) => {

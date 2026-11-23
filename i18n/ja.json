@@ -3629,5 +3629,7 @@
   "canvasFeedback.resetLight": "ライトをリセット",
   "canvasFeedback.locateExternal": "外部ファイルを指定",
   "integrations.discardWorkspaceDraftConfirm": "このワークスペースの下書きを破棄しますか？",
-  "integrations.discardBlockEditConfirm": "このブロックの未保存の変更を破棄しますか？"
+  "integrations.discardBlockEditConfirm": "このブロックの未保存の変更を破棄しますか？",
+  "canvasFeedback.approvalRequired": "この外部ファイルにアクセスするには承認が必要です。",
+  "canvasFeedback.approveExternal": "外部ファイルを承認"
 }

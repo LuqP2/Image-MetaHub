@@ -181,6 +181,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
           const source = get().sessions[id];
           const saved = await repository.save(duplicateBoardDocument(source.document), 0);
           autosave.cancel(id);
+          void window.electronAPI?.boardsRevokeExternalAccess?.(id);
           set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return { sessions, openBoardIds: state.openBoardIds.filter(item => item !== id) }; });
           setDocument(saved.id, saved);
           await get().loadBoardList();
@@ -206,6 +207,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         const summary = get().summaries.find(summary => summary.id === id);
         await repository.remove(id, session?.savedRevision ?? summary?.revision ?? 0);
         autosave.cancel(id);
+        void window.electronAPI?.boardsRevokeExternalAccess?.(id);
         set(state => { const sessions = { ...state.sessions }; delete sessions[id]; return {
           sessions, openBoardIds: state.openBoardIds.filter(item => item !== id), summaries: state.summaries.filter(summary => summary.id !== id), activeBoardId: state.activeBoardId === id ? state.openBoardIds[state.openBoardIds.indexOf(id) + 1] ?? state.openBoardIds[state.openBoardIds.indexOf(id) - 1] ?? null : state.activeBoardId,
         }; });
@@ -215,6 +217,7 @@ export function createBoardStore(repository: BoardRepository = boardService, del
         if (id) await get().flushBoard(id);
         if (!id) return;
         autosave.cancel(id);
+        void window.electronAPI?.boardsRevokeExternalAccess?.(id);
         set(state => {
           const index = state.openBoardIds.indexOf(id);
           const sessions = { ...state.sessions }; delete sessions[id];

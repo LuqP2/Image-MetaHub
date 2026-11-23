@@ -494,7 +494,16 @@ export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collec
 
 export interface ElectronAPI {
   comparison?: import('./services/comparisonContracts').ComparisonBridge;
-  boardsAuthorizeFile?: (file: string) => Promise<import('./services/boards/types').BoardApiResult<string>>;
+  boardsPickExternalFile?: (input: string | { boardId: string; defaultPath?: string }) => Promise<import('./services/boards/types').BoardApiResult<string | null>>;
+  boardsAuthorizeDroppedFile?: (boardId: string, file: File) => Promise<import('./services/boards/types').BoardApiResult<string>>;
+  boardsRevokeExternalAccess?: (input: string | { boardId: string; filePath?: string }) => Promise<import('./services/boards/types').BoardApiResult<null>>;
+  boardsStatFile?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<{ size: number; mtimeMs: number; birthtimeMs?: number; isDirectory?: boolean }>>;
+  boardsReadFile?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<Uint8Array | ArrayBuffer>>;
+  boardsResolveMediaUrl?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<string>>;
+  boardsReadMediaMetadata?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<{ video?: any; audio?: any }>>;
+  boardsReadModel3DMetadata?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<any>>;
+  boardsGenerateThumbnail?: (input: { boardId: string; filePath: string; maxEdge?: number; quality?: number }) => Promise<import('./services/boards/types').BoardApiResult<{ data: Uint8Array | ArrayBuffer; mimeType: string }>>;
+  boardsExrPreview?: (input: { boardId: string; request: import('./services/exr/contracts').ExrPreviewRequest }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/exr/contracts').ExrPreviewResult>>;
   boardsLinkPreview?: (url: string) => Promise<import('./services/boards/types').BoardApiResult<{ title: string; imageData?: string }>>;
   boardsFonts?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;
   boardsList?: () => Promise<import('./services/boards/types').BoardApiResult<import('./services/boards/types').BoardSummary[]>>;

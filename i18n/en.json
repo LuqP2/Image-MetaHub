@@ -3629,5 +3629,7 @@
   "canvasFeedback.resetLight": "Reset light",
   "canvasFeedback.locateExternal": "Locate external file",
   "integrations.discardWorkspaceDraftConfirm": "Discard this Workspace draft?",
-  "integrations.discardBlockEditConfirm": "Discard this unsaved block edit?"
+  "integrations.discardBlockEditConfirm": "Discard this unsaved block edit?",
+  "canvasFeedback.approvalRequired": "Approval required to access this external file.",
+  "canvasFeedback.approveExternal": "Approve external file"
 }

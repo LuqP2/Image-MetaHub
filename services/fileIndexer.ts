@@ -294,18 +294,25 @@ function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | 'avif' | nul
 async function readMediaMetadataFromElectron(
   fileEntry: CatalogFileEntry
 ): Promise<{ rawMetadata: VideoMetadata | null; videoInfo?: VideoInfo | null; audioInfo?: AudioInfo | null }> {
-  const readMediaMetadata = (window as any).electronAPI?.readMediaMetadata ?? (window as any).electronAPI?.readVideoMetadata;
-  if (!isElectron || !readMediaMetadata) {
-    return { rawMetadata: null };
-  }
-
-  const absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
-  if (!absolutePath) {
+  const handle = fileEntry.handle as ElectronFileHandle & { _boardId?: string };
+  const absolutePath = handle?._filePath;
+  const boardId = handle?._boardId;
+  if (!isElectron || !absolutePath) {
     return { rawMetadata: null };
   }
 
   try {
-    const result = await readMediaMetadata({ filePath: absolutePath });
+    let result: any;
+    if (boardId) {
+      const boardReader = (window as any).electronAPI?.boardsReadMediaMetadata;
+      if (!boardReader) return { rawMetadata: null };
+      const reply = await boardReader({ boardId, filePath: absolutePath });
+      result = reply?.success ? { success: true, ...reply.data } : { success: false };
+    } else {
+      const readMediaMetadata = (window as any).electronAPI?.readMediaMetadata ?? (window as any).electronAPI?.readVideoMetadata;
+      if (!readMediaMetadata) return { rawMetadata: null };
+      result = await readMediaMetadata({ filePath: absolutePath });
+    }
     if (!result?.success) {
       return { rawMetadata: null };
     }
@@ -486,7 +493,7 @@ async function decodeITXtText(
  * @param imagePath Path to the image file (e.g., /path/to/image.png)
  * @returns Parsed JSON metadata or null if not found/valid
  */
-async function tryReadEasyDiffusionSidecarJson(imagePath: string, absolutePath?: string): Promise<EasyDiffusionJson | null> {
+async function tryReadEasyDiffusionSidecarJson(imagePath: string, absolutePath?: string, boardId?: string): Promise<EasyDiffusionJson | null> {
   try {
     const preferredPath = absolutePath && (absolutePath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(absolutePath))
       ? absolutePath
@@ -502,8 +509,10 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string, absolutePath?:
     }
 
     // Try to read the JSON file (silent - no logging)
-    const result = await (window as any).electronAPI.readFile(jsonPath);
-    if (!result.success || !result.data) {
+    const result = boardId
+      ? await (window as any).electronAPI?.boardsReadFile?.({ boardId, filePath: jsonPath })
+      : await (window as any).electronAPI.readFile(jsonPath);
+    if (!result?.success || !result.data) {
       return null;
     }
 
@@ -1620,15 +1629,21 @@ async function processSingleFileOptimized(
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
     const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
     const isModel3D = isModel3DFileName(fileEntry.handle.name, inferredType);
-    const absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
+    const handleWithBoard = fileEntry.handle as ElectronFileHandle & { _boardId?: string };
+    const absolutePath = handleWithBoard?._filePath;
+    const boardId = handleWithBoard?._boardId;
     let videoInfo: VideoInfo | null = null;
     let audioInfo: AudioInfo | null = null;
 
     if (isModel3D) {
       const extension = getFileExtension(fileEntry.handle.name);
-      const readModel3DMetadata = (window as any).electronAPI?.readModel3DMetadata;
-      if (isElectron && absolutePath && readModel3DMetadata) {
-        const result = await readModel3DMetadata({ filePath: absolutePath });
+      const boardModelReader = boardId ? (window as any).electronAPI?.boardsReadModel3DMetadata : undefined;
+      const readModel3DMetadata = boardId ? undefined : (window as any).electronAPI?.readModel3DMetadata;
+      if (isElectron && absolutePath && (boardModelReader || readModel3DMetadata)) {
+        const reply = boardModelReader
+          ? await boardModelReader({ boardId, filePath: absolutePath })
+          : await readModel3DMetadata({ filePath: absolutePath });
+        const result = boardModelReader && reply?.success ? { success: true, ...reply.data } : reply;
         const modelMetadata = result?.success && result.metadata
           ? result.metadata as ImageMetadata
           : null;
@@ -1667,9 +1682,10 @@ async function processSingleFileOptimized(
       }
       bufferForDimensions = fileData;
       fileSizeValue = fileSizeValue ?? fileData.byteLength;
-    } else if (isElectron && (fileEntry.handle as ElectronFileHandle)?._filePath && (window as any).electronAPI?.readFile) {
-      const absoluteFilePath = (fileEntry.handle as ElectronFileHandle)._filePath as string;
-      const fileResult = await (window as any).electronAPI.readFile(absoluteFilePath);
+    } else if (isElectron && absolutePath && (boardId ? (window as any).electronAPI?.boardsReadFile : (window as any).electronAPI?.readFile)) {
+      const fileResult = boardId
+        ? await (window as any).electronAPI.boardsReadFile({ boardId, filePath: absolutePath })
+        : await (window as any).electronAPI.readFile(absolutePath);
       if (!fileResult.success || !fileResult.data) {
         throw new Error(fileResult.error || `Failed to read file: ${fileEntry.handle.name}`);
       }
@@ -1726,7 +1742,7 @@ async function processSingleFileOptimized(
       }
     }
     if (!rawMetadata) {
-      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, resolvedAbsolutePath);
+      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, resolvedAbsolutePath, boardId);
       if (sidecarJson) {
         rawMetadata = { ...sidecarJson, _provenanceMetadataSource: 'sidecar' } as ImageMetadata;
       }
@@ -2084,13 +2100,16 @@ export async function reparseIndexedImage(
   directoryPath: string,
   options: { compactRawMetadata?: boolean } = {}
 ): Promise<IndexedImage | null> {
+  const boardId = (image.handle as ElectronFileHandle & { _boardId?: string })?._boardId;
   const isModel3D = isModel3DFileName(
     image.name,
     image.fileType ?? inferMimeTypeFromName(image.name)
   );
   if (
     !window.electronAPI?.joinPaths
-    || (isModel3D ? !window.electronAPI.readModel3DMetadata : !window.electronAPI.readFile)
+    || (boardId
+      ? (isModel3D ? !window.electronAPI.boardsReadModel3DMetadata : !window.electronAPI.boardsReadFile)
+      : (isModel3D ? !window.electronAPI.readModel3DMetadata : !window.electronAPI.readFile))
   ) {
     throw new Error('Metadata reparsing is only available in the desktop app.');
   }
@@ -2104,24 +2123,40 @@ export async function reparseIndexedImage(
   const absolutePath = joined.path;
   let fileData: ArrayBuffer | undefined;
   if (!isModel3D && !isExrFileName(image.name) && !isVideoFileName(image.name) && !isAudioFileName(image.name)) {
-    const readResult = await window.electronAPI.readFile(absolutePath);
+    const readResult = boardId
+      ? await window.electronAPI.boardsReadFile!({ boardId, filePath: absolutePath })
+      : await window.electronAPI.readFile(absolutePath);
     if (!readResult.success || !readResult.data) {
-      throw new Error(readResult.error || 'Failed to read the image file.');
+      const errorMessage = 'error' in readResult && readResult.error ? readResult.error : 'Failed to read the image file.';
+      const error = new Error(errorMessage);
+      if ('code' in readResult && readResult.code) {
+        (error as Error & { code?: string }).code = readResult.code;
+      }
+      throw error;
     }
     const bytes = new Uint8Array(readResult.data);
     fileData = bytes.slice().buffer;
   }
 
-  const statsResult = window.electronAPI.getFileStats
-    ? await window.electronAPI.getFileStats(absolutePath)
-    : { success: false } as { success: boolean; stats?: any; error?: string };
-  const stats = statsResult.success ? statsResult.stats : undefined;
+  let stats: { size?: number; mtimeMs?: number; birthtimeMs?: number } | undefined;
+  if (boardId) {
+    const boardStats = window.electronAPI.boardsStatFile
+      ? await window.electronAPI.boardsStatFile({ boardId, filePath: absolutePath })
+      : null;
+    stats = boardStats?.success ? boardStats.data : undefined;
+  } else {
+    const statsResult = window.electronAPI.getFileStats
+      ? await window.electronAPI.getFileStats(absolutePath)
+      : { success: false } as { success: boolean; stats?: any; error?: string };
+    stats = statsResult.success ? statsResult.stats : undefined;
+  }
 
   const fileEntry: CatalogFileEntry = {
     handle: {
       name: image.name,
       kind: 'file',
       _filePath: absolutePath,
+      ...(boardId ? { _boardId: boardId } : {}),
     } as ElectronFileHandle,
     path: relativePath,
     lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : image.lastModified,

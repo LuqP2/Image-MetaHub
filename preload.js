@@ -323,7 +323,26 @@ const electronAPI = {
     ipcRenderer.on('stable-user-data-changed', handler);
     return () => ipcRenderer.removeListener('stable-user-data-changed', handler);
   },
-  boardsAuthorizeFile: (file) => ipcRenderer.invoke('boards:authorize-file', file),
+  boardsPickExternalFile: (input) => ipcRenderer.invoke('boards:pick-external-file', input),
+  boardsAuthorizeDroppedFile: (boardId, file) => {
+    try {
+      const filePath = file ? webUtils.getPathForFile(file) : '';
+      if (!filePath) {
+        return Promise.resolve({ success: false, code: 'BOARD_INVALID_DROP', error: 'Drag a local media file onto the canvas.' });
+      }
+      return ipcRenderer.invoke('boards:authorize-dropped-file', { boardId, filePath });
+    } catch {
+      return Promise.resolve({ success: false, code: 'BOARD_INVALID_DROP', error: 'Drag a local media file onto the canvas.' });
+    }
+  },
+  boardsRevokeExternalAccess: (input) => ipcRenderer.invoke('boards:revoke-external-access', input),
+  boardsStatFile: (input) => ipcRenderer.invoke('boards:stat-file', input),
+  boardsReadFile: (input) => ipcRenderer.invoke('boards:read-file', input),
+  boardsResolveMediaUrl: (input) => ipcRenderer.invoke('boards:resolve-media-url', input),
+  boardsReadMediaMetadata: (input) => ipcRenderer.invoke('boards:read-media-metadata', input),
+  boardsReadModel3DMetadata: (input) => ipcRenderer.invoke('boards:read-model3d-metadata', input),
+  boardsGenerateThumbnail: (input) => ipcRenderer.invoke('boards:generate-thumbnail', input),
+  boardsExrPreview: (input) => ipcRenderer.invoke('boards:exr-preview', input),
   boardsLinkPreview: (url) => ipcRenderer.invoke('boards:link-preview', url),
   boardsFonts: () => ipcRenderer.invoke('boards:fonts'),
   boardsList: () => ipcRenderer.invoke('boards:list'),

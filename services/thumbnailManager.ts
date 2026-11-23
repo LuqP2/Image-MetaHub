@@ -1092,9 +1092,20 @@ class ThumbnailManager {
       // Electron's renderer supports AVIF through Chromium, but nativeImage does
       // not decode it on every platform. Route AVIF directly to createImageBitmap.
       if (isElectron && !isVideo && !isAvif) {
-        const fileHandle = (image.thumbnailHandle ?? image.handle) as ElectronFileHandle | undefined;
+        const fileHandle = (image.thumbnailHandle ?? image.handle) as (ElectronFileHandle & { _boardId?: string }) | undefined;
         const filePath = fileHandle?._filePath;
-        if (filePath) {
+        const boardId = fileHandle?._boardId;
+        if (boardId && filePath && electronAPI?.boardsGenerateThumbnail) {
+          const result = await electronAPI.boardsGenerateThumbnail({
+            boardId,
+            filePath,
+            maxEdge: MAX_THUMBNAIL_EDGE,
+            quality: 82,
+          });
+          if (result.success && result.data?.data) {
+            blob = new Blob([new Uint8Array(result.data.data)], { type: result.data.mimeType || 'image/jpeg' });
+          }
+        } else if (!boardId && filePath) {
           const generated = await cacheManager.generateThumbnailToCache({
             ...getThumbnailCacheCandidate(image),
             filePath,
@@ -1113,7 +1124,7 @@ class ThumbnailManager {
           }
         }
 
-        if (!electronAPI?.generateThumbnailToCache) {
+        if (!boardId && !electronAPI?.generateThumbnailToCache) {
           blob = await generateElectronThumbnailBlob(image);
         }
       }

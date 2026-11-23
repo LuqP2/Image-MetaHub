@@ -3630,7 +3630,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "pt-BR": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -7263,7 +7265,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "ja": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -10896,7 +10900,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "de": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -14529,7 +14535,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "fr": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -18162,7 +18170,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "ko": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -21795,7 +21805,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "zh-CN": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -25428,7 +25440,9 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   },
   "zh-TW": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -29061,6 +29075,8 @@
     "canvasFeedback.resetLight": "a26497c5f69d4edd179e6435e11039587725c90a4a7136402ef7931cd7953858",
     "canvasFeedback.locateExternal": "ff757fc4631eaba06e1a3b5d5dfba5998beaf21ff29555692ff6fadd1aa8db0a",
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
-    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c"
+    "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
+    "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
   }
 }

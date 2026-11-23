@@ -169,10 +169,16 @@ export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: s
   return [base, ...resolvedParts].join(separator);
 };
 
-const buildProtocolUrl = (absolutePath: string) =>
-  `imh-media://local/?path=${encodeURIComponent(absolutePath)}`;
+const buildProtocolUrl = (absolutePath: string, boardId?: string | null) => {
+  if (boardId) {
+    const params = new URLSearchParams({ boardId, path: absolutePath });
+    return `imh-board-media://local/?${params.toString()}`;
+  }
+  return `imh-media://local/?path=${encodeURIComponent(absolutePath)}`;
+};
 
 const VIRTUAL_LOCAL_RESOURCE_PREFIX = 'imh-media://local/';
+const VIRTUAL_BOARD_RESOURCE_PREFIX = 'imh-board-media://local/';
 
 export const resolveModel3DResourceUrl = (
   directoryPath: string | undefined,
@@ -185,13 +191,22 @@ export const resolveModel3DResourceUrl = (
   }
   if (!directoryPath) return null;
 
+  let boardId: string | null = null;
+  if (sourceUrl.startsWith(VIRTUAL_BOARD_RESOURCE_PREFIX)) {
+    try { boardId = new URL(sourceUrl).searchParams.get('boardId'); } catch { boardId = null; }
+  }
+
+  const isVirtualBoardResource = resourceUrl.startsWith(VIRTUAL_BOARD_RESOURCE_PREFIX)
+    && !resourceUrl.slice(VIRTUAL_BOARD_RESOURCE_PREFIX.length).startsWith('?');
   const isVirtualLocalResource = resourceUrl.startsWith(VIRTUAL_LOCAL_RESOURCE_PREFIX)
     && !resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length).startsWith('?');
-  const relativeUrl = isVirtualLocalResource
-    ? resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length)
-    : resourceUrl;
+  const relativeUrl = isVirtualBoardResource
+    ? resourceUrl.slice(VIRTUAL_BOARD_RESOURCE_PREFIX.length)
+    : isVirtualLocalResource
+      ? resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length)
+      : resourceUrl;
   const resolved = safeModel3DAssetPath(directoryPath, relativeModelPath, relativeUrl);
-  return resolved ? buildProtocolUrl(resolved) : null;
+  return resolved ? buildProtocolUrl(resolved, boardId) : null;
 };
 
 export const extractObjMaterialLibraries = (objText: string): string[] => {

@@ -24,7 +24,7 @@ export interface BoardEditorActions {
   commit(): void;
   cancel(): void;
   openAsset?(object: BoardAssetObject): void;
-  resolveAsset?(object: BoardAssetObject): { status: 'resolved' | 'loading' | 'missing' | 'ambiguous'; image?: IndexedImage };
+  resolveAsset?(object: BoardAssetObject): { status: 'resolved' | 'loading' | 'missing' | 'ambiguous' | 'approval-required'; image?: IndexedImage };
   dropFiles?(files: File[], anchor: BoardPoint): void;
   dropAssets?(ids: string[], anchor: BoardPoint): void;
 }

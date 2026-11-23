@@ -25,21 +25,25 @@ vi.mock('../components/ComparisonMetadataPanel', () => ({ default: ({ image }) =
 beforeEach(() => { feature.canUseCanvas = true; feature.canUseComparison = true; feature.showProModal.mockClear(); useBoardStore.setState({ sessions: {}, activeBoardId: null, closing: false }); });
 afterEach(async () => { await act(async () => useBoardStore.getState().flushAll()); cleanup(); });
 describe('Canvas IMH integration', () => {
-  it('restores a missing external card when relinking to its unchanged original path', async () => {
+  it('distinguishes approval-required from missing and restores an external card via native file picker', async () => {
     const reference = externalBoardReference('/synthetic/restored.png');
     const board = addAssets(createBoardDocument(), [{ name: 'restored.png', mediaType: 'image', reference }], { x: 0, y: 0 });
     useImageStore.setState({ images: [], directories: [] });
     useBoardStore.getState().adoptBoard(board);
     useBoardStore.getState().setSelection(board.id, [board.objects[0].id]);
     const restored = boardImage('restored.png');
-    vi.mocked(loadExternalBoardAsset).mockRejectedValueOnce(new Error('File unavailable')).mockResolvedValue(restored);
+    vi.mocked(loadExternalBoardAsset)
+      .mockResolvedValueOnce({ status: 'approval-required' })
+      .mockResolvedValue({ status: 'resolved', image: restored });
     const previousAPI = window.electronAPI;
-    window.electronAPI = { ...previousAPI, getPathForFile: () => '/synthetic/restored.png' } as Window['electronAPI'];
+    const boardsPickExternalFile = vi.fn().mockResolvedValue({ success: true, data: '/synthetic/restored.png' });
+    window.electronAPI = { ...previousAPI, boardsPickExternalFile } as Window['electronAPI'];
     try {
       render(<CanvasWorkspace loading={false} onOpenImage={vi.fn()} onCompareImages={vi.fn()} />);
-      await screen.findByText('This file is not available in the current library.');
-      fireEvent.change(screen.getByLabelText('Locate external file'), { target: { files: [new File(['synthetic'], 'restored.png')] } });
+      await screen.findByText('Approval required to access this external file.');
+      fireEvent.click(screen.getByRole('button', { name: 'Approve external file' }));
       await screen.findByText('Metadata restored.png');
+      expect(boardsPickExternalFile).toHaveBeenCalledWith({ boardId: board.id, defaultPath: '/synthetic/restored.png' });
       expect(screen.queryByRole('button', { name: 'Locate missing file' })).toBeNull();
       expect(useBoardStore.getState().sessions[board.id].document.objects[0]).toMatchObject({ reference });
     } finally { window.electronAPI = previousAPI; }

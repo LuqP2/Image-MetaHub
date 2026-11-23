@@ -182,11 +182,11 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     if (cancelledOwners.delete(`${owner}:${requestId}`)) return Promise.reject(fail('Cancelled', 'CANCELLED'));
     return new Promise((resolve, reject) => { queue.push({ command, key: `${owner}:${requestId}`, priority, resolve, reject }); void pump(); });
   }
-  async function assertFile(filePath) {
+  async function assertFile(filePath, allowPath = isPathAllowed) {
     if (typeof filePath !== 'string' || path.extname(filePath).toLowerCase() !== '.exr') throw fail('Invalid EXR path');
-    if (!isPathAllowed(path.resolve(filePath))) throw fail('EXR path is outside authorized directories', 'ACCESS_DENIED');
+    if (!allowPath(path.resolve(filePath))) throw fail('EXR path is outside authorized directories', 'ACCESS_DENIED');
     const real = await fs.realpath(filePath);
-    if (!isPathAllowed(real)) throw fail('EXR path is outside authorized directories', 'ACCESS_DENIED');
+    if (!allowPath(real)) throw fail('EXR path is outside authorized directories', 'ACCESS_DENIED');
     return real;
   }
   async function config(configId) {
@@ -285,14 +285,14 @@ export function createExrRuntime({ userDataPath, cacheRoot, isPathAllowed, chang
     } catch (error) { progress = signal.aborted ? undefined : { phase: 'error', error: errorText(error) }; changed(await status()); throw error; }
     finally { installController = null; await fs.rm(staging, { recursive: true, force: true }); }
   }
-  async function inspect(filePath) {
-    const real = await assertFile(filePath);
+  async function inspect(filePath, options = {}) {
+    const real = await assertFile(filePath, options.allowPath);
     return { ...await job({ op: 'inspect', filePath: real }), profile: resolveExrProfile(real, await getSettings()) };
   }
-  async function preview(request, owner = 0) {
+  async function preview(request, owner = 0, options = {}) {
     const requestKey = `${owner}:${request.requestId}`;
     if (cancelledOwners.delete(requestKey)) throw fail('Cancelled', 'CANCELLED');
-    const filePath = await assertFile(request.filePath);
+    const filePath = await assertFile(request.filePath, options.allowPath);
     const saved = await getSettings();
     if (!saved.enabled || !await installed()) throw fail('EXR support not installed or disabled', 'UNAVAILABLE');
     const profile = validateExrProfile(request.profile ?? resolveExrProfile(filePath, saved));
