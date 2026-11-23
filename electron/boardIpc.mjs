@@ -118,6 +118,15 @@ export function registerBoardIpc({
     const filePath = requireExternalAccess(input?.boardId, input?.filePath);
     return generateThumbnail({ filePath, maxEdge: input?.maxEdge, quality: input?.quality });
   });
+  register('boards:exr-inspect', async (_repository, _window, input) => {
+    const exrRuntime = getExrRuntime?.();
+    if (!exrRuntime) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'EXR support is unavailable.');
+    const boardId = input?.boardId;
+    const filePath = requireExternalAccess(boardId, input?.filePath);
+    return exrRuntime.inspect(filePath, {
+      allowPath: candidate => externalAccess.allows(boardId, candidate),
+    });
+  });
   register('boards:exr-preview', async (_repository, window, input) => {
     const exrRuntime = getExrRuntime?.();
     if (!exrRuntime) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'EXR support is unavailable.');

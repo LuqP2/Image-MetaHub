@@ -1,5 +1,5 @@
 import type { IndexedImage } from '../../types';
-import type { ExrReply, ExrPreviewRequest, ExrPreviewResult } from './contracts';
+import type { ExrAssetInfo, ExrReply, ExrPreviewRequest, ExrPreviewResult } from './contracts';
 
 export function unwrapExr<T>(reply: ExrReply<T>): T {
   if (!reply.success) throw new Error('error' in reply ? reply.error : 'EXR operation failed');
@@ -29,6 +29,18 @@ export async function resolveExrPath(image: IndexedImage, directoryPath?: string
   const result = await window.electronAPI.joinPaths(directoryPath, relativePath);
   if (!result.success || !result.path) throw new Error(result.error || 'Cannot resolve EXR path');
   return result.path;
+}
+export async function inspectExrPath(filePath: string, boardId?: string | null): Promise<ExrAssetInfo> {
+  if (boardId) {
+    const boardInspect = window.electronAPI?.boardsExrInspect;
+    if (!boardInspect) throw new Error('EXR support is available in the desktop app.');
+    const reply = await boardInspect({ boardId, filePath });
+    if (reply.success === false) throw new Error(reply.error || 'EXR operation failed');
+    return reply.data;
+  }
+  const api = window.electronAPI?.exr;
+  if (!api) throw new Error('EXR support is available in the desktop app.');
+  return unwrapExr(await api.inspect(filePath));
 }
 export async function loadExrPreview(image: IndexedImage, directoryPath?: string, options: Partial<ExrPreviewRequest> = {}): Promise<ExrPreviewResult> {
   const boardId = (image.handle as FileSystemFileHandle & { _boardId?: string })?._boardId;

@@ -97,6 +97,13 @@ describe('Canvas external file reads', () => {
       return { canceled: false, filePaths: [externalFile] };
     });
 
+    const exrFile = path.join(root, 'render.exr');
+    fs.writeFileSync(exrFile, 'exr-bytes');
+    const exrInspect = vi.fn(async (filePath: string, options?: { allowPath?: (candidate: string) => boolean }) => {
+      if (!options?.allowPath?.(filePath)) throw new Error('ACCESS_DENIED');
+      return { parts: [{ index: 0, width: 128, height: 128, channels: [] }] };
+    });
+
     registerBoardIpc({
       ipcMain: { handle: (channel: string, fn: any) => { handlers.set(channel, fn); } },
       app: { getPath: () => root },
@@ -106,6 +113,7 @@ describe('Canvas external file reads', () => {
       clipboard: { readText: () => '' },
       externalAccess: access,
       buildBoardMediaUrl: (boardId: string, filePath: string) => `imh-board-media://local/?boardId=${encodeURIComponent(boardId)}&path=${encodeURIComponent(filePath)}`,
+      getExrRuntime: () => ({ inspect: exrInspect, preview: vi.fn() }),
     });
 
     // Generic arbitrary-path authorization IPC must not exist.
@@ -134,6 +142,16 @@ describe('Canvas external file reads', () => {
     // Another board cannot read the file.
     const otherBoardStat = await handlers.get('boards:stat-file')!(senderEvent, { boardId: 'other-board', filePath: externalFile });
     expect(otherBoardStat).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
+
+    // Board-scoped EXR inspection enforces approval per board.
+    const exrDenied = await handlers.get('boards:exr-inspect')!(senderEvent, { boardId, filePath: exrFile });
+    expect(exrDenied).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
+    access.authorize(boardId, exrFile);
+    const exrAllowed = await handlers.get('boards:exr-inspect')!(senderEvent, { boardId, filePath: exrFile });
+    expect(exrAllowed.success).toBe(true);
+    expect(exrAllowed.data.parts[0]).toMatchObject({ width: 128, height: 128 });
+    const exrOtherBoard = await handlers.get('boards:exr-inspect')!(senderEvent, { boardId: 'other-board', filePath: exrFile });
+    expect(exrOtherBoard).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
 
     // Deleting the board revokes its access.
     const removed = await handlers.get('boards:remove')!(senderEvent, { id: boardId, expectedRevision: imported.data.revision });
