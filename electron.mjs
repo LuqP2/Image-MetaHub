@@ -7,6 +7,8 @@ import { broadcastSettingsToWindows } from './electron/settingsBroadcast.mjs';
 import { registerComparisonIpc } from './electron/comparisonIpc.mjs';
 import { registerExrIpc } from './electron/exrIpc.mjs';
 import { registerBoardIpc } from './electron/boardIpc.mjs';
+import { registerTeamWorkspaceIpc } from './electron/teamWorkspaceIpc.mjs';
+let teamWorkspaceController = null;
 import { createBoardCloseCoordinator } from './electron/boardCloseCoordinator.mjs';
 import { runBoardPackagedSmoke } from './electron/boardPackagedSmoke.mjs';
 import { createAtomicCacheChunkWriter } from './electron/atomicCacheChunk.mjs';
@@ -7843,6 +7845,14 @@ function setupFileOperationHandlers() {
     generateThumbnail: generateBoardThumbnail,
     getExrRuntime: () => exrRuntime,
   });
+  teamWorkspaceController = registerTeamWorkspaceIpc({
+    ipcMain,
+    app,
+    getMainWindow: () => mainWindow,
+  });
+  app.on('browser-window-focus', () => {
+    void teamWorkspaceController?.reconcileAllActive?.();
+  });
   const isBoardMainSender = event => mainWindow && !mainWindow.isDestroyed()
     && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame;
   ipcMain.on('boards:dirty', (event, dirty) => {
@@ -9263,6 +9273,7 @@ app.on('before-quit', event => {
   disposeMainWindowRecovery?.();
   // Stop all file watchers before quitting
   fileWatcher.stopAllWatchers();
+  void teamWorkspaceController?.dispose?.();
   licenseManager?.dispose?.();
   stableIdentityIndexer?.stop();
   stableIdentityFileOperationCoordinator = null;

@@ -494,6 +494,22 @@ export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collec
 
 export interface ElectronAPI {
   comparison?: import('./services/comparisonContracts').ComparisonBridge;
+  team?: {
+    detectWorkspace: (rootPath: string) => Promise<{ success: boolean; data?: { manifest: import('./services/team/teamWorkspaceTypes').TeamWorkspaceManifest; rootPath: string } | null; code?: string; error?: string }>;
+    initWorkspace: (args: { rootPath: string; name?: string; profile?: Partial<import('./services/team/teamWorkspaceTypes').TeamMemberProfile> }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary; code?: string; error?: string }>;
+    openWorkspace: (args: { rootPath: string; profile?: Partial<import('./services/team/teamWorkspaceTypes').TeamMemberProfile> }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary; code?: string; error?: string }>;
+    closeWorkspace: (workspaceId: string) => Promise<{ success: boolean; data?: null; code?: string; error?: string }>;
+    listWorkspaces: () => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary[]; code?: string; error?: string }>;
+    getProfile: () => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamMemberProfile; code?: string; error?: string }>;
+    updateProfile: (profile: Partial<Pick<import('./services/team/teamWorkspaceTypes').TeamMemberProfile, 'displayName' | 'initials' | 'color'>>) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamMemberProfile; code?: string; error?: string }>;
+    queueOp: (args: { workspaceId: string; op: Omit<import('./services/team/teamWorkspaceTypes').TeamOpEvent, 'opId' | 'workspaceId' | 'deviceId' | 'lamportClock' | 'createdAt'>; flushNow?: boolean }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamOpEvent; code?: string; error?: string }>;
+    flushOps: (workspaceId: string) => Promise<{ success: boolean; data?: { filename: string; batchId: string; opCount: number } | null; code?: string; error?: string }>;
+    syncNow: (workspaceId?: string) => Promise<{ success: boolean; data?: unknown; code?: string; error?: string }>;
+    listOps: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamOpEvent[]; code?: string; error?: string }>;
+    listAssetIdentities: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').WorkspaceAssetIdentity[]; code?: string; error?: string }>;
+    upsertAssetIdentities: (args: { workspaceId: string; identities: import('./services/team/teamWorkspaceTypes').WorkspaceAssetIdentity[] }) => Promise<{ success: boolean; data?: null; code?: string; error?: string }>;
+    onWorkspaceUpdated: (callback: (summary: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary) => void) => () => void;
+  };
   boardsPickExternalFile?: (input: string | { boardId: string; defaultPath?: string }) => Promise<import('./services/boards/types').BoardApiResult<string | null>>;
   boardsAuthorizeDroppedFile?: (boardId: string, file: File) => Promise<import('./services/boards/types').BoardApiResult<string>>;
   boardsRevokeExternalAccess?: (input: string | { boardId: string; filePath?: string }) => Promise<import('./services/boards/types').BoardApiResult<null>>;

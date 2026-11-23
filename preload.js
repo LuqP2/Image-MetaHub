@@ -530,6 +530,26 @@ const electronAPI = {
       return () => ipcRenderer.removeListener('exr-changed', listener);
     },
   },
+  team: {
+    detectWorkspace: (rootPath) => ipcRenderer.invoke('team:detect-workspace', rootPath),
+    initWorkspace: (args) => ipcRenderer.invoke('team:init-workspace', args),
+    openWorkspace: (args) => ipcRenderer.invoke('team:open-workspace', args),
+    closeWorkspace: (workspaceId) => ipcRenderer.invoke('team:close-workspace', workspaceId),
+    listWorkspaces: () => ipcRenderer.invoke('team:list-workspaces'),
+    getProfile: () => ipcRenderer.invoke('team:get-profile'),
+    updateProfile: (profile) => ipcRenderer.invoke('team:update-profile', profile),
+    queueOp: (args) => ipcRenderer.invoke('team:queue-op', args),
+    flushOps: (workspaceId) => ipcRenderer.invoke('team:flush-ops', workspaceId),
+    syncNow: (workspaceId) => ipcRenderer.invoke('team:sync-now', workspaceId),
+    listOps: (workspaceId) => ipcRenderer.invoke('team:list-ops', workspaceId),
+    listAssetIdentities: (workspaceId) => ipcRenderer.invoke('team:list-asset-identities', workspaceId),
+    upsertAssetIdentities: (args) => ipcRenderer.invoke('team:upsert-asset-identities', args),
+    onWorkspaceUpdated: (callback) => {
+      const listener = (_event, summary) => callback(summary);
+      ipcRenderer.on('team-workspace-updated', listener);
+      return () => ipcRenderer.removeListener('team-workspace-updated', listener);
+    },
+  },
   downloadEmbeddingModel: (args) => ipcRenderer.invoke('download-embedding-model', args),
   cancelEmbeddingModelDownload: () => ipcRenderer.invoke('cancel-embedding-model-download'),
   deleteEmbeddingModel: (args) => ipcRenderer.invoke('delete-embedding-model', args),
