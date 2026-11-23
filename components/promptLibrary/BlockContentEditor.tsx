@@ -32,7 +32,7 @@ export default function BlockContentEditor({ text, variables, disabled, rows = 6
           <label className="block">{t('promptLibrary.defaultValue')}<input aria-label={t('promptLibrary.defaultFor', { variable: variable.name })} className={fieldClass} value={variable.defaultValue} onChange={event => change(variable, { defaultValue: event.target.value })} /></label>
           <p className="text-gray-400">{t('promptLibrary.noSuggestionsHelp')}</p>
           <label className="block">{t('promptLibrary.displayLabel')}<input aria-label={t('promptLibrary.labelFor', { variable: variable.name })} className={fieldClass} value={variable.label} onChange={event => change(variable, { label: event.target.value })} /></label>
-          <label className="flex items-center gap-2"><input type="checkbox" className="accent-[rgb(var(--accent))]" checked={variable.required} onChange={event => change(variable, { required: event.target.checked })} />{t('promptLibrary.requireField', { variable: variable.name })}</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="ui-checkbox" checked={variable.required} onChange={event => change(variable, { required: event.target.checked })} />{t('promptLibrary.requireField', { variable: variable.name })}</label>
           <p className="text-gray-400">{t('promptLibrary.removePlaceholder', { placeholder: '{{' + variable.name + '}}' })}</p>
         </div>}
       </fieldset>)}

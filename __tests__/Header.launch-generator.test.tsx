@@ -105,7 +105,7 @@ describe('Header launch generator', () => {
     expect(launchGenerator).not.toHaveBeenCalled();
   });
 
-  it('renders and switches to the explore tab', () => {
+  it('keeps the Library tab active when viewing integrated Explore modes', () => {
     const onLibraryViewChange = vi.fn();
 
     render(
@@ -113,14 +113,16 @@ describe('Header launch generator', () => {
         onOpenSettings={() => {}}
         onOpenAnalytics={() => {}}
         onOpenLicense={() => {}}
-        libraryView="library"
+        libraryView="explore"
         onLibraryViewChange={onLibraryViewChange}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /explore/i }));
-
-    expect(onLibraryViewChange).toHaveBeenCalledWith('explore');
+    expect(screen.queryByRole('button', { name: /explore/i })).toBeNull();
+    const libraryButton = screen.getByRole('button', { name: /^library$/i });
+    expect(libraryButton.getAttribute('aria-current')).toBe('page');
+    fireEvent.click(libraryButton);
+    expect(onLibraryViewChange).toHaveBeenCalledWith('library');
   });
 
   it('opens a dragged grid or table image in the ComfyUI workspace', () => {
@@ -148,11 +150,11 @@ describe('Header launch generator', () => {
 
     const comfyUIButton = screen.getByRole('button', { name: /^comfyui$/i });
     fireEvent.dragEnter(comfyUIButton, { dataTransfer });
-    expect(comfyUIButton.className).toContain('ring-cyan-400');
+    expect(comfyUIButton.className).toContain('ring-accent');
 
     fireEvent.drop(comfyUIButton, { dataTransfer });
 
     expect(onOpenDroppedImageInComfyUI).toHaveBeenCalledWith('directory::image.png');
-    expect(comfyUIButton.className).not.toContain('ring-cyan-400');
+    expect(comfyUIButton.className).not.toContain('ring-accent');
   });
 });

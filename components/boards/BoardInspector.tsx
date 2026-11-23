@@ -9,7 +9,7 @@ import { duplicateBoardSelection } from '../../services/boards/commands';
 import BoardSmartFrameSelectionActions from './BoardSmartFrameSelectionActions';
 import type { BoardSmartFrameObject } from '../../services/boards/queryTypes';
 import BoardSmartFrameInspector from './BoardSmartFrameInspector';
-import { PanelRightClose } from 'lucide-react';
+import { ArrowLeftRight, PanelRightClose, RotateCcw } from 'lucide-react';
 import { useBoardUIStore } from '../../store/useBoardUIStore';
 import Section from './BoardInspectorSection';
 import { getBoardDisplayName } from './boardPresentation';
@@ -74,22 +74,67 @@ export default function BoardInspector({ boardId, editable, assetActions, assetM
     {object?.type === 'frame' && <label>{t('imageViewer.collection.title')}<input className="board-input" disabled={!editable} value={object.title} onChange={event => edit('title', event.target.value)} onBlur={commit} /></label>}
     {object?.type === 'asset' && <label>{t('canvasFeedback.label')}<input className="board-input" disabled={!editable} value={object.label ?? ''} placeholder={getBoardDisplayName(object.name)} onChange={event => edit('label', event.target.value)} onBlur={commit} /></label>}
     {connection && <>
-      <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => reverseConnections(document, connections.map(edge => edge.id)))}>{t('canvasFeedback.reverse')}</button>
-      <label>{t('canvasFeedback.routing')}<select className="board-select" disabled={!editable} value={connection.routing ?? 'curved'} onChange={event => applyConnectionStyle({ routing: event.target.value as 'curved' | 'orthogonal' })}><option value="curved">{t('canvasFeedback.curved')}</option><option value="orthogonal">{t('canvasFeedback.orthogonal')}</option></select></label>
-      <label>{t('canvasFeedback.anchoring')}<select className="board-select" disabled={!editable} value={connection.anchoring ?? 'manual'} onChange={event => useBoardStore.getState().executeOperation(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { anchoring: event.target.value as 'manual' | 'automatic' }), document))}><option value="manual">{t('canvasFeedback.manual')}</option><option value="automatic">{t('canvasFeedback.automatic')}</option></select></label>
-      {connections.length === 1 && <>{(['sourceSide', 'targetSide'] as const).map(key => <label key={key}>{t(key === 'sourceSide' ? 'canvasFeedback.start' : 'canvasFeedback.end')}<select className="board-select" disabled={!editable} value={connection[key]} onChange={event => useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, connection.id, { [key]: event.target.value, anchoring: 'manual' }))}>{['top', 'right', 'bottom', 'left'].map(side => <option key={side} value={side}>{side}</option>)}</select></label>)}</>}
-      <label>{t('canvasFeedback.labelSize')}<input className="board-input" type="number" min="8" max="72" value={connection.labelFontSize ?? 11} disabled={!editable} onChange={event => { const size = Number(event.target.value); if (size >= 8 && size <= 72) useBoardStore.getState().updateInteraction(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { labelFontSize: size }), document)); }} onBlur={commit} /></label>
-      <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { labelOffset: { x: 0, y: 0 } }), document))}>{t('canvasFeedback.resetLabel')}</button>
-      <div className="board-inspector-properties"><BoardPropertyRow label={t('metadataEditor.weight')}><div role="group" aria-label={t('canvas.lineThickness')} className="board-line-options">{([1.5, 3, 5] as const).map((width, index) => {
-        const current = connection.width ?? 1.5;
-        const active = sameWidth && index === (current < 2.25 ? 0 : current < 4 ? 1 : 2);
-        return <button key={width} className="board-button" aria-label={[t('canvas.thin'), t('canvas.medium'), t('canvas.thick')][index]} title={t('canvas.lineWidth', { label: [t('canvas.thin'), t('canvas.medium'), t('canvas.thick')][index], width })} disabled={!editable} aria-pressed={active} onClick={() => applyConnectionStyle({ width })}>
-          <svg viewBox="0 0 36 10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth={width}/></svg><span>{width} px</span></button>;
-      })}</div></BoardPropertyRow>
-      <BoardPropertyRow label={t('canvas.pattern')}><div role="group" aria-label={t('canvas.lineStyle')} className="board-line-options">{(['solid', 'dashed'] as const).map(lineStyle => <button key={lineStyle} className="board-button" disabled={!editable} aria-pressed={samePattern && (connection.lineStyle ?? 'solid') === lineStyle} onClick={() => applyConnectionStyle({ lineStyle })}>
-        <svg viewBox="0 0 36 10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth="2" strokeDasharray={lineStyle === 'dashed' ? '6 4' : undefined}/></svg>{lineStyle === 'solid' ? t('canvas.solid') : t('canvas.dashed')}</button>)}</div></BoardPropertyRow>
-      {connections.length === 1 && <label className="board-connection-label">{t('canvas.label')}<input className="board-input" disabled={!editable} value={connection.label} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { label: event.target.value }))} onBlur={commit} /></label>}
-      <BoardPropertyRow label={t('imageViewer.exr.color')}><BoardColorField label={t('canvas.connectionColor')} disabled={!editable} value={connection.color} mixed={!sameColor} onChange={color => applyConnectionStyle({ color }, true)} onBlur={commit}/></BoardPropertyRow></div>
+      <div className="board-inspector-group">
+        <BoardPropertyRow label={t('canvasFeedback.routing')}>
+          <div role="group" aria-label={t('canvasFeedback.routing')} className="board-line-options">
+            {(['curved', 'orthogonal'] as const).map(routing => (
+              <button key={routing} className="board-button" disabled={!editable} aria-pressed={(connection.routing ?? 'curved') === routing} onClick={() => applyConnectionStyle({ routing })}>
+                {routing === 'curved' ? t('canvasFeedback.curved') : t('canvasFeedback.orthogonal')}
+              </button>
+            ))}
+          </div>
+        </BoardPropertyRow>
+        <BoardPropertyRow label={t('canvasFeedback.anchoring')}>
+          <div role="group" aria-label={t('canvasFeedback.anchoring')} className="board-line-options">
+            {(['manual', 'automatic'] as const).map(anchoring => (
+              <button key={anchoring} className="board-button" disabled={!editable} aria-pressed={(connection.anchoring ?? 'manual') === anchoring} onClick={() => useBoardStore.getState().executeOperation(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { anchoring }), document))}>
+                {anchoring === 'manual' ? t('canvasFeedback.manual') : t('canvasFeedback.automatic')}
+              </button>
+            ))}
+          </div>
+        </BoardPropertyRow>
+        {connections.length === 1 ? (
+          <div className="board-endpoints-row">
+            {(['sourceSide', 'targetSide'] as const).map(key => (
+              <label key={key}>
+                {t(key === 'sourceSide' ? 'canvasFeedback.start' : 'canvasFeedback.end')}
+                <select className="board-select" disabled={!editable} value={connection[key]} onChange={event => useBoardStore.getState().executeOperation(boardId, document => updateConnection(document, connection.id, { [key]: event.target.value, anchoring: 'manual' }))}>
+                  {['top', 'right', 'bottom', 'left'].map(side => <option key={side} value={side}>{side}</option>)}
+                </select>
+              </label>
+            ))}
+            <button className="board-icon-button" aria-label={t('canvasFeedback.reverse')} title={t('canvasFeedback.reverse')} disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => reverseConnections(document, connections.map(edge => edge.id)))}>
+              <ArrowLeftRight size={14} />
+            </button>
+          </div>
+        ) : (
+          <button className="board-button" disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => reverseConnections(document, connections.map(edge => edge.id)))}>
+            <ArrowLeftRight size={13} />{t('canvasFeedback.reverse')}
+          </button>
+        )}
+      </div>
+      <div className="board-inspector-group">
+        <BoardPropertyRow label={t('metadataEditor.weight')}><div role="group" aria-label={t('canvas.lineThickness')} className="board-line-options">{([1.5, 3, 5] as const).map((width, index) => {
+          const current = connection.width ?? 1.5;
+          const active = sameWidth && index === (current < 2.25 ? 0 : current < 4 ? 1 : 2);
+          return <button key={width} className="board-button" aria-label={[t('canvas.thin'), t('canvas.medium'), t('canvas.thick')][index]} title={t('canvas.lineWidth', { label: [t('canvas.thin'), t('canvas.medium'), t('canvas.thick')][index], width })} disabled={!editable} aria-pressed={active} onClick={() => applyConnectionStyle({ width })}>
+            <svg viewBox="0 0 36 10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth={width}/></svg><span>{width} px</span></button>;
+        })}</div></BoardPropertyRow>
+        <BoardPropertyRow label={t('canvas.pattern')}><div role="group" aria-label={t('canvas.lineStyle')} className="board-line-options">{(['solid', 'dashed'] as const).map(lineStyle => <button key={lineStyle} className="board-button" disabled={!editable} aria-pressed={samePattern && (connection.lineStyle ?? 'solid') === lineStyle} onClick={() => applyConnectionStyle({ lineStyle })}>
+          <svg viewBox="0 0 36 10" aria-hidden="true"><line x1="0" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth="2" strokeDasharray={lineStyle === 'dashed' ? '6 4' : undefined}/></svg>{lineStyle === 'solid' ? t('canvas.solid') : t('canvas.dashed')}</button>)}</div></BoardPropertyRow>
+        <BoardPropertyRow label={t('imageViewer.exr.color')}><BoardColorField label={t('canvas.connectionColor')} disabled={!editable} value={connection.color} mixed={!sameColor} onChange={color => applyConnectionStyle({ color }, true)} onBlur={commit}/></BoardPropertyRow>
+      </div>
+      <div className="board-inspector-group">
+        {connections.length === 1 && <BoardPropertyRow label={t('canvas.label')}><input aria-label={t('canvas.label')} className="board-input" disabled={!editable} value={connection.label} onChange={event => useBoardStore.getState().updateInteraction(boardId, document => updateConnection(document, connection.id, { label: event.target.value }))} onBlur={commit} /></BoardPropertyRow>}
+        <BoardPropertyRow label={t('canvasFeedback.labelSize')}>
+          <div className="board-label-controls">
+            <input aria-label={t('canvasFeedback.labelSize')} className="board-input" type="number" min="8" max="72" value={connection.labelFontSize ?? 11} disabled={!editable} onChange={event => { const size = Number(event.target.value); if (size >= 8 && size <= 72) useBoardStore.getState().updateInteraction(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { labelFontSize: size }), document)); }} onBlur={commit} />
+            <button className="board-button board-button--ghost" title={t('canvasFeedback.resetLabel')} aria-label={t('canvasFeedback.resetLabel')} disabled={!editable} onClick={() => useBoardStore.getState().executeOperation(boardId, document => connections.reduce((next, edge) => updateConnection(next, edge.id, { labelOffset: { x: 0, y: 0 } }), document))}>
+              <RotateCcw size={13} />{t('canvasFeedback.resetLabel')}
+            </button>
+          </div>
+        </BoardPropertyRow>
+      </div>
     </>}
     {selected.some(item => item.type === 'asset') && <Section title={t('canvas.showOnCanvas')}><fieldset className="board-field-grid" disabled={!editable}>{fields.map(field => {
       const assets = selected.filter(item => item.type === 'asset');

@@ -14,11 +14,16 @@ export default function BoardList({ summaries, editable, onOpen, onCreate, onDup
   const [rename, setRename] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
   return <div className="board-list">
-    <div className="board-list-heading"><div><h1>{t('comparison.canvas')}</h1><p>{t('canvas.listHelp')}</p></div><button className="board-button" disabled={!editable} onClick={onImport}>{t('canvas.import')}</button></div>
-    <form className="board-create" onSubmit={event => { event.preventDefault(); if (name.trim()) onCreate(name.trim()); }}>
-      <input className="board-input" aria-label={t('canvas.newName')} value={name} onChange={event => setName(event.target.value)} disabled={!editable} />
-      <button className="board-button" type="submit" disabled={!editable || !name.trim()}>{t('canvas.create')}</button>
-    </form>
+    <div className="board-list-heading">
+      <h1>{t('comparison.canvas')}</h1>
+      <div className="board-list-toolbar">
+        <form className="board-create" onSubmit={event => { event.preventDefault(); if (name.trim()) onCreate(name.trim()); }}>
+          <input className="board-input" aria-label={t('canvas.newName')} value={name} onChange={event => setName(event.target.value)} disabled={!editable} />
+          <button className="board-button board-button--primary" type="submit" disabled={!editable || !name.trim()}>{t('canvas.create')}</button>
+        </form>
+        <button className="board-button" disabled={!editable} onClick={onImport}>{t('canvas.import')}</button>
+      </div>
+    </div>
     {!editable && <p>{t('canvas.readOnlyHelp')}</p>}
     {!summaries.length && <p>{t('canvas.empty')}</p>}
     <div className="board-list-grid">{summaries.map(summary => <article key={summary.id}>
@@ -29,7 +34,7 @@ export default function BoardList({ summaries, editable, onOpen, onCreate, onDup
       {summary.error ? <p role="alert">{summary.error}</p> : <div className="board-list-actions">
         <button className="board-button" disabled={!editable} onClick={() => { setRenaming(summary.id); setRename(summary.name); }}>{t('libraryFolders.rename')}</button>
         <button className="board-button" disabled={!editable} onClick={() => onDuplicate(summary.id)}>{t('imageViewer.editor.duplicate')}</button>
-        <button className="board-button" disabled={!editable} onClick={() => setDeleting(summary.id)}>{t('libraryGallery.delete')}</button>
+        <button className="board-button board-button--danger-subtle" disabled={!editable} onClick={() => setDeleting(summary.id)}>{t('libraryGallery.delete')}</button>
       </div>}
       {deleting === summary.id && <div role="alert"><p>{t('canvas.deleteConfirm')}</p><button className="board-button" onClick={() => { onDelete(summary.id); setDeleting(null); }}>{t('canvas.delete')}</button><button className="board-button" onClick={() => setDeleting(null)}>{t('libraryFolders.cancel')}</button></div>}
     </article>)}</div>

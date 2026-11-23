@@ -279,27 +279,22 @@ const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
       </div>
-      {/* Header with collapse button */}
-      <div className="flex flex-col border-b border-gray-800/70 bg-gray-900/55">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-100">{t('shell.filters')}</h2>
-          <button
-            onClick={onToggleCollapse}
-            className="app-top-icon-button ml-auto h-8 w-8"
-            title={t('librarySearch.collapseSidebar')}
-            aria-label={t('librarySearch.collapseSidebar')}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
+      {/* Search Bar + collapse button on a single compact row */}
+      <div className="flex items-center gap-1.5 border-b border-gray-700/50 px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <SemanticSearchBar
+            searchQuery={searchQuery}
+            onSearchChange={onSearchChange}
+          />
         </div>
-      </div>
-
-      {/* Search Bar */}
-      <div className="border-b border-gray-700 px-4 pt-2 pb-3">
-        <SemanticSearchBar
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-        />
+        <button
+          onClick={onToggleCollapse}
+          className="ui-icon-btn shrink-0"
+          title={t('librarySearch.collapseSidebar')}
+          aria-label={t('librarySearch.collapseSidebar')}
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">

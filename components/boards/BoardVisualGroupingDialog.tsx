@@ -88,14 +88,14 @@ export default function BoardVisualGroupingDialog({ boardId, ids, close }: { boa
       {semantic.isBackfilling && <p>{t('canvas.pauseIndexing')}</p>}
       {busy && <p role="status">{progress ? t(progress.key, progress.values) : ''}</p>}
       {(error || semantic.lastError) && <p role="alert">{error === 'canvas.groupingChanged' ? t('canvas.groupingChanged') : error || semantic.lastError}</p>}
-      {failures.length > 0 && <details><summary>{t('canvas.prepareFailed', { count: failures.length })}</summary>{failures.map(failure => <p key={failure.imageId}>{uniqueImages.find(image => image.id === failure.imageId)?.name}: {failure.error}</p>)}</details>}
+      {failures.length > 0 && <details className="ui-disclosure"><summary>{t('canvas.prepareFailed', { count: failures.length })}</summary>{failures.map(failure => <p key={failure.imageId}>{uniqueImages.find(image => image.id === failure.imageId)?.name}: {failure.error}</p>)}</details>}
       {preview && <div><p>{t('canvas.groupsPreview', { groups: preview.objectGroups.length, images: images.length - preview.objectGroups.flat().length })}</p>
         <div className="board-grouping-preview">{preview.objectGroups.map((group, i) => <section key={i}><strong>{t('canvas.visualGroup', { index: i + 1, count: group.length })}</strong><div>{group.slice(0, 4).map(id => { const image = images.find(item => item.object.id === id)?.image; return image ? <BoardResultThumbnail key={id} image={image} open={() => {}} /> : null; })}</div></section>)}</div>
         {stale && <p role="alert">{t('canvas.groupingStale')}</p>}
       </div>}
       <footer><button className="board-button" onClick={dismiss}>{t('libraryFolders.cancel')}</button>
-        <button className="board-button" disabled={busy || !editor.editable || !settings.semanticSearchEnabled || !semantic.modelInstalled || semantic.isBackfilling || images.length < 2} onClick={() => void run()}>{ready < uniqueImages.length ? t('canvas.prepareAndGroup') : t('canvas.calculateGroups')}</button>
-        {preview && <button className="board-button" disabled={!!stale || busy || !editor.editable || !settings.semanticSearchEnabled || preview.objectGroups.length === 0} onClick={() => {
+        <button className={`board-button ${preview ? '' : 'board-button--primary'}`} disabled={busy || !editor.editable || !settings.semanticSearchEnabled || !semantic.modelInstalled || semantic.isBackfilling || images.length < 2} onClick={() => void run()}>{ready < uniqueImages.length ? t('canvas.prepareAndGroup') : t('canvas.calculateGroups')}</button>
+        {preview && <button className="board-button board-button--primary" disabled={!!stale || busy || !editor.editable || !settings.semanticSearchEnabled || preview.objectGroups.length === 0} onClick={() => {
           const state = useBoardStore.getState(), current = state.sessions[boardId];
           const currentContentKey = JSON.stringify([...new Map(candidates.map(object => editor.resolveAsset?.(object)?.image).filter(image => image && isVisibleWithSafeMode(image, getHiddenSensitiveTagSet(useSettingsStore.getState()))).map(image => [image!.id, image!])).values()].map(image => [image.id, contentKeyForImage(image)]));
           if (!current || state.closing || current.recovering || visualGroupFingerprint(current.document, candidates.map(object => object.id)) !== preview.fingerprint || useSemanticStore.getState().modelKey !== preview.modelKey || currentContentKey !== preview.contentKey) { setError('canvas.groupingChanged'); return; }

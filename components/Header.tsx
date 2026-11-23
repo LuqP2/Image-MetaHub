@@ -323,7 +323,6 @@ const Header: React.FC<HeaderProps> = ({
     () => [
       { id: 'library' as const, label: t('settings.library.library') },
       { id: 'prompts' as const, label: t('metadataEditor.prompts') },
-      { id: 'explore' as const, label: t('shell.explore') },
       { id: 'models' as const, label: t('libraryGallery.models') },
       ...(window.electronAPI ? [{ id: 'canvas' as const, label: t('comparison.canvas') }] : []),
       { id: 'editor' as const, label: t('shell.editor') },
@@ -396,7 +395,7 @@ const Header: React.FC<HeaderProps> = ({
                   return (
                     <button
                       key={tab.id}
-                      aria-current={libraryView === tab.id ? 'page' : undefined}
+                      aria-current={(tab.id === 'library' ? (libraryView === 'library' || libraryView === 'explore') : libraryView === tab.id) ? 'page' : undefined}
                       onClick={() => handleViewTabClick(tab.id)}
                       onDragEnter={isComfyUITab ? (event) => {
                         if (hasInternalImageDragType(event.dataTransfer)) {
@@ -433,7 +432,7 @@ const Header: React.FC<HeaderProps> = ({
                       } : undefined}
                       className={`app-workspace-tab ${
                         isComfyUITab && isComfyUIDragTarget
-                          ? 'ring-2 ring-cyan-400 bg-cyan-500/25 text-cyan-100'
+                          ? 'ring-2 ring-accent bg-accent/20 text-accent'
                           : ''
                       }`}
                       title={isComfyUITab ? t('shell.comfyDrop') : undefined}

@@ -80,6 +80,8 @@ interface GridToolbarProps {
   scopeReturnLabel?: string;
   /** Opens the Analytics view (relocated from the global header into the library toolbar). */
   onOpenAnalytics?: () => void;
+  /** Optional leading controls (e.g. Library view switcher) rendered inline on the same toolbar row. */
+  leadingControls?: React.ReactNode;
 }
 
 const formatCalendarDateKey = (date: Date): string => {
@@ -237,6 +239,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onExitScope,
   scopeReturnLabel,
   onOpenAnalytics,
+  leadingControls,
 }) => {
   const { language, t } = useTranslation();
   const calendarWeekdays = useMemo(() => {
@@ -633,7 +636,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       <div className="flex items-center justify-between gap-2 px-5 min-h-[32px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
         <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
-            {onAddToBoard && <button disabled={!selectedImagesList.length} className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-40" onClick={() => onAddToBoard(selectedImagesList)}>{t('libraryGallery.addToBoard')}</button>}
+            {leadingControls && (
+              <>
+                {leadingControls}
+                <div className="mx-1 h-4 w-px bg-gray-700/60" />
+              </>
+            )}
+            {onAddToBoard && <button disabled={!selectedImagesList.length} className="ui-btn-sm" onClick={() => onAddToBoard(selectedImagesList)}>{t('libraryGallery.addToBoard')}</button>}
             {onExitScope && (
               <>
                 <Tooltip label={scopeReturnLabel ? t('libraryGallery.backToLabel', { label: scopeReturnLabel }) : t('libraryGallery.back')}>

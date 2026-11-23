@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "従来の「モデルビュー」「スマートライブラリ」「コレクション」「ノードビュー」タブを表示します。どのタブからも統合された「探索」画面が開きます。",
   "settings.appearance.system": "システム（既定）",
   "settings.appearance.theme": "テーマ",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "システムの外観に合わせて Ayu Dark または Ayu Light を使用します。",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "システムの外観に合わせて Dark または Light を使用します。",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "ダイアログの最小化や復元などに、控えめなアニメーションを使います。",
   "settings.general.applyTo": "適用先",
   "settings.general.autoLinearSrgbIfUnknown": "自動（不明な場合はリニア sRGB）",

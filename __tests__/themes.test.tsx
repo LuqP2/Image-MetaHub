@@ -13,14 +13,14 @@ describe('theme selection', () => {
   beforeEach(() => useSettingsStore.getState().resetState());
   afterEach(() => cleanup());
 
-  it('adds Ayu Light and makes System follow the Ayu family', () => {
+  it('adds Ayu Light and makes System follow Dark and Light', () => {
     expect(themeOptions).toHaveLength(17);
     expect(themeOptions.slice(6).filter((option) => option.dark).map((option) => option.id)).toEqual(newThemeIds);
     for (const id of newThemeIds) {
       expect(resolveTheme(id as (typeof themeOptions)[number]['id'], false)).toEqual({ id, dark: true });
     }
-    expect(resolveTheme('system', false)).toEqual({ id: 'ayu-light', dark: false });
-    expect(resolveTheme('system', true)).toEqual({ id: 'ayu', dark: true });
+    expect(resolveTheme('system', false)).toEqual({ id: 'light', dark: false });
+    expect(resolveTheme('system', true)).toEqual({ id: 'dark', dark: true });
     expect(resolveTheme('ayu-light', true)).toEqual({ id: 'ayu-light', dark: false });
   });
 
@@ -36,8 +36,8 @@ describe('theme selection', () => {
   it('keeps System as the saved default while its resolved appearance changes', () => {
     expect(useSettingsStore.getState().theme).toBe('system');
     const before = localStorage.getItem('image-metahub-settings');
-    expect(resolveTheme(useSettingsStore.getState().theme, true).id).toBe('ayu');
-    expect(resolveTheme(useSettingsStore.getState().theme, false).id).toBe('ayu-light');
+    expect(resolveTheme(useSettingsStore.getState().theme, true).id).toBe('dark');
+    expect(resolveTheme(useSettingsStore.getState().theme, false).id).toBe('light');
     expect(useSettingsStore.getState().theme).toBe('system');
     expect(localStorage.getItem('image-metahub-settings')).toBe(before);
   });
@@ -58,12 +58,12 @@ describe('theme selection', () => {
     render(<AppearanceSettingsPanel />);
     const trigger = screen.getByRole('button', { name: 'Theme' });
     expect(trigger.textContent).toContain('System (Default)');
-    expect(screen.getByText('Uses Ayu Dark or Ayu Light to match your system appearance.')).toBeTruthy();
+    expect(screen.getByText('Uses Dark or Light to match your system appearance.')).toBeTruthy();
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole('option', { name: 'Ayu Light' }));
     expect(useSettingsStore.getState().theme).toBe('ayu-light');
     expect(trigger.textContent).toContain('Ayu Light');
-    expect(screen.queryByText('Uses Ayu Dark or Ayu Light to match your system appearance.')).toBeNull();
+    expect(screen.queryByText('Uses Dark or Light to match your system appearance.')).toBeNull();
   });
 
   it('selects a theme by keyboard and retains the saved choice', async () => {

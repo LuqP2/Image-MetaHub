@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "Exibe as abas clássicas de modelos, biblioteca inteligente, coleções e nodes. Todas abrem a tela Explorar.",
   "settings.appearance.system": "Sistema (padrão)",
   "settings.appearance.theme": "Tema",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "Usa Ayu Dark ou Ayu Light conforme a aparência do sistema.",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "Usa Dark ou Light conforme a aparência do sistema.",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "Usa animações discretas, como ao minimizar e restaurar janelas modais.",
   "settings.general.applyTo": "Aplicar a",
   "settings.general.autoLinearSrgbIfUnknown": "Automático (sRGB linear se desconhecido)",

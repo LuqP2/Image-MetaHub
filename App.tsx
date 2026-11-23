@@ -310,6 +310,7 @@ export default function App() {
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
   const validateActiveImageScope = useImageStore((state) => state.validateActiveImageScope);
+  const exploreDimension = useImageStore((state) => state.exploreDimension);
   const setExploreDimension = useImageStore((state) => state.setExploreDimension);
   const selectedNodes = useImageStore((state) => state.selectedNodes);
   const setSelectedNodes = useImageStore((state) => state.setSelectedNodes);
@@ -4551,6 +4552,41 @@ export default function App() {
                 )}
                 {!relatedImages && (libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
+                    leadingControls={
+                      libraryView === 'library' ? (
+                        <div className="ui-segmented" role="group" aria-label={t('settings.library.library')}>
+                          <button
+                            type="button"
+                            aria-pressed={true}
+                            onClick={() => {
+                              resetLibraryGridScrollPosition();
+                              setLibraryView('library');
+                            }}
+                            className="ui-segmented-item ui-segmented-item-active text-accent"
+                          >
+                            {t('libraryGallery.all')}
+                          </button>
+                          {([
+                            ['collections', t('libraryGallery.collections')],
+                            ['clusters', t('libraryGallery.clusters')],
+                            ['models', t('libraryGallery.models')],
+                          ] as const).map(([dim, label]) => (
+                            <button
+                              key={dim}
+                              type="button"
+                              aria-pressed={false}
+                              onClick={() => {
+                                setExploreDimension(dim);
+                                setLibraryView('explore');
+                              }}
+                              className="ui-segmented-item"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : undefined
+                    }
                     canvasAction={window.electronAPI && libraryView === 'library' ? libraryCanvas.action : undefined}
                     isLibraryView={libraryView === 'library'}
                     onAddToBoard={window.electronAPI ? handleAddToBoard : undefined}
@@ -4629,13 +4665,13 @@ export default function App() {
                 )}
 
                 {!relatedImages && libraryView === 'library' && activeImageScope?.type === 'managedModel' && (
-                  <div className="mx-5 mb-2 flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                  <div className="mx-5 mb-2 flex items-center justify-between gap-3 rounded-lg border border-accent/35 bg-accent/10 px-3 py-2 text-xs text-gray-100">
                     <span>{displayImages.length} of {scopedImageIds?.size ?? 0} matching files{activeImageScope.managedModel?.mode !== 'total' ? ` · ${activeImageScope.managedModel?.mode}` : ''}</span>
-                    <button className="rounded border border-cyan-500/30 px-3 py-1 text-xs" onClick={handleClearOtherModelFilters}>Clear other filters</button>
+                    <button className="ui-btn-sm" onClick={handleClearOtherModelFilters}>Clear other filters</button>
                   </div>
                 )}
                 {!relatedImages && libraryView === 'library' && findSimilarGridFilter && (
-                  <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                  <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/35 bg-accent/10 px-3 py-2 text-xs text-gray-100">
                     <div className="min-w-0">
                       <span className="font-medium">Find Similar filter</span>
                       <span className="text-cyan-200/80"> from </span>
@@ -4799,6 +4835,40 @@ export default function App() {
                   }} />
                 ) : libraryView === 'explore' ? (
                   <ExploreWorkspace
+                    embedded
+                    leadingControls={
+                      <div className="ui-segmented" role="group" aria-label={t('settings.library.library')}>
+                        <button
+                          type="button"
+                          aria-pressed={false}
+                          onClick={() => {
+                            resetLibraryGridScrollPosition();
+                            setLibraryView('library');
+                          }}
+                          className="ui-segmented-item"
+                        >
+                          {t('libraryGallery.all')}
+                        </button>
+                        {([
+                          ['collections', t('libraryGallery.collections')],
+                          ['clusters', t('libraryGallery.clusters')],
+                          ['models', t('libraryGallery.models')],
+                        ] as const).map(([dim, label]) => {
+                          const active = exploreDimension === dim;
+                          return (
+                            <button
+                              key={dim}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => setExploreDimension(dim)}
+                              className={`ui-segmented-item ${active ? 'ui-segmented-item-active text-accent' : ''}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    }
                     onNavigateToLibrary={() => {
                       resetLibraryGridScrollPosition();
                       setLibraryView('library');

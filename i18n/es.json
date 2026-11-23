@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "Muestra las pestañas clásicas de modelos, biblioteca inteligente, colecciones y nodos. Todas abren la vista unificada Explorar, sin pantallas separadas.",
   "settings.appearance.system": "Sistema (predeterminado)",
   "settings.appearance.theme": "Tema",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "Usa Ayu Dark o Ayu Light según la apariencia del sistema.",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "Usa Dark o Light según la apariencia del sistema.",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "Usa animaciones sutiles, por ejemplo, al minimizar y restaurar ventanas modales.",
   "settings.general.applyTo": "Aplicar a",
   "settings.general.autoLinearSrgbIfUnknown": "Automático (sRGB lineal si se desconoce)",

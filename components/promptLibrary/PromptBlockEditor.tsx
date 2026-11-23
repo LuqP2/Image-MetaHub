@@ -74,8 +74,8 @@ export default function PromptBlockEditor({ initial, onClose, onSaved }: {
       {fieldStatus && <p role="status" className="text-xs text-accent">{t('promptLibrary.fieldReplaced', fieldStatus)}</p>}
 
 
-      {editor.preview && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={editor.preview !== 'hidden'} onChange={e => setEditor({ ...editor, preview: e.target.checked ? initial.editor?.preview || null : 'hidden' })} />{t('promptLibrary.useCurrentPreview')}</label>}
-      <details className="space-y-3 rounded-lg border border-gray-700 p-3 text-xs"><summary className="cursor-pointer text-gray-400">{t('promptLibrary.organization')}</summary>
+      {editor.preview && <label className="flex items-center gap-2 text-xs"><input type="checkbox" className="ui-checkbox" checked={editor.preview !== 'hidden'} onChange={e => setEditor({ ...editor, preview: e.target.checked ? initial.editor?.preview || null : 'hidden' })} />{t('promptLibrary.useCurrentPreview')}</label>}
+      <details className="ui-disclosure space-y-3 rounded-lg border border-gray-700 p-3 text-xs"><summary className="cursor-pointer text-gray-400">{t('promptLibrary.organization')}</summary>
       <label className="block pt-3 text-xs">{t('promptLibrary.category')}<input
           list="block-categories"
           className={fieldClass}

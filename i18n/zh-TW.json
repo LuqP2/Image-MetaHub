@@ -9,7 +9,7 @@
   "settings.appearance.showTheOldModelViewSmartLibrary": "顯示舊版「模型檢視」、「智慧圖庫」、「收藏集」與「節點檢視」分頁。這些分頁皆會開啟整合後的「探索」畫面，而非獨立頁面。",
   "settings.appearance.system": "系統（預設）",
   "settings.appearance.theme": "佈景主題",
-  "settings.appearance.usesAyuDarkOrAyuLightTo": "依據系統外觀自動套用 Ayu Dark 或 Ayu Light。",
+  "settings.appearance.usesAyuDarkOrAyuLightTo": "依系統外觀自動使用 Dark 或 Light。",
   "settings.appearance.useSmallInterfaceAnimationsIncludingModalMinimize": "使用精簡的介面動畫，包含互動視窗的最小化與還原效果。",
   "settings.general.applyTo": "套用至",
   "settings.general.autoLinearSrgbIfUnknown": "自動（未知時採用線性 sRGB）",

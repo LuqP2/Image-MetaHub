@@ -306,7 +306,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
           {diffOnly && <div className="absolute inset-0 bg-black" />}
           {edgeMapUrl && <img src={edgeMapUrl} alt={t('comparison.edgeMap')} className="absolute inset-0 h-full w-full select-none object-contain" style={{ opacity: advancedSettings.opacity / 100 }} />}
           <div className="absolute left-4 top-4 rounded-lg border border-white/10 bg-black/65 px-3 py-1.5 text-xs text-gray-100">
-            <span className="text-cyan-200">{t('comparison.cyanA')}</span>
+            <span className="text-accent">{t('comparison.cyanA')}</span>
             <span className="mx-2 text-gray-500">/</span>
             <span className="text-fuchsia-200">{t('comparison.magentaB')}</span>
           </div>

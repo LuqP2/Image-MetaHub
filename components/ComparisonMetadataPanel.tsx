@@ -186,7 +186,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   if (!metadata && embedded) return <p className="text-sm text-gray-400">{t('comparison.noMetadata')}</p>;
   if (!metadata) {
     return (
-      <div className={`p-4 bg-gray-800/50 rounded-lg border ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
+      <div className={`p-4 bg-gray-800/50 rounded-lg border ${isHighlighted ? 'border-accent/60 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
         <button
           onClick={onToggleExpanded}
           className={`w-full p-3 flex items-center justify-between text-left transition-colors rounded-lg ${isHighlighted ? 'bg-cyan-500/10 hover:bg-cyan-500/15' : 'hover:bg-gray-700/30'}`}
@@ -207,7 +207,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   }
 
   return (
-    <div className={embedded ? "board-embedded-metadata" : `bg-gray-800/50 rounded-lg border overflow-hidden transition-colors ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
+    <div className={embedded ? "board-embedded-metadata" : `bg-gray-800/50 rounded-lg border overflow-hidden transition-colors ${isHighlighted ? 'border-accent/60 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
       {/* Toggle Button */}
       {!embedded && <button
         onClick={onToggleExpanded}
