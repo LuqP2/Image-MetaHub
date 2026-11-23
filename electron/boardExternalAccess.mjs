@@ -86,19 +86,23 @@ export function createBoardExternalAccess() {
         return board.files.has(file) || board.sidecars.has(file);
       } catch { return false; }
     },
-    allows(boardId, value) {
-      if (typeof boardId !== 'string' || !boardId.trim() || typeof value !== 'string' || !value) return false;
+    resolveAllowed(boardId, value) {
+      if (typeof boardId !== 'string' || !boardId.trim() || typeof value !== 'string' || !value) return null;
       const board = boards.get(boardId.trim());
-      if (!board) return false;
+      if (!board) return null;
       try {
         const file = canonical(value);
-        if (board.files.has(file) || board.sidecars.has(file)) return true;
-        if (!MODEL_RESOURCE_EXTENSION.test(file)) return false;
-        return [...board.modelRoots.keys()].some(root => {
+        if (board.files.has(file) || board.sidecars.has(file)) return file;
+        if (!MODEL_RESOURCE_EXTENSION.test(file)) return null;
+        const inModelRoot = [...board.modelRoots.keys()].some(root => {
           const relative = path.relative(root, file);
           return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
         });
-      } catch { return false; }
+        return inModelRoot ? file : null;
+      } catch { return null; }
+    },
+    allows(boardId, value) {
+      return this.resolveAllowed(boardId, value) !== null;
     },
   };
 }

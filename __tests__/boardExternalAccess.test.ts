@@ -153,6 +153,33 @@ describe('Canvas external file reads', () => {
     const exrOtherBoard = await handlers.get('boards:exr-inspect')!(senderEvent, { boardId: 'other-board', filePath: exrFile });
     expect(exrOtherBoard).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
 
+    // Missing approved file reports BOARD_FILE_NOT_FOUND, while an existing file whose canonical
+    // target is unapproved (e.g. replaced by a symlink) must be rejected with BOARD_APPROVAL_REQUIRED.
+    const replaceableFile = path.join(root, 'replaceable.png');
+    const secretFile = path.join(root, 'secret.txt');
+    fs.writeFileSync(replaceableFile, 'png-bytes');
+    fs.writeFileSync(secretFile, 'top-secret');
+    access.authorize(boardId, replaceableFile);
+    fs.unlinkSync(replaceableFile);
+    expect(await handlers.get('boards:stat-file')!(senderEvent, { boardId, filePath: replaceableFile })).toMatchObject({ success: false, code: 'BOARD_FILE_NOT_FOUND' });
+    expect(await handlers.get('boards:read-file')!(senderEvent, { boardId, filePath: replaceableFile })).toMatchObject({ success: false, code: 'BOARD_FILE_NOT_FOUND' });
+
+    let symlinkCreated = false;
+    try {
+      fs.symlinkSync(secretFile, replaceableFile);
+      symlinkCreated = true;
+    } catch { /* Windows without symlink privilege */ }
+    if (symlinkCreated) {
+      expect(await handlers.get('boards:read-file')!(senderEvent, { boardId, filePath: replaceableFile })).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
+      expect(await handlers.get('boards:stat-file')!(senderEvent, { boardId, filePath: replaceableFile })).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
+    } else {
+      // Even without OS symlink privileges, verify an existing file rejected by canonical authorization is never read via hasGrant().
+      const resolveSpy = vi.spyOn(access, 'resolveAllowed').mockReturnValueOnce(null);
+      fs.writeFileSync(replaceableFile, 'replaced-bytes');
+      expect(await handlers.get('boards:read-file')!(senderEvent, { boardId, filePath: replaceableFile })).toMatchObject({ success: false, code: 'BOARD_APPROVAL_REQUIRED' });
+      resolveSpy.mockRestore();
+    }
+
     // Deleting the board revokes its access.
     const removed = await handlers.get('boards:remove')!(senderEvent, { id: boardId, expectedRevision: imported.data.revision });
     expect(removed.success).toBe(true);
