@@ -503,6 +503,7 @@ export interface ElectronAPI {
   boardsReadMediaMetadata?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<{ video?: any; audio?: any }>>;
   boardsReadModel3DMetadata?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<any>>;
   boardsGenerateThumbnail?: (input: { boardId: string; filePath: string; maxEdge?: number; quality?: number }) => Promise<import('./services/boards/types').BoardApiResult<{ data: Uint8Array | ArrayBuffer; mimeType: string }>>;
+  boardsExrInspect?: (input: { boardId: string; filePath: string }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/exr/contracts').ExrAssetInfo>>;
   boardsExrPreview?: (input: { boardId: string; request: import('./services/exr/contracts').ExrPreviewRequest }) => Promise<import('./services/boards/types').BoardApiResult<import('./services/exr/contracts').ExrPreviewResult>>;
   boardsLinkPreview?: (url: string) => Promise<import('./services/boards/types').BoardApiResult<{ title: string; imageData?: string }>>;
   boardsFonts?: () => Promise<import('./services/boards/types').BoardApiResult<string[]>>;

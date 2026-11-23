@@ -342,6 +342,7 @@ const electronAPI = {
   boardsReadMediaMetadata: (input) => ipcRenderer.invoke('boards:read-media-metadata', input),
   boardsReadModel3DMetadata: (input) => ipcRenderer.invoke('boards:read-model3d-metadata', input),
   boardsGenerateThumbnail: (input) => ipcRenderer.invoke('boards:generate-thumbnail', input),
+  boardsExrInspect: (input) => ipcRenderer.invoke('boards:exr-inspect', input),
   boardsExrPreview: (input) => ipcRenderer.invoke('boards:exr-preview', input),
   boardsLinkPreview: (url) => ipcRenderer.invoke('boards:link-preview', url),
   boardsFonts: () => ipcRenderer.invoke('boards:fonts'),
