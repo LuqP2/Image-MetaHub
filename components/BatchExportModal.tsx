@@ -13,6 +13,12 @@ import { getUnsupportedModel3DBatchExportError } from '../utils/model3DTransfer'
 import { getRelativeImagePath } from '../utils/imagePaths';
 import { useTeamWorkspaceStore } from '../store/useTeamWorkspaceStore';
 import { filterApprovedDeliveryImages } from '../services/team/reviewService';
+import {
+  buildProvenanceAuditEntries,
+  serializeAuditReportCsv,
+  serializeAuditReportHtml,
+  serializeAuditReportJson,
+} from '../services/team/auditReportService';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -100,6 +106,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [metadataPolicy, setMetadataPolicy] = useState<MetadataExportPolicy>('preserve');
   const [applyShadowEdits, setApplyShadowEdits] = useState(true);
   const [approvedOnly, setApprovedOnly] = useState(false);
+  const [includeAuditReport, setIncludeAuditReport] = useState(true);
   const teamWorkspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
   const teamAssetStatesByWorkspace = useTeamWorkspaceStore((state) => state.assetStatesByWorkspace);
   const hasActiveTeamWorkspace = Object.keys(teamWorkspacesById).length > 0;
@@ -135,6 +142,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setMetadataPolicy('preserve');
       setApplyShadowEdits(true);
       setApprovedOnly(false);
+      setIncludeAuditReport(true);
       setProgress(null);
       setActiveExportId(null);
       setExportPath(null);
@@ -299,6 +307,27 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
         if (!exportResult.success) {
           setStatus({ type: 'error', ...(exportResult.error ? { message: exportResult.error } : { key: 'batchExport.failed' }) });
         } else {
+          if (hasActiveTeamWorkspace && approvedOnly && includeAuditReport && window.electronAPI?.team?.writeAuditReports) {
+            const firstWorkspace = Object.values(teamWorkspacesById)[0];
+            const entries = buildProvenanceAuditEntries(
+              imagesToExport,
+              directories,
+              teamWorkspacesById,
+              teamAssetStatesByWorkspace,
+            );
+            const meta = {
+              workspaceName: firstWorkspace?.manifest.name || 'Team Workspace',
+              workspaceId: firstWorkspace?.manifest.workspaceId ?? null,
+              generatedAt: new Date().toISOString(),
+              metadataStrippedFromDeliverables: metadataPolicy === 'strip',
+            };
+            await window.electronAPI.team.writeAuditReports({
+              destDir: destResult.path,
+              csvContent: serializeAuditReportCsv(entries),
+              jsonContent: serializeAuditReportJson(entries, meta),
+              htmlContent: serializeAuditReportHtml(entries, meta),
+            });
+          }
           const failures = exportResult.failedCount || 0;
           setStatus({
             type: failures > 0 ? 'error' : 'success',
@@ -419,24 +448,37 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               </p>
             )}
             {hasActiveTeamWorkspace && (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-3 py-2 text-xs">
-                <label className="flex items-center gap-2 text-emerald-100 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={approvedOnly}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setApprovedOnly(next);
-                      if (next) {
-                        setMetadataPolicy('strip');
-                      }
-                    }}
-                    className="rounded border-emerald-600 bg-gray-900 text-emerald-500 focus:ring-emerald-500"
-                  />
-                  <span>Client Delivery Pack — Approved only ({approvedImagesInSource.length})</span>
-                </label>
-                {approvedOnly && (
-                  <span className="text-[11px] text-emerald-300">Metadata stripped</span>
+              <div className="space-y-2 rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-emerald-100 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={approvedOnly}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setApprovedOnly(next);
+                        if (next) {
+                          setMetadataPolicy('strip');
+                        }
+                      }}
+                      className="rounded border-emerald-600 bg-gray-900 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span>Client Delivery Pack — Approved only ({approvedImagesInSource.length})</span>
+                  </label>
+                  {approvedOnly && (
+                    <span className="text-[11px] text-emerald-300">Metadata stripped</span>
+                  )}
+                </div>
+                {approvedOnly && output === 'folder' && (
+                  <label className="flex items-center gap-2 pl-5 text-[11px] text-emerald-200/90 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeAuditReport}
+                      onChange={(e) => setIncludeAuditReport(e.target.checked)}
+                      className="rounded border-emerald-600 bg-gray-900 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span>Include Provenance &amp; Approval Audit Report (CSV + JSON + HTML)</span>
+                  </label>
                 )}
               </div>
             )}

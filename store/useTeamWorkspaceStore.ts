@@ -5,6 +5,7 @@ import type {
   TeamBoardEnvelope,
   TeamBoardSaveResult,
   TeamBoardSummary,
+  TeamCommentPin,
   TeamExpectedModelEntry,
   TeamMemberProfile,
   TeamModelsManifest,
@@ -33,10 +34,16 @@ interface TeamWorkspaceStoreState {
   modelsManifestByWorkspace: Record<string, TeamModelsManifest | null>;
   syncingWorkspaceIds: Record<string, boolean>;
   reviewStatusFilter: 'all' | 'approved' | 'needs_changes' | 'in_review' | 'rejected' | 'conflict' | 'unreviewed';
+  pinPlacementActive: boolean;
+  draftPin: TeamCommentPin | null;
+  highlightedCommentId: string | null;
   error: string | null;
 
   initialize: () => Promise<void>;
   setReviewStatusFilter: (filter: 'all' | 'approved' | 'needs_changes' | 'in_review' | 'rejected' | 'conflict' | 'unreviewed') => void;
+  setPinPlacementActive: (active: boolean) => void;
+  setDraftPin: (pin: TeamCommentPin | null) => void;
+  setHighlightedCommentId: (commentId: string | null) => void;
   detectWorkspace: (rootPath: string) => Promise<{ manifest: TeamWorkspaceSummary['manifest']; rootPath: string } | null>;
   initWorkspace: (rootPath: string, name?: string) => Promise<TeamWorkspaceSummary | null>;
   openWorkspace: (rootPath: string) => Promise<TeamWorkspaceSummary | null>;
@@ -80,9 +87,15 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
   modelsManifestByWorkspace: {},
   syncingWorkspaceIds: {},
   reviewStatusFilter: 'all',
+  pinPlacementActive: false,
+  draftPin: null,
+  highlightedCommentId: null,
   error: null,
 
   setReviewStatusFilter: (reviewStatusFilter) => set({ reviewStatusFilter }),
+  setPinPlacementActive: (pinPlacementActive) => set({ pinPlacementActive }),
+  setDraftPin: (draftPin) => set({ draftPin }),
+  setHighlightedCommentId: (highlightedCommentId) => set({ highlightedCommentId }),
 
   initialize: async () => {
     const bridge = typeof window !== 'undefined' ? window.electronAPI?.team : undefined;

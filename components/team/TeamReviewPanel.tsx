@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Check, MessageSquare, Send, Users } from 'lucide-react';
+import { AlertTriangle, Check, MapPin, MessageSquare, Send, Users, X } from 'lucide-react';
 import type { Directory, IndexedImage } from '../../types';
 import { useTeamWorkspaceStore } from '../../store/useTeamWorkspaceStore';
 import {
@@ -21,6 +21,12 @@ interface TeamReviewPanelProps {
 export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directories }) => {
   const workspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
   const assetStatesByWorkspace = useTeamWorkspaceStore((state) => state.assetStatesByWorkspace);
+  const pinPlacementActive = useTeamWorkspaceStore((state) => state.pinPlacementActive);
+  const draftPin = useTeamWorkspaceStore((state) => state.draftPin);
+  const highlightedCommentId = useTeamWorkspaceStore((state) => state.highlightedCommentId);
+  const setPinPlacementActive = useTeamWorkspaceStore((state) => state.setPinPlacementActive);
+  const setDraftPin = useTeamWorkspaceStore((state) => state.setDraftPin);
+  const setHighlightedCommentId = useTeamWorkspaceStore((state) => state.setHighlightedCommentId);
 
   const [commentText, setCommentText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -57,8 +63,10 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
     if (!commentText.trim() || busy) return;
     setBusy(true);
     try {
-      await addAssetComment(context, commentText);
+      await addAssetComment(context, commentText, draftPin);
       setCommentText('');
+      setDraftPin(null);
+      setPinPlacementActive(false);
     } finally {
       setBusy(false);
     }
@@ -131,42 +139,92 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
       )}
 
       <div className="space-y-2 border-t border-gray-800 pt-2.5">
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
-          <MessageSquare className="h-3 w-3" />
-          <span>Comments ({comments.length})</span>
+        <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-gray-400">
+          <span className="inline-flex items-center gap-1.5">
+            <MessageSquare className="h-3 w-3" />
+            <span>Comments ({comments.length})</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setPinPlacementActive(!pinPlacementActive)}
+            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+              pinPlacementActive
+                ? 'bg-blue-600 text-white'
+                : 'border border-gray-700 bg-gray-800 text-gray-300 hover:text-white'
+            }`}
+            title="Click on the image to anchor this comment to an exact point"
+          >
+            <MapPin className="h-3 w-3" />
+            <span>{pinPlacementActive ? 'Click image…' : 'Pin'}</span>
+          </button>
         </div>
 
         {comments.length > 0 && (
           <div className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
-            {comments.map((comment) => (
-              <div
-                key={comment.commentId}
-                className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                  comment.resolved
-                    ? 'border-gray-800 bg-gray-900/40 text-gray-500'
-                    : 'border-gray-700/70 bg-gray-800/70 text-gray-200'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400">
-                  <span className="font-medium text-gray-300">{comment.authorName || comment.deviceId}</span>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void toggleAssetCommentResolved(context, comment.commentId, !comment.resolved)}
-                    className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-gray-700 ${
-                      comment.resolved ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-200'
+            {(() => {
+              let pinCounter = 0;
+              return comments.map((comment) => {
+                const pinNumber = comment.pin ? ++pinCounter : null;
+                const isHighlighted = highlightedCommentId === comment.commentId;
+                return (
+                  <div
+                    key={comment.commentId}
+                    onMouseEnter={() => comment.pin && setHighlightedCommentId(comment.commentId)}
+                    onMouseLeave={() => comment.pin && setHighlightedCommentId(null)}
+                    className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+                      isHighlighted
+                        ? 'border-blue-500 bg-blue-950/40 text-gray-100'
+                        : comment.resolved
+                          ? 'border-gray-800 bg-gray-900/40 text-gray-500'
+                          : 'border-gray-700/70 bg-gray-800/70 text-gray-200'
                     }`}
-                    title={comment.resolved ? 'Reopen comment' : 'Resolve comment'}
                   >
-                    <Check className="h-3 w-3" />
-                    <span>{comment.resolved ? 'Resolved' : 'Resolve'}</span>
-                  </button>
-                </div>
-                <p className={`mt-0.5 whitespace-pre-wrap break-words ${comment.resolved ? 'line-through' : ''}`}>
-                  {comment.text}
-                </p>
-              </div>
-            ))}
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-gray-300">
+                        {pinNumber !== null && (
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-gray-950">
+                            {pinNumber}
+                          </span>
+                        )}
+                        {comment.authorName || comment.deviceId}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void toggleAssetCommentResolved(context, comment.commentId, !comment.resolved)}
+                        className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-gray-700 ${
+                          comment.resolved ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                        title={comment.resolved ? 'Reopen comment' : 'Resolve comment'}
+                      >
+                        <Check className="h-3 w-3" />
+                        <span>{comment.resolved ? 'Resolved' : 'Resolve'}</span>
+                      </button>
+                    </div>
+                    <p className={`mt-0.5 whitespace-pre-wrap break-words ${comment.resolved ? 'line-through' : ''}`}>
+                      {comment.text}
+                    </p>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
+
+        {draftPin && (
+          <div className="flex items-center justify-between rounded border border-blue-700/60 bg-blue-950/40 px-2 py-1 text-[11px] text-blue-200">
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              Pinned at ({Math.round(draftPin.x * 100)}%, {Math.round(draftPin.y * 100)}%)
+            </span>
+            <button
+              type="button"
+              onClick={() => setDraftPin(null)}
+              className="rounded p-0.5 text-blue-300 hover:bg-blue-900/60"
+              aria-label="Clear pin"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </div>
         )}
 

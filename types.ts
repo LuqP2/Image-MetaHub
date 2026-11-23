@@ -522,6 +522,10 @@ export interface ElectronAPI {
     deleteBoard: (args: { workspaceId: string; boardId: string }) => Promise<{ success: boolean; data?: { boardId: string; deleted: boolean }; code?: string; error?: string }>;
     readModelsManifest: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamModelsManifest | null; code?: string; error?: string }>;
     writeModelsManifest: (args: { workspaceId: string; models: import('./services/team/teamWorkspaceTypes').TeamExpectedModelEntry[] }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamModelsManifest; code?: string; error?: string }>;
+    writeAuditReports: (args: { destDir: string; csvContent?: string; jsonContent?: string; htmlContent?: string }) => Promise<{ success: boolean; data?: { written: string[] }; code?: string; error?: string }>;
+    saveTextFile: (args: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }>; content: string }) => Promise<{ success: boolean; data?: { saved: boolean; filePath: string | null }; code?: string; error?: string }>;
+    pickAndReadFeedback: () => Promise<{ success: boolean; data?: { filePath: string; content: string } | null; code?: string; error?: string }>;
+    buildThumbnailDataUrl: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: string; code?: string; error?: string }>;
     onWorkspaceUpdated: (callback: (summary: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary) => void) => () => void;
   };
   boardsPickExternalFile?: (input: string | { boardId: string; defaultPath?: string }) => Promise<import('./services/boards/types').BoardApiResult<string | null>>;

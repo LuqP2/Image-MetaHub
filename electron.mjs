@@ -7848,6 +7848,8 @@ function setupFileOperationHandlers() {
   teamWorkspaceController = registerTeamWorkspaceIpc({
     ipcMain,
     app,
+    dialog,
+    nativeImage,
     getMainWindow: () => mainWindow,
   });
   app.on('browser-window-focus', () => {

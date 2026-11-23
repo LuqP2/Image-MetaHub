@@ -2,6 +2,7 @@ import type { Directory, IndexedImage } from '../../types';
 import { buildWorkspaceAssetKey, normalizeWorkspaceRelativePath } from './teamOpsReducer';
 import type {
   TeamAssetState,
+  TeamCommentPin,
   TeamReviewStatus,
   TeamWorkspaceSummary,
 } from './teamWorkspaceTypes';
@@ -164,6 +165,7 @@ export async function resolveAssetReviewConflict(
 export async function addAssetComment(
   context: ImageTeamContext,
   text: string,
+  pin?: TeamCommentPin | null,
 ): Promise<void> {
   const trimmed = text.trim();
   if (!trimmed) return;
@@ -180,6 +182,7 @@ export async function addAssetComment(
       contentHash: context.contentHash,
       commentId,
       text: trimmed,
+      ...(pin ? { pin } : {}),
     },
     true,
   );

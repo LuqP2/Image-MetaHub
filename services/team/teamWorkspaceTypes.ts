@@ -84,10 +84,18 @@ export interface TeamResolveReviewConflictOp extends TeamOpBase {
   note?: string;
 }
 
+export interface TeamCommentPin {
+  /** Normalized horizontal coordinate in [0, 1] relative to image bounds. */
+  x: number;
+  /** Normalized vertical coordinate in [0, 1] relative to image bounds. */
+  y: number;
+}
+
 export interface TeamAddCommentOp extends TeamOpBase {
   type: 'add_comment';
   commentId: string;
   text: string;
+  pin?: TeamCommentPin | null;
 }
 
 export interface TeamResolveCommentOp extends TeamOpBase {
@@ -162,6 +170,7 @@ export interface TeamComment {
   deviceId: string;
   authorName: string | null;
   text: string;
+  pin: TeamCommentPin | null;
   createdAt: string;
   lamportClock: number;
   resolved: boolean;

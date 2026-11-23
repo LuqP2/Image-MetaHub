@@ -554,6 +554,10 @@ const electronAPI = {
     deleteBoard: (args) => ipcRenderer.invoke('team:delete-board', args),
     readModelsManifest: (workspaceId) => ipcRenderer.invoke('team:read-models-manifest', workspaceId),
     writeModelsManifest: (args) => ipcRenderer.invoke('team:write-models-manifest', args),
+    writeAuditReports: (args) => ipcRenderer.invoke('team:write-audit-reports', args),
+    saveTextFile: (args) => ipcRenderer.invoke('team:save-text-file', args),
+    pickAndReadFeedback: () => ipcRenderer.invoke('team:pick-and-read-feedback'),
+    buildThumbnailDataUrl: (args) => ipcRenderer.invoke('team:build-thumbnail-data-url', args),
     onWorkspaceUpdated: (callback) => {
       const listener = (_event, summary) => callback(summary);
       ipcRenderer.on('team-workspace-updated', listener);

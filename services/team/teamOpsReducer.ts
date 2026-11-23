@@ -1,12 +1,26 @@
 import type {
   TeamAssetState,
   TeamComment,
+  TeamCommentPin,
   TeamOpEvent,
   TeamReviewConflict,
   TeamReviewDecision,
   TeamReviewStatus,
   WorkspaceAssetIdentity,
 } from './teamWorkspaceTypes';
+
+export function normalizeCommentPin(pin: unknown): TeamCommentPin | null {
+  if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return null;
+  const candidate = pin as { x?: unknown; y?: unknown };
+  const x = Number(candidate.x);
+  const y = Number(candidate.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+  return {
+    x: Math.round(x * 10_000) / 10_000,
+    y: Math.round(y * 10_000) / 10_000,
+  };
+}
 
 /**
  * Normalize a workspace-relative path to POSIX form (`a/b/c.png`).
@@ -433,6 +447,7 @@ export function reduceTeamOps(ops: TeamOpEvent[]): Map<string, TeamAssetState> {
             deviceId: op.deviceId,
             authorName: op.authorName ?? null,
             text: op.text,
+            pin: normalizeCommentPin(op.pin),
             createdAt: op.createdAt,
             lamportClock: op.lamportClock,
             resolved: false,

@@ -72,6 +72,7 @@ import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
 import { TeamReviewPanel } from './team/TeamReviewPanel';
+import { TeamPinOverlay } from './team/TeamPinOverlay';
 import TagInputCombobox from './TagInputCombobox';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
@@ -3940,6 +3941,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }}
                   title={hasImageEditChanges && editedPreviewUrl ? t('imageViewer.navigation.holdCompare') : undefined}
                   draggable={canDragExternally && zoom === 1}
+                />
+                <TeamPinOverlay
+                  image={image}
+                  directories={directories}
+                  imageRef={fullImageElementRef}
+                  zoom={zoom}
+                  pan={pan}
                 />
                 {showCropOverlay && cropOverlayStyle && (
                   <div
