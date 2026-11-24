@@ -6,7 +6,7 @@ import { unwrapExr } from '../../services/exr/client';
 import { useImageStore } from '../../store/useImageStore';
 import { SettingsSectionCard } from './SettingsSectionCard';
 
-const control = 'rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-gray-100 disabled:opacity-50';
+const control = 'ui-btn';
 export function ExrSettingsPanel() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<ExrRuntimeStatus | null>(null);
@@ -63,20 +63,20 @@ export function ExrSettingsPanel() {
         {downloading && <div role="status" className="space-y-1 text-sm text-gray-300"><p>{status.phase === 'downloading' ? t("settings.general.downloading") : status.phase === 'verifying' ? t("settings.general.verifying") : t("settings.general.installing")} · {Math.round((status.receivedBytes ?? 0) / 1048576)} MB</p><progress className="w-full" value={status.receivedBytes ?? 0} max={status.downloadBytes || 1} /></div>}
       </>}
     </SettingsSectionCard>
-    {profile && settings && api && <details className="ui-disclosure rounded-2xl border border-gray-700/80 bg-gray-900/70 p-4 md:p-5">
+    {profile && settings && api && <details className="ui-disclosure rounded-lg border border-gray-700/80 bg-gray-900/70 p-4 md:p-5">
       <summary className="cursor-pointer text-base font-semibold text-gray-100">{t("settings.general.colorSettings")}</summary>
       <div className="mt-4 space-y-3">
-      <label className="block text-sm text-gray-300">{t("settings.general.applyTo")} <select aria-label={t("settings.general.profileScope")} className={`${control} ml-2 max-w-full`} value={scope} onChange={e => setScope(e.target.value)}>
+      <label className="block text-sm text-gray-300">{t("settings.general.applyTo")} <select aria-label={t("settings.general.profileScope")} className="ui-select ml-2 max-w-full" value={scope} onChange={e => setScope(e.target.value)}>
         <option value="">{t("settings.general.globalDefault")}</option>
         {directories.filter(d => d.path).map(d => <option key={d.id} value={d.path}>{d.name}</option>)}
       </select></label>
       {scope && <div className="flex items-center gap-2 text-sm text-gray-400"><span>{settings.folders[scope] ? t("settings.general.folderOverrideInheritedBySubfolders") : t("settings.general.inheritingGlobalDefault")}</span>{settings.folders[scope] && <button className={control} disabled={busy} onClick={() => void run(async () => { const folders = { ...settings.folders }; delete folders[scope]; unwrapExr(await api.saveSettings({ ...settings, folders })); })}>{t("settings.general.useGlobalDefault")}</button>}</div>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.configuration")}<select className={control} disabled={busy} value={profile.config} onChange={e => saveProfile({ config: e.target.value, input: 'auto', display: '', view: '' })}>{EXR_CONFIGS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}{!EXR_CONFIGS.some(c => c.id === profile.config) && <option value={profile.config}>{profile.config}</option>}</select></label>
+        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.configuration")}<select className="ui-select" disabled={busy} value={profile.config} onChange={e => saveProfile({ config: e.target.value, input: 'auto', display: '', view: '' })}>{EXR_CONFIGS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}{!EXR_CONFIGS.some(c => c.id === profile.config) && <option value={profile.config}>{profile.config}</option>}</select></label>
         <button className={`${control} self-end`} disabled={busy} onClick={() => void run(async () => { const selected = unwrapExr(await api.chooseConfig()); if (selected) { const next = { ...profile, config: selected, input: 'auto', display: '', view: '' }; unwrapExr(await api.saveSettings(scope ? { ...settings, folders: { ...settings.folders, [scope]: next } } : { ...settings, global: next })); } })}>{t("settings.general.loadConfigOcio")}</button>
-        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.inputColorSpace")}<select className={control} disabled={busy || !config} value={profile.input} onChange={e => saveProfile({ input: e.target.value })}><option value="auto">{t("settings.general.autoLinearSrgbIfUnknown")}</option>{config?.spaces.map(s => <option key={s}>{s}</option>)}</select></label>
-        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.display")}<select className={control} disabled={busy || !config} value={profile.display} onChange={e => saveProfile({ display: e.target.value, view: '' })}><option value="">{t("settings.general.configurationDefault")}</option>{displays.map(d => <option key={d.name}>{d.name}</option>)}</select></label>
-        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.view")}<select className={control} disabled={busy || !config} value={profile.view} onChange={e => saveProfile({ view: e.target.value })}><option value="">{t("settings.general.configurationDefault")}</option>{views.map(v => <option key={v}>{v}</option>)}</select></label>
+        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.inputColorSpace")}<select className="ui-select" disabled={busy || !config} value={profile.input} onChange={e => saveProfile({ input: e.target.value })}><option value="auto">{t("settings.general.autoLinearSrgbIfUnknown")}</option>{config?.spaces.map(s => <option key={s}>{s}</option>)}</select></label>
+        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.display")}<select className="ui-select" disabled={busy || !config} value={profile.display} onChange={e => saveProfile({ display: e.target.value, view: '' })}><option value="">{t("settings.general.configurationDefault")}</option>{displays.map(d => <option key={d.name}>{d.name}</option>)}</select></label>
+        <label className="flex flex-col gap-1 text-sm text-gray-300">{t("settings.general.view")}<select className="ui-select" disabled={busy || !config} value={profile.view} onChange={e => saveProfile({ view: e.target.value })}><option value="">{t("settings.general.configurationDefault")}</option>{views.map(v => <option key={v}>{v}</option>)}</select></label>
       </div>
       <p className="text-xs text-gray-400">{t("settings.general.viewerAdjustmentsAreTemporaryTheseDefaultsControl")}</p>
       </div>

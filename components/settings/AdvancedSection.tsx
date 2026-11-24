@@ -16,7 +16,7 @@ export const AdvancedSection: React.FC<AdvancedSectionProps> = ({
 }) => {
   return (
     <details
-      className="group rounded-2xl border border-gray-700/80 bg-gray-900/50"
+      className="group ui-card"
       open={defaultOpen}
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 md:px-5">

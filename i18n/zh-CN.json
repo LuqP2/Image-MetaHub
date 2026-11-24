@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "放弃此工作区草稿吗？",
   "integrations.discardBlockEditConfirm": "放弃此文本块未保存的更改吗？",
   "canvasFeedback.approvalRequired": "需要批准才能访问此外部文件。",
-  "canvasFeedback.approveExternal": "批准外部文件"
+  "canvasFeedback.approveExternal": "批准外部文件",
+  "batchExport.file": "文件",
+  "batchExport.saveFile": "保存文件",
+  "batchExport.filePath": "文件路径",
+  "batchExport.folderPath": "文件夹路径",
+  "batchExport.chooseFolder": "选择文件夹",
+  "batchExport.replaceFile": "是否替换 {path} 处的现有文件？",
+  "batchExport.replace": "替换"
 }

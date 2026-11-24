@@ -134,7 +134,7 @@ export const LicenseSettingsPanel: React.FC = () => {
               value={licenseEmailInput}
               onChange={(event) => setLicenseEmailInput(event.target.value)}
               placeholder={t("settings.license.youExampleCom")}
-              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-full"
             />
           </div>
 
@@ -148,7 +148,7 @@ export const LicenseSettingsPanel: React.FC = () => {
               value={licenseKeyInput}
               onChange={(event) => setLicenseKeyInput(event.target.value)}
               placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
-              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 font-mono text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-full font-mono"
             />
           </div>
         </div>
@@ -158,7 +158,7 @@ export const LicenseSettingsPanel: React.FC = () => {
             type="button"
             onClick={handleActivateLicense}
             disabled={isActivatingLicense}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+            className="ui-btn-primary"
           >
             <Crown size={14} />
             {isActivatingLicense ? t("settings.license.activating") : t("settings.license.activateLicense")}

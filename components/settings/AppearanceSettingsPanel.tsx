@@ -89,7 +89,7 @@ const ThemeSelector: React.FC = () => {
             openList();
           }
         }}
-        className="flex w-full items-center gap-3 rounded-xl border border-gray-700 bg-gray-950/60 px-3 py-2 text-left text-gray-100 transition-colors hover:border-gray-600 hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className="ui-btn w-full h-auto py-2 text-left"
       >
         <ThemeSwatch colors={selected.colors} />
         <span className="flex-1 font-medium">{selected.id === 'system' ? t("settings.appearance.system") : selected.name}</span>
@@ -109,7 +109,7 @@ const ThemeSelector: React.FC = () => {
           aria-activedescendant={`${listId}-${activeIndex}`}
           tabIndex={0}
           onKeyDown={onListKeyDown}
-          className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-1 shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="ui-menu mt-2 max-h-72 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           {themeOptions.map((option, index) => (
             <div

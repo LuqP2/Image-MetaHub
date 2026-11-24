@@ -185,7 +185,7 @@ export const HotkeySettings = () => {
                       onClick={() => setRecording({ scope: hotkey.scope, action: hotkey.id })}
                       className={`px-3 py-1 w-36 text-center text-sm font-mono rounded-md transition-colors ${
                         recording?.action === hotkey.id
-                          ? 'bg-blue-600 text-white animate-pulse'
+                          ? 'bg-accent text-white animate-pulse'
                           : 'bg-gray-900 text-gray-200 border border-gray-600'
                       }`}
                     >
@@ -210,19 +210,19 @@ export const HotkeySettings = () => {
         <input type="file" id="import-keymap" className="hidden" accept=".json" onChange={handleImport} />
         <button
             onClick={() => document.getElementById('import-keymap')?.click()}
-            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
+            className="ui-btn"
         >
             {t("settings.shortcuts.import")}
         </button>
         <button
             onClick={handleExport}
-            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
+            className="ui-btn"
         >
             {t("settings.shortcuts.export")}
         </button>
         <button
             onClick={handleResetAll}
-            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-700 bg-gray-800 text-gray-100 hover:border-accent/50 hover:bg-gray-700"
+            className="ui-btn"
         >
             {t("settings.shortcuts.resetAll")}
         </button>

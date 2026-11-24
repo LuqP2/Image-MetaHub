@@ -49,7 +49,7 @@ export default function PromptImportExportDialog({ snapshot, librarySnapshot, fi
       role="dialog"
       aria-modal="true"
       aria-label={t('promptLibrary.transferTitle')}
-      className="max-h-[90vh] w-full max-w-xl space-y-4 overflow-auto rounded-xl border border-gray-700 bg-gray-900 p-5 text-gray-100">
+      className="max-h-[90vh] w-full max-w-xl space-y-4 overflow-auto ui-dialog p-5">
       <header className="flex items-center justify-between"><h2 className="font-semibold">{t('promptLibrary.importExport')}</h2><button disabled={busy} className="app-top-icon-button" aria-label={t('promptLibrary.closeTransfer')} onClick={onClose}><X size={16} /></button></header>
       <div className="app-top-segmented"><button className={`app-top-segment ${tab === 'export' ? 'app-top-segment-active' : ''}`} aria-pressed={tab === 'export'} onClick={() => setTab('export')}><Download size={14} />{t('promptLibrary.export')}</button><button className={`app-top-segment ${tab === 'import' ? 'app-top-segment-active' : ''}`} aria-pressed={tab === 'import'} onClick={() => setTab('import')}><Upload size={14} />{t('promptLibrary.import')}</button></div>
       {tab === 'export' && <div className="space-y-4">

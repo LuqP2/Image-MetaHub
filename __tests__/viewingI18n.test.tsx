@@ -36,7 +36,7 @@ it('changes export labels and a completed result without changing the export req
   } as IndexedImage;
   const exportBatchToFolder = vi.fn().mockResolvedValue({ success: true, exportedCount: 1, failedCount: 0 });
   vi.stubGlobal('electronAPI', {
-    showDirectoryDialog: vi.fn().mockResolvedValue({ canceled: false, path: 'D:/synthetic-output' }),
+    showSaveDialog: vi.fn().mockResolvedValue({ canceled: false, path: 'D:/synthetic-output/export.png' }),
     exportBatchToFolder,
   });
   useSettingsStore.setState({ language: 'en' });
@@ -57,7 +57,7 @@ it('changes export labels and a completed result without changing the export req
   expect(await screen.findByText('1 imagem exportada.')).toBeTruthy();
   expect(exportBatchToFolder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
     files: [expect.objectContaining({ imageId: image.id, relativePath: name })],
-    destDir: 'D:/synthetic-output',
+    destFilePath: 'D:/synthetic-output/export.png',
     metadataPolicy: 'preserve',
     scope: 'single',
   }));

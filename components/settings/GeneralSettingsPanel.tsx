@@ -25,7 +25,7 @@ export function GeneralSettingsPanel({ focusSection }: { focusSection: SettingsF
           aria-label={t("settings.general.language")}
           value={language}
           onChange={(event) => setLanguage(event.target.value as Language)}
-          className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+          className="ui-select"
         >
           {languages.map((option) => <option key={option} value={option}>{languageNames[option]}</option>)}
         </select>
@@ -33,7 +33,7 @@ export function GeneralSettingsPanel({ focusSection }: { focusSection: SettingsF
     />
     <section aria-labelledby="optional-components-title" className="space-y-4">
       <h2 id="optional-components-title" className="text-lg font-semibold text-gray-100">{t("settings.general.optionalComponents")}</h2>
-      <div ref={exrSection} tabIndex={-1} aria-label="EXR / OpenColorIO" className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      <div ref={exrSection} tabIndex={-1} aria-label="EXR / OpenColorIO" className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent">
         <ExrSettingsPanel />
       </div>
     </section>

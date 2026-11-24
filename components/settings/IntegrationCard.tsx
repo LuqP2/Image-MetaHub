@@ -30,7 +30,7 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({ name, descript
   const statusConfig = statusMap(t)[status];
 
   return (
-    <div className="rounded-2xl border border-gray-700/80 bg-gray-900/70 p-4 md:p-5">
+    <div className="ui-card p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="space-y-1">
           <h3 className="text-base font-semibold text-gray-100">{name}</h3>

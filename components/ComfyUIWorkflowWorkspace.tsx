@@ -190,7 +190,7 @@ const renderSelectOrTextInput = ({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+        className="ui-select w-full"
       >
         {!value && <option value="">{placeholder}</option>}
         {options.map((option) => (
@@ -206,7 +206,7 @@ const renderSelectOrTextInput = ({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+      className="ui-input w-full"
     />
   );
 };
@@ -837,7 +837,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
       )}
 
       {workflowUnavailable && (
-        <div className="flex items-start gap-2 rounded-lg border border-blue-700/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+        <div className="flex items-start gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-accent">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
           <span>{tr('integrations.comfyWorkflow.noExecutableWorkflow')}</span>
         </div>
@@ -850,7 +850,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             onClick={() => changeActiveTab('workflow')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
               activeTab === 'workflow'
-                ? 'bg-purple-500/15 text-purple-100 ring-1 ring-purple-400/40'
+                ? 'bg-accent/15 text-accent ring-1 ring-accent/40'
                 : 'text-gray-300 hover:bg-gray-800'
             }`}
           >
@@ -862,7 +862,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             onClick={() => changeActiveTab('nodes')}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
               activeTab === 'nodes'
-                ? 'bg-blue-500/15 text-blue-100 ring-1 ring-blue-400/40'
+                ? 'bg-accent/15 text-accent ring-1 ring-accent/40'
                 : 'text-gray-300 hover:bg-gray-800'
             } ${workflowEditingUnavailable ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
           >
@@ -899,7 +899,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 rows={8}
                 value={params.prompt}
                 onChange={(event) => applyNextParams({ ...params, prompt: event.target.value })}
-                className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="ui-input w-full resize-y font-mono"
               />
             </div>
             <div className="mt-4 space-y-2">
@@ -908,7 +908,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 rows={5}
                 value={params.negativePrompt}
                 onChange={(event) => applyNextParams({ ...params, negativePrompt: event.target.value })}
-                className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="ui-input w-full resize-y font-mono"
               />
             </div>
 
@@ -942,7 +942,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   step="0.5"
                   value={params.cfgScale}
                   onChange={(event) => applyNextParams({ ...params, cfgScale: parseFloat(event.target.value) || 0 })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                 />
               </label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
@@ -952,7 +952,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   min="1"
                   value={params.steps}
                   onChange={(event) => applyNextParams({ ...params, steps: parseInt(event.target.value, 10) || 0 })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                 />
               </label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
@@ -963,7 +963,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   step="64"
                   value={params.width}
                   onChange={(event) => applyNextParams({ ...params, width: parseInt(event.target.value, 10) || 512 })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                 />
               </label>
               <label className="space-y-2 text-sm font-medium text-gray-300">
@@ -974,7 +974,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   step="64"
                   value={params.height}
                   onChange={(event) => applyNextParams({ ...params, height: parseInt(event.target.value, 10) || 512 })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                 />
               </label>
             </div>
@@ -987,7 +987,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   value={params.randomSeed ? -1 : params.seed}
                   disabled={params.randomSeed}
                   onChange={(event) => applyNextParams({ ...params, seed: parseInt(event.target.value, 10) || -1 })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                  className="ui-input w-full"
                 />
               </label>
               <label className="flex items-center gap-2 self-end rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300">
@@ -1009,7 +1009,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                       ...params,
                       numberOfImages: Math.max(1, Math.min(10, parseInt(event.target.value, 10) || 1)),
                     })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                 />
               </label>
             </div>
@@ -1031,7 +1031,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 value={modelSearch}
                 onChange={(event) => setModelSearch(event.target.value)}
                 placeholder={tr('integrations.a1111.searchModelPlaceholder')}
-                className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="ui-input w-full"
               />
               {isLoadingResources ? (
                 <div className="text-xs text-gray-400">{tr('integrations.a1111.loadingModels')}</div>
@@ -1043,7 +1043,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                     const nextModel = filteredModels.find((model) => `${model.family}:${model.name}` === value) || null;
                     applyNextParams({ ...params, model: nextModel });
                   }}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-select w-full"
                 >
                   {!params.model && <option value="">{tr('integrations.comfyWorkflow.useCurrentModel')}</option>}
                   {filteredModels.map((model) => (
@@ -1058,7 +1058,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   value={params.model?.name || ''}
                   onChange={(event) => handleManualModelChange(event.target.value)}
                   placeholder={tr('integrations.comfyWorkflow.typeModelPlaceholder')}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                 />
               )}
             </div>
@@ -1071,7 +1071,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   value={loraSearch}
                   onChange={(event) => setLoraSearch(event.target.value)}
                   placeholder={tr('integrations.comfyWorkflow.searchLoraPlaceholder')}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-input w-full"
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
@@ -1082,7 +1082,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                 <button
                   type="button"
                   onClick={() => handleAddLora(loraSearch)}
-                  className="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
+                  className="ui-btn"
                 >
                   {tr('automation.addButton')}</button>
               </div>
@@ -1094,7 +1094,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                       event.target.value = '';
                     }
                   }}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-select w-full"
                 >
                   <option value="">{tr('integrations.comfyWorkflow.addFromCatalog')}</option>
                   {filteredLoras.map((lora) => (
@@ -1107,9 +1107,9 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                   {(params.loras || []).map((lora, index) => (
                     <div
                       key={`${lora.name}-${index}`}
-                      className="flex items-center gap-2 rounded-full border border-purple-700/50 bg-purple-900/30 px-3 py-1.5 text-xs"
+                      className="flex items-center gap-2 rounded-full border border-accent/50 bg-accent/30 px-3 py-1.5 text-xs"
                     >
-                      <span className="font-medium text-purple-100">{lora.name}</span>
+                      <span className="font-medium text-accent">{lora.name}</span>
                       <input
                         type="number"
                         step="0.1"
@@ -1117,9 +1117,9 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                         max="2"
                         value={lora.strength}
                         onChange={(event) => handleUpdateLora(index, parseFloat(event.target.value) || 0)}
-                        className="w-14 rounded border border-purple-700/50 bg-purple-950/50 px-1.5 py-0.5 text-center text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        className="ui-input w-14 text-center"
                       />
-                      <button onClick={() => handleRemoveLora(index)} className="text-purple-300 hover:text-purple-100">
+                      <button onClick={() => handleRemoveLora(index)} className="text-accent hover:text-accent">
                         <X size={14} />
                       </button>
                     </div>
@@ -1143,7 +1143,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                       ...params,
                       sourceImagePolicy: event.target.value as ComfyUISourceImagePolicy,
                     })}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="ui-select w-full"
                 >
                   <option value="reuse_original">{tr('integrations.comfyWorkflow.policyReuseOriginal')}</option>
                   <option value="selected_image">{tr('integrations.comfyWorkflow.policySelectedImage')}</option>
@@ -1159,7 +1159,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                       type="file"
                       accept="image/*"
                       onChange={(event) => applyNextParams({ ...params, maskFile: event.target.files?.[0] || null })}
-                      className="block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-purple-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-purple-100 hover:file:bg-purple-500/30"
+                      className="block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-accent/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent hover:file:bg-accent/30"
                     />
                   </label>
                 )}
@@ -1197,7 +1197,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                           workflowMode: event.target.checked ? 'simple' : 'original',
                         })
                       }
-                      className="mt-0.5"
+                      className="ui-checkbox mt-0.5"
                     />
                     <span>
                       <span className="block font-medium text-gray-100">{tr('integrations.comfyWorkflow.useSimpleCompatibility')}</span>
@@ -1214,7 +1214,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                       setAdvancedPromptJsonText(formatJson(workingPromptGraph));
                       setAdvancedWorkflowJsonText(formatJson(workingWorkflowUi));
                     }}
-                    className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:bg-gray-800"
+                    className="ui-btn"
                   >
                     {tr('integrations.comfyWorkflow.reloadCurrentState')}</button>
                 </div>
@@ -1224,7 +1224,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                     rows={10}
                     value={advancedPromptJsonText}
                     onChange={(event) => setAdvancedPromptJsonText(event.target.value)}
-                    className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="ui-input w-full resize-y font-mono"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1233,7 +1233,7 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
                     rows={8}
                     value={advancedWorkflowJsonText}
                     onChange={(event) => setAdvancedWorkflowJsonText(event.target.value)}
-                    className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="ui-input w-full resize-y font-mono"
                   />
                 </div>
                 <div className="text-xs text-gray-400">
@@ -1254,14 +1254,14 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
         {showCancelButton && onCancel && (
           <button
             onClick={onCancel}
-            className="rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+            className="ui-btn"
           >
             {tr('batchExport.cancel')}</button>
         )}
         <button
           onClick={handleGenerate}
           disabled={isGenerating || Boolean(effectiveGenerateDisabledReason)}
-          className="rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="ui-btn-primary"
         >
           {isGenerating ? tr('imageViewer.preview.generating') : tr('libraryGallery.generate')}
         </button>

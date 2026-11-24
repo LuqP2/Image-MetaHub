@@ -1,6 +1,6 @@
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, FolderOpen, X } from 'lucide-react';
 import { getPersistedShadowMetadata } from '../services/userDataPersistenceAdapter';
 import { buildEffectiveMetadata } from '../utils/editableMetadata';
 import {
@@ -11,6 +11,8 @@ import {
 } from '../types';
 import { getUnsupportedModel3DBatchExportError } from '../utils/model3DTransfer';
 import { getRelativeImagePath } from '../utils/imagePaths';
+import Toast from './Toast';
+import { createPortal } from 'react-dom';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -103,6 +105,11 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [destination, setDestination] = useState('');
+  const [isBrowsing, setIsBrowsing] = useState(false);
+  const [pickedFilePath, setPickedFilePath] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ count: number; path: string } | null>(null);
+  const dismissNotification = useCallback(() => setNotification(null), []);
   const activeExportIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
 
@@ -131,6 +138,9 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setProgress(null);
       setActiveExportId(null);
       setExportPath(null);
+      setDestination('');
+      setPickedFilePath(null);
+      setNotification(null);
       setIsCancelling(false);
     }
     wasOpenRef.current = isOpen;
@@ -142,6 +152,48 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
   const exportCount = source === 'selected' ? selectedImages.length : filteredImages.length;
   const imagesToExport = source === 'selected' ? selectedImages : filteredImages;
+  const destinationKind = output === 'zip' ? 'zip' : exportCount === 1 ? 'file' : 'folder';
+  const singleImage = imagesToExport[0];
+  const originalExtension = singleImage?.name.match(/\.([^.]+)$/)?.[1] ?? '';
+  // AVIF metadata is rewritten in place; other standard exports become PNG.
+  const exportExtension = metadataPolicy === 'metahub_standard' && originalExtension.toLowerCase() !== 'avif'
+    ? 'png' : originalExtension;
+  const defaultFileName = output === 'zip' ? 'ImageMetaHub-Export.zip'
+    : metadataPolicy === 'metahub_standard' && originalExtension.toLowerCase() !== 'avif'
+      ? `${singleImage?.name.replace(/\.[^.]+$/, '') ?? 'ImageMetaHub-Export'}.png`
+      : singleImage?.name ?? '';
+
+  useEffect(() => {
+    setDestination('');
+    setStatus(null);
+  }, [destinationKind, defaultFileName]);
+
+  const browseDestination = async (): Promise<string | null> => {
+    const api = window.electronAPI;
+    if (!api) return null;
+    setIsBrowsing(true);
+    try {
+      const result = destinationKind === 'folder'
+        ? await api.showDirectoryDialog()
+        : await api.showSaveDialog({
+          title: t(output === 'zip' ? 'batchExport.saveZip' : 'batchExport.saveFile'),
+          defaultPath: destination.trim() || defaultFileName,
+          filters: [{ name: output === 'zip' ? t('batchExport.zipArchive') : exportExtension.toUpperCase(),
+            extensions: output === 'zip' ? ['zip'] : [exportExtension || '*'] }],
+        });
+      if (result.canceled) return null;
+      if (!result.path) throw new Error(result.error || t('batchExport.failed'));
+      setDestination(result.path);
+      setPickedFilePath(destinationKind === 'folder' ? null : result.path);
+      return result.path;
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : t('batchExport.failed') });
+      return null;
+    } finally {
+      setIsBrowsing(false);
+    }
+  };
+
   const unsupportedRewriteCount = useMemo(() => (
     imagesToExport.filter((image) => {
       const ext = image.name.includes('.') ? image.name.slice(image.name.lastIndexOf('.')).toLowerCase() : '';
@@ -193,8 +245,8 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
     try {
       await window.electronAPI.cancelBatchExport({ exportId });
-    } catch (error: any) {
-      setStatus({ type: 'error', ...(error?.message ? { message: error?.message } : { key: 'batchExport.cancelFailed' }) });
+    } catch (error) {
+      setStatus({ type: 'error', ...(error instanceof Error ? { message: error.message } : { key: 'batchExport.cancelFailed' }) });
       setIsCancelling(false);
     }
   };
@@ -221,45 +273,43 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       return;
     }
 
-    const directoryMap = new Map(directories.map(dir => [dir.id, dir.path]));
-    const files = (await Promise.all(imagesToExport.map(async (image) => {
-        const dirPath = directoryMap.get(image.directoryId || '');
-        if (!dirPath) {
-          return null;
-        }
-
-        const shadowMetadata = applyShadowEdits ? await getPersistedShadowMetadata(image) : null;
-        const effectiveMetadata = metadataPolicy === 'metahub_standard'
-          ? buildEffectiveMetadata(image.metadata?.normalizedMetadata, shadowMetadata)
-          : null;
-
-        return {
-          imageId: image.id,
-          directoryPath: dirPath,
-          relativePath: getRelativeImagePath(image),
-          effectiveMetadata,
-        };
-      })))
-      .filter(Boolean) as ExportFileDescriptor[];
-
-    if (files.length === 0) {
-      setStatus({ type: 'error', key: 'batchExport.missingFolders' });
-      return;
-    }
-
     setIsExporting(true);
     setIsCancelling(false);
     setStatus(null);
     setExportPath(null);
 
     try {
-      if (output === 'folder') {
-        const destResult = await window.electronAPI.showDirectoryDialog();
-        if (destResult.canceled || !destResult.path) {
-          setIsExporting(false);
-          return;
-        }
+      const typedPath = destination.trim();
+      const targetPath = typedPath || await browseDestination();
+      const overwriteConfirmed = !typedPath || targetPath === pickedFilePath;
+      if (!targetPath) return;
+      const directoryMap = new Map(directories.map(dir => [dir.id, dir.path]));
+      const files = (await Promise.all(imagesToExport.map(async (image) => {
+          const dirPath = directoryMap.get(image.directoryId || '');
+          if (!dirPath) {
+            return null;
+          }
 
+          const shadowMetadata = applyShadowEdits ? await getPersistedShadowMetadata(image) : null;
+          const effectiveMetadata = metadataPolicy === 'metahub_standard'
+            ? buildEffectiveMetadata(image.metadata?.normalizedMetadata, shadowMetadata)
+            : null;
+
+          return {
+            imageId: image.id,
+            directoryPath: dirPath,
+            relativePath: getRelativeImagePath(image),
+            effectiveMetadata,
+          };
+        })))
+        .filter(Boolean) as ExportFileDescriptor[];
+
+      if (files.length !== imagesToExport.length) {
+        setStatus({ type: 'error', key: 'batchExport.missingFolders' });
+        return;
+      }
+
+      if (output === 'folder') {
         const exportId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         setActiveExportId(exportId);
         setProgress({
@@ -274,9 +324,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
         const exportResult = await window.electronAPI.exportBatchToFolder({
           files,
-          destDir: destResult.path,
+          ...(destinationKind === 'file' ? { destFilePath: targetPath } : { destDir: targetPath }),
           exportId,
           metadataPolicy,
+          overwriteConfirmed,
           applyShadowEdits,
           scope: getScopeFromSelection(source, files.length),
           targetFormat: metadataPolicy === 'metahub_standard' ? 'png' : 'original',
@@ -291,19 +342,13 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             key: failures > 0 ? 'batchExport.completedWithFailures' : 'batchExport.completed',
             values: { count: exportResult.exportedCount, failed: failures },
           });
-          setExportPath(destResult.path);
+          setExportPath(targetPath);
+          if (failures === 0) {
+            setNotification({ count: exportResult.exportedCount, path: targetPath });
+            onClose();
+          }
         }
       } else {
-        const saveResult = await window.electronAPI.showSaveDialog({
-          title: t('batchExport.saveZip'),
-          defaultPath: 'ImageMetaHub-Export.zip',
-          filters: [{ name: t('batchExport.zipArchive'), extensions: ['zip'] }],
-        });
-        if (saveResult.canceled || !saveResult.path) {
-          setIsExporting(false);
-          return;
-        }
-
         const exportId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         setActiveExportId(exportId);
         setProgress({
@@ -318,9 +363,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
         const exportResult = await window.electronAPI.exportBatchToZip({
           files,
-          destZipPath: saveResult.path,
+          destZipPath: targetPath,
           exportId,
           metadataPolicy,
+          overwriteConfirmed,
           applyShadowEdits,
           scope: getScopeFromSelection(source, files.length),
           targetFormat: metadataPolicy === 'metahub_standard' ? 'png' : 'original',
@@ -335,11 +381,15 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             key: failures > 0 ? 'batchExport.zipCompletedWithFailures' : 'batchExport.zipCompleted',
             values: { count: exportResult.exportedCount, failed: failures },
           });
-          setExportPath(saveResult.path);
+          setExportPath(targetPath);
+          if (failures === 0) {
+            setNotification({ count: exportResult.exportedCount, path: targetPath });
+            onClose();
+          }
         }
       }
-    } catch (error: any) {
-      setStatus({ type: 'error', ...(error?.message ? { message: error?.message } : { key: 'batchExport.failed' }) });
+    } catch (error) {
+      setStatus({ type: 'error', ...(error instanceof Error ? { message: error.message } : { key: 'batchExport.failed' }) });
     } finally {
       setIsExporting(false);
       setActiveExportId(null);
@@ -347,21 +397,33 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  const successToast = notification ? createPortal(
+    <Toast
+      message={t('batchExport.completed', { count: notification.count })}
+      duration={7000}
+      prominent
+      onDismiss={dismissNotification}
+      action={{ label: t('batchExport.goToFolder'), onClick: () => window.electronAPI?.showItemInFolder(notification.path) }}
+    />, document.body
+  ) : null;
+
+  if (!isOpen) return successToast;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700">
+    <>
+    {successToast}
+    <div role="dialog" aria-modal="true" aria-label={t('batchExport.title')} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="ui-dialog flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-gray-700">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 rounded-lg">
-              <Download className="w-5 h-5 text-blue-300" />
+            <div className="p-2 bg-accent/10 rounded-lg">
+              <Download className="w-5 h-5 text-accent" />
             </div>
-            <h2 className="text-lg font-semibold text-white">{t('batchExport.title')}</h2>
+            <h2 className="text-lg font-semibold text-gray-100">{t('batchExport.title')}</h2>
           </div>
           <button
             onClick={() => { void handleRequestClose(); }}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            className="ui-icon-btn"
             title={isExporting ? t('batchExport.cancelExport') : t('comparison.close')}
             aria-label={isExporting ? t('batchExport.cancelExport') : t('comparison.close')}
             disabled={isCancelling}
@@ -370,17 +432,18 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <fieldset disabled={isExporting || isBrowsing} className="min-h-0 overflow-y-auto p-5 space-y-4">
           <div className="space-y-2">
             <p className="text-sm text-gray-400">{t('batchExport.source')}</p>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setSource('selected')}
+                aria-pressed={source === 'selected'}
                 disabled={!hasSelected}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                className={`ui-btn flex-1 ${
                   source === 'selected'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 } ${!hasSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
@@ -389,10 +452,11 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSource('filtered')}
+                aria-pressed={source === 'filtered'}
                 disabled={restrictToRequestedSelection}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                className={`ui-btn flex-1 ${
                   source === 'filtered'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 } ${restrictToRequestedSelection ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
@@ -412,24 +476,41 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setOutput('folder')}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                aria-pressed={output === 'folder'}
+                className={`ui-btn flex-1 ${
                   output === 'folder'
-                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 }`}
               >
-                {t('batchExport.folder')}
+                {t(exportCount === 1 ? 'batchExport.file' : 'batchExport.folder')}
               </button>
               <button
                 type="button"
                 onClick={() => setOutput('zip')}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                aria-pressed={output === 'zip'}
+                className={`ui-btn flex-1 ${
                   output === 'zip'
-                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 }`}
               >
                 ZIP
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="export-destination" className="text-sm text-gray-400">
+              {t(destinationKind === 'folder' ? 'batchExport.folderPath' : 'batchExport.filePath')}
+            </label>
+            <div className="flex gap-2">
+              <input id="export-destination" className="ui-input flex-1" value={destination}
+                onChange={(event) => setDestination(event.target.value)}
+                placeholder={destinationKind === 'folder' ? t('batchExport.chooseFolder') : defaultFileName} />
+              <button type="button" className="ui-btn shrink-0" onClick={() => void browseDestination()}>
+                <FolderOpen size={14} />
+                {t(destinationKind === 'folder' ? 'batchExport.chooseFolder' : 'batchExport.saveFile')}
               </button>
             </div>
           </div>
@@ -440,9 +521,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setMetadataPolicy('preserve')}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                aria-pressed={metadataPolicy === 'preserve'}
+                className={`ui-btn w-full justify-start ${
                   metadataPolicy === 'preserve'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 }`}
               >
@@ -451,9 +533,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setMetadataPolicy('strip')}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                aria-pressed={metadataPolicy === 'strip'}
+                className={`ui-btn w-full justify-start ${
                   metadataPolicy === 'strip'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 }`}
               >
@@ -462,9 +545,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setMetadataPolicy('metahub_standard')}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                aria-pressed={metadataPolicy === 'metahub_standard'}
+                className={`ui-btn w-full justify-start ${
                   metadataPolicy === 'metahub_standard'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-100'
+                    ? 'border-accent/50 bg-accent/15 text-accent'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
                 }`}
               >
@@ -478,7 +562,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
                   type="checkbox"
                   checked={applyShadowEdits}
                   onChange={(event) => setApplyShadowEdits(event.target.checked)}
-                  className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                  className="ui-checkbox w-4"
                 />
                 {t('batchExport.applyEdits')}
               </label>
@@ -499,7 +583,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
                 {t('batchExport.planned', { count: exportCount })}
               </span>
             )}
-            {output === 'folder' && (
+            {destinationKind === 'folder' && (
               <span className="block text-xs text-gray-400 mt-1">{t('batchExport.folderNotice')}</span>
             )}
             {output === 'zip' && (
@@ -523,7 +607,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
                 </div>
                 <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-700">
                   <div
-                    className="h-full rounded-full bg-blue-500 transition-all"
+                    className="h-full rounded-full bg-accent transition-all"
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
@@ -531,7 +615,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             )}
           </div>
 
-          {status && (
+          {status && !notification && (
             <div
               className={`rounded-lg border px-3 py-2 text-sm flex items-center justify-between ${
                 status.type === 'success'
@@ -540,7 +624,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               }`}
             >
               <span>{'key' in status ? t(status.key, status.values) : status.message}</span>
-              {status.type === 'success' && exportPath && (
+              {exportPath && (
                 <button
                   onClick={handleOpenFolder}
                   className="ml-4 text-emerald-400 hover:text-emerald-300 underline font-medium whitespace-nowrap"
@@ -550,20 +634,20 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               )}
             </div>
           )}
-        </div>
+        </fieldset>
 
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-700">
+        <div className="flex shrink-0 items-center justify-end gap-3 p-4 border-t border-gray-700">
           <button
             onClick={() => { void handleRequestClose(); }}
-            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-60"
+            className="ui-btn"
             disabled={isCancelling}
           >
             {isExporting ? (isCancelling ? t('batchExport.cancelShort') : t('batchExport.cancelExport')) : t('batchExport.cancel')}
           </button>
           <button
             onClick={handleExport}
-            disabled={isExporting || exportCount === 0}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-accent-strong text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+            disabled={isExporting || isBrowsing || exportCount === 0}
+            className="ui-btn-primary"
           >
             <Download className="w-4 h-4" />
             {isExporting ? t('batchExport.exporting') : t('batchExport.export')}
@@ -571,6 +655,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

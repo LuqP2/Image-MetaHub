@@ -79,7 +79,7 @@ export const ViewerSettingsPanel: React.FC = () => {
             <select
               value={imageViewerDefaultZoom}
               onChange={(event) => setImageViewerDefaultZoom(event.target.value as 'fit' | 'actual')}
-              className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-select"
             >
               <option value="fit">{t("settings.viewer.fit")}</option>
               <option value="actual">1:1</option>
@@ -104,7 +104,7 @@ export const ViewerSettingsPanel: React.FC = () => {
               checked={showFullFilePath}
               disabled={!showFilenames}
               onChange={(event) => setShowFullFilePath(event.target.checked)}
-              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed"
+              className="ui-checkbox w-4"
             />
           }
         />
@@ -135,7 +135,7 @@ export const ViewerSettingsPanel: React.FC = () => {
               max={MAX_SLIDESHOW_INTERVAL_SECONDS}
               value={slideshowIntervalSeconds}
               onChange={(event) => setSlideshowIntervalSeconds(Number(event.target.value))}
-              className="w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-right text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-24 text-right"
             />
           }
         />
@@ -157,7 +157,7 @@ export const ViewerSettingsPanel: React.FC = () => {
               max={MAX_TAG_UI_LIMIT}
               value={tagSuggestionLimit}
               onChange={(event) => setTagSuggestionLimit(Number(event.target.value) || DEFAULT_TAG_SUGGESTION_LIMIT)}
-              className="w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-right text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-24 text-right"
             />
           }
         />
@@ -171,7 +171,7 @@ export const ViewerSettingsPanel: React.FC = () => {
               max={MAX_TAG_UI_LIMIT}
               value={recentTagChipLimit}
               onChange={(event) => setRecentTagChipLimit(Number(event.target.value) || DEFAULT_RECENT_TAG_CHIP_LIMIT)}
-              className="w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-right text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-24 text-right"
             />
           }
         />

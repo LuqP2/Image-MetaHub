@@ -261,19 +261,19 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
         <div
-          className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 max-w-md"
+          className="ui-dialog p-6 max-w-md"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-red-400">{tr('integrations.a1111.noMetadataTitle')}</h2>
-            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700" aria-label={tr('integrations.closeGenerate')}>
+            <button onClick={handleClose} className="ui-icon-btn" aria-label={tr('integrations.closeGenerate')}>
               <X size={20} />
             </button>
           </div>
           <p className="text-gray-300">{tr('integrations.a1111.noMetadataDescription')}</p>
           <button
             onClick={handleClose}
-            className="mt-4 w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium"
+            className="ui-btn mt-4 w-full"
           >
             {tr('comparison.close')}</button>
         </div>
@@ -284,7 +284,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
       <div
-        className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="ui-dialog p-6 w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -293,7 +293,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleLoadFromImage}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="ui-btn"
               title={tr('integrations.a1111.loadFromImageTooltip')}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -304,7 +304,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               {tr('integrations.a1111.loadFromImage')}</button>
             <button
               onClick={handleClose}
-              className="p-1 rounded-full hover:bg-gray-700 transition-colors"
+              className="ui-icon-btn"
               aria-label={tr('integrations.closeGenerate')}
             >
               <X size={24} />
@@ -328,7 +328,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                 }
               }}
               rows={10}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="ui-input w-full font-mono resize-y"
               placeholder={tr('integrations.a1111.promptPlaceholder')}
             />
           </div>
@@ -347,7 +347,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                 }
               }}
               rows={6}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="ui-input w-full font-mono resize-y"
               placeholder={tr('integrations.a1111.negativePromptPlaceholder')}
             />
           </div>
@@ -365,7 +365,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                 value={modelSearch}
                 onChange={(e) => setModelSearch(e.target.value)}
                 placeholder={tr('integrations.a1111.searchModelPlaceholder')}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="ui-input w-full"
               />
               {isLoadingResources ? (
                 <div className="text-xs text-gray-400">{tr('integrations.a1111.loadingModels')}</div>
@@ -381,7 +381,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     }
                     setParams(prev => ({ ...prev, model: selected }));
                   }}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="ui-select w-full"
                   disabled={!resources?.models || resources.models.length === 0}
                 >
                   {!params.model && <option value="">{tr('integrations.a1111.selectModel')}</option>}
@@ -416,7 +416,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                         e.target.value = '';
                       }
                     }}
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="ui-select w-full"
                     disabled={!resources?.loras || resources.loras.length === 0}
                   >
                     <option value="">{tr('integrations.a1111.addLora')}</option>
@@ -434,9 +434,9 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                       {selectedLoras.map((lora, index) => (
                         <div
                           key={`${lora.name}-${index}`}
-                          className="flex items-center gap-2 bg-blue-900/30 border border-blue-700/50 rounded-full px-3 py-1.5 text-xs"
+                          className="flex items-center gap-2 bg-accent/30 border border-accent/50 rounded-full px-3 py-1.5 text-xs"
                         >
-                          <span className="text-blue-200 font-medium">{lora.name}</span>
+                          <span className="text-accent font-medium">{lora.name}</span>
                           <input
                             type="number"
                             value={lora.strength}
@@ -444,11 +444,11 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                             step="0.1"
                             min="-2.0"
                             max="2.0"
-                            className="w-14 bg-blue-950/50 border border-blue-700/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="ui-input w-14 text-center"
                           />
                           <button
                             onClick={() => handleRemoveLora(index)}
-                            className="text-blue-300 hover:text-blue-100 transition-colors"
+                            className="text-accent hover:text-accent transition-colors"
                             title={tr('integrations.a1111.removeLora')}
                           >
                             <X size={14} />
@@ -478,7 +478,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                 <select
                   value={params.sampler || ''}
                   onChange={(e) => setParams(prev => ({ ...prev, sampler: e.target.value || undefined }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="ui-select w-full"
                   disabled={!resources?.samplers || resources.samplers.length === 0}
                 >
                   {!params.sampler && <option value="">{tr('integrations.a1111.selectSampler')}</option>}
@@ -508,7 +508,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     step="64"
                     min="64"
                     max="2048"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="ui-input w-full"
                   />
                 </div>
                 <div className="space-y-1">
@@ -520,7 +520,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     step="64"
                     min="64"
                     max="2048"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="ui-input w-full"
                   />
                 </div>
               </div>
@@ -537,7 +537,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   onChange={(e) => setParams(prev => ({ ...prev, cfgScale: parseFloat(e.target.value) || 0 }))}
                   step="0.5"
                   min="0"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="ui-input w-full"
                 />
               </div>
 
@@ -549,7 +549,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   value={params.steps}
                   onChange={(e) => setParams(prev => ({ ...prev, steps: parseInt(e.target.value) || 0 }))}
                   min="1"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="ui-input w-full"
                 />
               </div>
             </div>
@@ -565,7 +565,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     value={params.randomSeed ? -1 : params.seed}
                     onChange={(e) => setParams(prev => ({ ...prev, seed: parseInt(e.target.value) || -1 }))}
                     disabled={params.randomSeed}
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="ui-input flex-1"
                   />
                 </div>
                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
@@ -573,7 +573,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                     type="checkbox"
                     checked={params.randomSeed}
                     onChange={(e) => setParams(prev => ({ ...prev, randomSeed: e.target.checked }))}
-                    className="cursor-pointer"
+                    className="ui-checkbox"
                   />
                   {tr('integrations.a1111.randomSeed')}</label>
               </div>
@@ -587,7 +587,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
                   onChange={(e) => setParams(prev => ({ ...prev, numberOfImages: parseInt(e.target.value) || 1 }))}
                   min="1"
                   max="10"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="ui-input w-full"
                 />
                 <p className="text-xs text-gray-500">{tr('integrations.a1111.maxImagesHint', { max: 10 })}</p>
               </div>
@@ -606,12 +606,12 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
           <button
             onClick={handleClose}
-            className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+            className="ui-btn"
           >
             {tr('batchExport.cancel')}</button>
           <button
             onClick={handleGenerate}
-            className="bg-blue-600 hover:bg-accent-strong px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
+            className="ui-btn-primary"
           >
             {isGenerating ? (
               <>
