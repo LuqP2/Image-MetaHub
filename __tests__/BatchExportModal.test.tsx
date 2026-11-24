@@ -42,7 +42,7 @@ describe('export destination and completion', () => {
   it('selects a file for one image, closes, and keeps a working reveal action after closing', async () => {
     const closed = setup();
     expect(screen.getByRole('button', { name: 'File', exact: true })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Destination folder' }));
     await waitFor(() => expect((screen.getByLabelText('File path') as HTMLInputElement).value).toBe('D:/exports/result.png'));
     fireEvent.click(screen.getByRole('button', { name: 'Export', exact: true }));
     await waitFor(() => expect(closed).toHaveBeenCalledOnce());
@@ -89,7 +89,7 @@ describe('export destination and completion', () => {
 
   it('keeps the folder picker for multiple unpacked images and accepts typed folders', async () => {
     setup(2);
-    fireEvent.click(screen.getByRole('button', { name: 'Select folder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Destination folder' }));
     await waitFor(() => expect((screen.getByLabelText('Folder path') as HTMLInputElement).value).toBe('D:/exports'));
     fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: 'D:/exports/batch' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export', exact: true }));
@@ -123,14 +123,14 @@ describe('export destination and completion', () => {
     fireEvent.change(screen.getByLabelText('File path'), { target: { value: 'D:/exports/photo.jpg' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save as MetaHub + A1111' }));
     expect((screen.getByLabelText('File path') as HTMLInputElement).value).toBe('');
-    fireEvent.click(screen.getByRole('button', { name: 'Save file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Destination folder' }));
     await waitFor(() => expect(api.showSaveDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: 'photo.png', filters: [{ name: 'PNG', extensions: ['png'] }] })));
   });
 
   it('retains the AVIF extension for MetaHub metadata export', async () => {
     setup(1, { name: 'photo.avif' });
     fireEvent.click(screen.getByRole('button', { name: 'Save as MetaHub + A1111' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Destination folder' }));
     await waitFor(() => expect(api.showSaveDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: 'photo.avif', filters: [{ name: 'AVIF', extensions: ['avif'] }] })));
   });
 });
