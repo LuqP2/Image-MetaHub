@@ -371,7 +371,7 @@ const Header: React.FC<HeaderProps> = ({
               <span className="text-sm font-semibold text-gray-100">
                 {isPro ? 'Image MetaHub Pro' : isTrialActive ? t('shell.trialBrand') : 'Image MetaHub'}
               </span>
-              <span className="text-[10px] text-gray-500">v0.23.1</span>
+              <span className="text-[10px] text-gray-500">v0.24.0</span>
             </div>
           </div>
           {!isPro && !isTrialActive && (
