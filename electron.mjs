@@ -1,4 +1,4 @@
-import { resolveExportDestination, validateExportExtension } from './electron/exportDestination.mjs';
+import { assertDistinctExportFile, resolveExportDestination, validateExportExtension } from './electron/exportDestination.mjs';
 import { createBoardExternalAccess } from './electron/boardExternalAccess.mjs';
 const boardExternalAccess = createBoardExternalAccess();
 import { formatMessage, normalizeLanguage } from './i18n/messages.mjs';
@@ -8750,6 +8750,9 @@ function setupFileOperationHandlers() {
       }
 
       const destination = resolveExportDestination({ files, destDir, destFilePath });
+      if (destination.filePath) {
+        await assertDistinctExportFile(path.resolve(files[0].directoryPath, files[0].relativePath), destination.filePath);
+      }
       if (destination.filePath && !overwriteConfirmed && !await confirmExportReplacement(event, destination.filePath)) {
         return { success: false, exportedCount: 0, failedCount: 0, error: formatMessage(appLanguage, 'batchExport.canceled') };
       }
@@ -8821,6 +8824,7 @@ function setupFileOperationHandlers() {
             destinationPath: destPath,
             expectedOutputSha256,
             perform: async () => {
+              if (destination.filePath) await assertDistinctExportFile(sourcePath, destPath);
               if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
                 const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
                 await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);

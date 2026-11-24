@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveExportDestination, validateExportExtension } from '../electron/exportDestination.mjs';
+import { assertDistinctExportFile, resolveExportDestination, validateExportExtension } from '../electron/exportDestination.mjs';
 
 const source = fsSync.readFileSync(path.resolve('electron.mjs'), 'utf8');
 const exportHandler = source.slice(source.indexOf('  const confirmExportReplacement ='), source.indexOf("  ipcMain.handle('export-images-zip'"));
@@ -20,7 +20,7 @@ async function fixture() {
   const event = { sender: { isDestroyed: () => false, send: vi.fn() } };
   const dependencies = {
     ipcMain: { handle: (_: string, callback: typeof handler) => { handler = callback; } },
-    fs, fsSync, path, crypto, resolveExportDestination, validateExportExtension,
+    fs, fsSync, path, crypto, assertDistinctExportFile, resolveExportDestination, validateExportExtension,
     BrowserWindow: { fromWebContents: () => null }, mainWindow: null, dialog: { showMessageBox },
     appLanguage: 'en', formatMessage: (_: string, key: string) => key,
     isExternalResourceModel3DFileName: () => false, isModel3DFileName: () => false,
@@ -70,5 +70,33 @@ describe('single-file export IPC', () => {
     const app = await fixture();
     expect(await app.export({ destFilePath: path.join(app.root, 'original.png') })).toMatchObject({ success: false });
     expect(await fs.readFile(path.join(app.root, 'original.png'), 'utf8')).toBe('synthetic-image');
+  });
+
+  it('rejects the original through a linked library directory before rewriting metadata', async () => {
+    const app = await fixture();
+    const linkedDirectory = path.join(app.root, 'linked-library');
+    await fs.symlink(app.root, linkedDirectory, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(await app.export({
+      files: [{ directoryPath: linkedDirectory, relativePath: 'original.png' }],
+      destFilePath: path.join(app.root, 'original.png'),
+      metadataPolicy: 'strip', overwriteConfirmed: true,
+    })).toMatchObject({ success: false, exportedCount: 0 });
+    expect(await fs.readFile(path.join(app.root, 'original.png'), 'utf8')).toBe('synthetic-image');
+    expect(app.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it('rejects a hard link to the original even after overwrite confirmation', async () => {
+    const app = await fixture();
+    const destFilePath = path.join(app.root, 'hard-link.png');
+    await fs.link(path.join(app.root, 'original.png'), destFilePath);
+    expect(await app.export({ destFilePath, metadataPolicy: 'metahub_standard', overwriteConfirmed: true }))
+      .toMatchObject({ success: false, exportedCount: 0 });
+    expect(await fs.readFile(path.join(app.root, 'original.png'), 'utf8')).toBe('synthetic-image');
+  });
+
+  it.runIf(process.platform === 'win32')('rejects case aliases by filesystem identity', async () => {
+    const app = await fixture();
+    await expect(assertDistinctExportFile(path.join(app.root, 'original.png'), path.join(app.root, 'ORIGINAL.PNG')))
+      .rejects.toThrow('original');
   });
 });

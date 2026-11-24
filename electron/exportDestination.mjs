@@ -1,4 +1,28 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
+
+/** Existing aliases and hard links must never turn an export into an in-place edit. */
+export async function assertDistinctExportFile(sourcePath, destinationPath) {
+  let destinationStat;
+  try {
+    destinationStat = await fs.stat(destinationPath, { bigint: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  const sourceStat = await fs.stat(sourcePath, { bigint: true });
+  if (sourceStat.ino !== 0n && sourceStat.dev === destinationStat.dev && sourceStat.ino === destinationStat.ino) {
+    throw new Error('Choose a destination other than the original file.');
+  }
+  // Some filesystems do not supply a useful inode. Canonical paths still catch
+  // symbolic-link aliases there; stat identity also covers case-insensitive macOS.
+  const [sourceRealPath, destinationRealPath] = await Promise.all([
+    fs.realpath(sourcePath), fs.realpath(destinationPath),
+  ]);
+  if (sourceRealPath === destinationRealPath || (process.platform === 'win32' && sourceRealPath.toLowerCase() === destinationRealPath.toLowerCase())) {
+    throw new Error('Choose a destination other than the original file.');
+  }
+}
 
 /** Resolve the explicit single-file target without changing batch naming. */
 export function resolveExportDestination({ files, destDir, destFilePath }) {
