@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "要捨棄此工作區草稿嗎？",
   "integrations.discardBlockEditConfirm": "要捨棄此文字區塊尚未儲存的變更嗎？",
   "canvasFeedback.approvalRequired": "需要核准才能存取此外部檔案。",
-  "canvasFeedback.approveExternal": "核准外部檔案"
+  "canvasFeedback.approveExternal": "核准外部檔案",
+  "batchExport.file": "檔案",
+  "batchExport.saveFile": "儲存檔案",
+  "batchExport.filePath": "檔案路徑",
+  "batchExport.folderPath": "資料夾路徑",
+  "batchExport.chooseFolder": "選擇資料夾",
+  "batchExport.replaceFile": "要取代 {path} 的現有檔案嗎？",
+  "batchExport.replace": "取代"
 }

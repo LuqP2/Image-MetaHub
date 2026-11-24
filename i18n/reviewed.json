@@ -3632,7 +3632,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "pt-BR": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -7267,7 +7274,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "ja": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -10902,7 +10916,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "de": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -14537,7 +14558,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "fr": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -18172,7 +18200,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "ko": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -21807,7 +21842,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "zh-CN": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -25442,7 +25484,14 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   },
   "zh-TW": {
     "settings.appearance.appearance": "3907fa7f80722a6fc58cd8c1bd30abf7638095d6774f183b6e831b7093957d1b",
@@ -29077,6 +29126,13 @@
     "integrations.discardWorkspaceDraftConfirm": "44f102a63aa88e0cd5fcd102a0f4ee2e368e663d2cd281ef4f9060da274f10ff",
     "integrations.discardBlockEditConfirm": "e17d9387f61b34cd45463b46b55c0a62042cf7e33095ecea93e5d07b49a0416c",
     "canvasFeedback.approvalRequired": "8d360294793c42e616f4e5fd15ca09b5091c9100b43951eb9291d44f6eb255bd",
-    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443"
+    "canvasFeedback.approveExternal": "14ce8b539ea122660bf7d78c08a2ed039cea5c233c545c6e17dfaa4ec3db8443",
+    "batchExport.file": "50009ce1da4d15e1c4a04024df691eed5f0d598e2c4c67092f205366d0adf99e",
+    "batchExport.saveFile": "2a6f7e3ba15dbc8c79f0f43762dc508c5c3e06f2ff0564f92dcd22fc22baf61e",
+    "batchExport.filePath": "2fb6d38632ea2c0625dce0f2e881d8a50f51ce503f89c9b35c11dba08800ce9f",
+    "batchExport.folderPath": "98bca2fab915abe0541e612db447c6cf9ad18d1aaa595f052c5d1bf6a697995b",
+    "batchExport.chooseFolder": "2ed6bf93669da474bfe4a4ea5d3b29da49725e6327353408847be8d15e6e682e",
+    "batchExport.replaceFile": "1de53f06a60db6c32b87d02567e19448ca2f8b3f3834564739b0a81c27a1eb7f",
+    "batchExport.replace": "95e154398a4bc0091aa4d6b607472ac5a89e41fbc84a3a49f823314d6de9eebc"
   }
 }

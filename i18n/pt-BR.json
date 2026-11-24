@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "Descartar este rascunho do Workspace?",
   "integrations.discardBlockEditConfirm": "Descartar as alterações não salvas deste bloco?",
   "canvasFeedback.approvalRequired": "Aprovação necessária para acessar este arquivo externo.",
-  "canvasFeedback.approveExternal": "Aprovar arquivo externo"
+  "canvasFeedback.approveExternal": "Aprovar arquivo externo",
+  "batchExport.file": "Arquivo",
+  "batchExport.saveFile": "Salvar arquivo",
+  "batchExport.filePath": "Caminho do arquivo",
+  "batchExport.folderPath": "Caminho da pasta",
+  "batchExport.chooseFolder": "Selecionar pasta",
+  "batchExport.replaceFile": "Substituir o arquivo existente em {path}?",
+  "batchExport.replace": "Substituir"
 }

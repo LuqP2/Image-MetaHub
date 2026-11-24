@@ -98,7 +98,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
           description={t("settings.integrations.pasteAnyLocalScriptOrCommandThe")}
           status={generatorLaunchCommand.trim() ? 'connected' : 'unknown'}
         >
-          <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+          <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="generator-launch-command">
               {t("settings.integrations.launchCommand")}
             </label>
@@ -109,14 +109,14 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               placeholder={t("settings.integrations.pasteYourLaunchScriptOrCommandHere")}
               rows={6}
               spellCheck={false}
-              className="min-h-[140px] w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 font-mono text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input min-h-[140px] w-full font-mono"
             />
             <p className="text-sm text-gray-400">
               {t("settings.integrations.launchCommandHelp")}
             </p>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+          <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="generator-launch-working-directory">
               {t("settings.integrations.workingDirectory")}
             </label>
@@ -126,7 +126,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               value={generatorLaunchWorkingDirectory}
               onChange={(event) => setGeneratorLaunchWorkingDirectory(event.target.value)}
               placeholder={t("settings.integrations.optionalFolderWhereTheLauncherCommandShould")}
-              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-full"
             />
             <p className="text-sm text-gray-400">
               {t("settings.integrations.workingDirectoryHelp")}
@@ -145,7 +145,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
             control={<SettingSwitch checked={a1111Enabled} onChange={setA1111Enabled} />}
           />
 
-          <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+          <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="a1111-server-url">
               {t("settings.integrations.serverUrl")}
             </label>
@@ -155,7 +155,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               value={a1111ServerUrl}
               onChange={(event) => setA1111ServerUrl(event.target.value)}
               placeholder="http://127.0.0.1:7860"
-              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-full"
             />
           </div>
 
@@ -170,7 +170,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               type="button"
               onClick={handleTestA1111Connection}
               disabled={isTestingA1111Connection}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-blue-500 enabled:hover:text-gray-950 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-300"
+              className="ui-btn-primary"
             >
               {isTestingA1111Connection ? t("settings.integrations.testing") : t("settings.integrations.testConnection")}
             </button>
@@ -194,7 +194,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
             control={<SettingSwitch checked={comfyUIQueueMonitoringEnabled} onChange={setComfyUIQueueMonitoringEnabled} />}
           />
 
-          <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+          <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
             <label className="text-sm font-medium text-gray-100" htmlFor="comfyui-server-url">
               {t("settings.integrations.serverUrl")}
             </label>
@@ -204,7 +204,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               value={comfyUIServerUrl}
               onChange={(event) => setComfyUIServerUrl(event.target.value)}
               placeholder="http://127.0.0.1:8188"
-              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-full"
             />
           </div>
 
@@ -213,7 +213,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
               type="button"
               onClick={handleTestComfyUIConnection}
               disabled={isTestingComfyUIConnection}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-blue-500 enabled:hover:text-gray-950 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-300"
+              className="ui-btn-primary"
             >
               {isTestingComfyUIConnection ? t("settings.integrations.testing") : t("settings.integrations.testConnection")}
             </button>
@@ -224,7 +224,7 @@ export const IntegrationsSettingsPanel: React.FC = () => {
             href="https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-blue-300 hover:text-blue-200 light:text-accent light:hover:text-accent-strong"
+            className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent light:text-accent light:hover:text-accent-strong"
           >
             <ExternalLink size={14} />
             MetaHub Save Node

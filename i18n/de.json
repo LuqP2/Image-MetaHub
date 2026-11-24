@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "Diesen Arbeitsbereichsentwurf verwerfen?",
   "integrations.discardBlockEditConfirm": "Die ungespeicherten Änderungen an diesem Baustein verwerfen?",
   "canvasFeedback.approvalRequired": "Freigabe erforderlich, um auf diese externe Datei zuzugreifen.",
-  "canvasFeedback.approveExternal": "Externe Datei freigeben"
+  "canvasFeedback.approveExternal": "Externe Datei freigeben",
+  "batchExport.file": "Datei",
+  "batchExport.saveFile": "Datei speichern",
+  "batchExport.filePath": "Dateipfad",
+  "batchExport.folderPath": "Ordnerpfad",
+  "batchExport.chooseFolder": "Ordner auswählen",
+  "batchExport.replaceFile": "Vorhandene Datei unter {path} ersetzen?",
+  "batchExport.replace": "Ersetzen"
 }

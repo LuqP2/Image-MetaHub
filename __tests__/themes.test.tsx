@@ -42,7 +42,7 @@ describe('theme selection', () => {
     expect(localStorage.getItem('image-metahub-settings')).toBe(before);
   });
 
-  it.each(['light', 'dark', 'ayu', 'ayu-light'] as const)('restores the explicit %s preference unchanged', async (id) => {
+  it.each(themeOptions.filter(option => option.id !== 'system').map(option => option.id))('restores the explicit %s preference unchanged', async (id) => {
     useSettingsStore.getState().setTheme(id);
     const saved = localStorage.getItem('image-metahub-settings');
     expect(saved).not.toBeNull();

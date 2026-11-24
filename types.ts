@@ -107,6 +107,7 @@ export interface ExportFileDescriptor {
 export interface ExportBatchRequest {
   files: ExportFileDescriptor[];
   exportId?: string;
+  overwriteConfirmed?: boolean;
   metadataPolicy?: MetadataExportPolicy;
   applyShadowEdits?: boolean;
   scope?: ExportScope;
@@ -663,7 +664,7 @@ export interface ElectronAPI {
     },
   ) => Promise<{ success: boolean; error?: string; provenance?: { enabled: boolean; available?: boolean; pending?: boolean; error?: string } }>;
   writeModel3DExport: (args: { filePath: string; modelData: Uint8Array; sidecarData?: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
-  exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  exportBatchToFolder: (args: ExportBatchRequest & ({ destDir: string; destFilePath?: never } | { destFilePath: string; destDir?: never })) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
   transferIndexedImages: (args: {
@@ -687,7 +688,7 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getRuntimeInfo: () => Promise<DesktopRuntimeInfo>;
   getSettings: () => Promise<any>;
-  saveSettings: (settings: any, options?: { languageOnly: true }) => Promise<{ success: boolean; error?: string }>;
+  saveSettings: (settings: any, options?: { languageOnly: true } | { themeOnly: true }) => Promise<{ success: boolean; error?: string }>;
   activateTrial: () => Promise<TrialActivationResult>;
   activateTrialExtension: () => Promise<TrialExtensionActivationResult>;
   dismissReleaseTrialExtensionNotice: () => Promise<{ success: boolean; error?: string }>;

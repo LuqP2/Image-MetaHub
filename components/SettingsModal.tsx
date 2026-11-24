@@ -102,7 +102,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="mx-auto my-3 flex min-h-0 w-full max-w-6xl max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-800 text-gray-100 shadow-2xl md:my-6 md:max-h-[calc(100vh-3rem)]"
+        className="mx-auto my-3 flex min-h-0 w-full max-w-6xl max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden ui-dialog md:my-6 md:max-h-[calc(100vh-3rem)]"
         style={{
           minHeight: 'min(720px, calc(100vh - 1.5rem))',
         }}
@@ -110,12 +110,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       >
         <div className="flex items-center justify-between border-b border-gray-700/80 px-4 py-4 md:px-6">
           <div>
-            <h1 className="text-xl font-semibold text-gray-100 md:text-2xl">{t("settings.navigation.settings")}</h1>
+            <h1 className="text-lg font-semibold text-gray-100">{t("settings.navigation.settings")}</h1>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+            className="ui-icon-btn"
             aria-label={t("settings.navigation.closeSettings")}
           >
             <X size={20} />

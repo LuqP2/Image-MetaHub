@@ -63,7 +63,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="flex flex-col rounded-lg bg-gray-800 p-6 text-gray-100 shadow-xl"
+        className="ui-dialog flex flex-col p-5"
         onClick={(event) => event.stopPropagation()}
         style={{
           width: isExpandedModal ? 'min(96vw, 1680px)' : 'min(92vw, 1320px)',
@@ -84,12 +84,12 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
             <button
               type="button"
               onClick={() => setIsExpandedModal((current) => !current)}
-              className="rounded-full p-2 text-gray-300 hover:bg-gray-700"
+              className="ui-icon-btn"
               title={isExpandedModal ? t('integrations.restoreModal') : t('integrations.expandModal')}
             >
               {isExpandedModal ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button>
-            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700" aria-label={t('integrations.closeGenerate')}>
+            <button onClick={onClose} className="ui-icon-btn" aria-label={t('integrations.closeGenerate')}>
               <X size={24} />
             </button>
           </div>
