@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as THREE from 'three';
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import {
   combineObjMaterialLibraries,
   embedMetadataInGlb,
   extractObjMaterialLibraries,
   getModel3DExportMetadataPayload,
-  retainRuntimeUnlessOwned,
+  getVirtualResourceDirectory,
   resolveModel3DResourceUrl,
+  resolveObjMaterialLibraryUrl,
+  retainRuntimeUnlessOwned,
   safeModel3DAssetPath,
 } from '../components/Model3DViewer';
 
@@ -65,6 +70,107 @@ describe('3D viewer utilities', () => {
       .toBeNull();
     expect(resolveModel3DResourceUrl(undefined, 'models/cube.gltf', sourceUrl, 'textures/albedo.png'))
       .toBeNull();
+  });
+
+  it('preserves board authorization for OBJ material libraries and nested MTL textures', async () => {
+    const directoryPath = 'D:\\External\\AssetPack';
+    const relativeModelPath = 'props/crate.obj';
+    const boardId = 'board-alpha';
+    const sourceUrl = `imh-board-media://local/?${new URLSearchParams({
+      boardId,
+      path: 'D:\\External\\AssetPack\\props\\crate.obj',
+    }).toString()}`;
+
+    const materialUrl = resolveObjMaterialLibraryUrl(
+      directoryPath,
+      relativeModelPath,
+      sourceUrl,
+      'materials/crate.mtl',
+      boardId,
+    );
+    expect(materialUrl).toBe(
+      `imh-board-media://local/?${new URLSearchParams({
+        boardId,
+        path: 'D:\\External\\AssetPack\\props\\materials\\crate.mtl',
+      }).toString()}`,
+    );
+
+    // Even when the primary model fell back to a blob URL, explicitBoardId keeps MTL & textures board-scoped.
+    expect(
+      resolveObjMaterialLibraryUrl(directoryPath, relativeModelPath, 'blob:https://local/crate', 'materials/crate.mtl', boardId),
+    ).toBe(materialUrl);
+    expect(
+      resolveObjMaterialLibraryUrl(directoryPath, relativeModelPath, sourceUrl, '../../outside.mtl', boardId),
+    ).toBeNull();
+    expect(
+      resolveObjMaterialLibraryUrl(directoryPath, relativeModelPath, sourceUrl, 'data:text/plain;base64,AA==', boardId),
+    ).toBeNull();
+
+    // Verify full LoadingManager + MTLLoader + OBJLoader pipeline uses imh-board-media for both MTL and textures.
+    const requestedUrls: string[] = [];
+    const trustedLocalResourceUrls = new Set([sourceUrl, materialUrl!]);
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier((url) => {
+      if (trustedLocalResourceUrls.has(url)) {
+        requestedUrls.push(url);
+        return url;
+      }
+      const resolved = resolveModel3DResourceUrl(directoryPath, relativeModelPath, sourceUrl, url, boardId);
+      if (!resolved) throw new Error(`Blocked: ${url}`);
+      requestedUrls.push(resolved);
+      return resolved;
+    });
+
+    const fileLoadSpy = vi.spyOn(THREE.FileLoader.prototype, 'load').mockImplementation(function (url, onLoad) {
+      const resolved = manager.resolveURL(url);
+      queueMicrotask(() => {
+        onLoad?.([
+          'newmtl CrateWood',
+          'Kd 0.8 0.6 0.4',
+          'map_Kd ../textures/wood_albedo.png',
+        ].join('\n'));
+      });
+      return resolved as unknown as ReturnType<typeof THREE.FileLoader.prototype.load>;
+    });
+    const textureLoadSpy = vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(function (url, onLoad) {
+      manager.resolveURL(url);
+      const texture = new THREE.Texture();
+      queueMicrotask(() => onLoad?.(texture));
+      return texture;
+    });
+
+    try {
+      const mtlLoader = new MTLLoader(manager);
+      mtlLoader.setResourcePath(getVirtualResourceDirectory('materials/crate.mtl', boardId));
+      const materials = await mtlLoader.loadAsync(materialUrl!);
+      materials.preload();
+
+      const objLoader = new OBJLoader(manager);
+      objLoader.setMaterials(materials);
+      const model = objLoader.parse([
+        'mtllib materials/crate.mtl',
+        'usemtl CrateWood',
+        'v 0 0 0',
+        'v 1 0 0',
+        'v 0 1 0',
+        'f 1 2 3',
+      ].join('\n'));
+
+      const expectedTextureUrl = `imh-board-media://local/?${new URLSearchParams({
+        boardId,
+        path: 'D:\\External\\AssetPack\\props\\textures\\wood_albedo.png',
+      }).toString()}`;
+      expect(requestedUrls).toEqual([materialUrl, expectedTextureUrl]);
+      expect(requestedUrls.every((url) => url.startsWith('imh-board-media://local/?'))).toBe(true);
+
+      const mesh = model.children[0] as THREE.Mesh;
+      const material = mesh.material as THREE.MeshPhongMaterial;
+      expect(material.name).toBe('CrateWood');
+      expect(material.map).toBeInstanceOf(THREE.Texture);
+    } finally {
+      fileLoadSpy.mockRestore();
+      textureLoadSpy.mockRestore();
+    }
   });
 
   it('reads material libraries declared by OBJ files', () => {
