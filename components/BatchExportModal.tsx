@@ -501,21 +501,6 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="export-destination" className="text-sm text-gray-400">
-              {t(destinationKind === 'folder' ? 'batchExport.folderPath' : 'batchExport.filePath')}
-            </label>
-            <div className="flex gap-2">
-              <input id="export-destination" className="ui-input flex-1" value={destination}
-                onChange={(event) => setDestination(event.target.value)}
-                placeholder={destinationKind === 'folder' ? t('batchExport.chooseFolder') : defaultFileName} />
-              <button type="button" className="ui-btn shrink-0" onClick={() => void browseDestination()}>
-                <FolderOpen size={14} />
-                {t(destinationKind === 'folder' ? 'batchExport.chooseFolder' : 'batchExport.saveFile')}
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
             <p className="text-sm text-gray-400">{t('batchExport.metadata')}</p>
             <div className="space-y-2">
               <button
@@ -567,6 +552,21 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
                 {t('batchExport.applyEdits')}
               </label>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="export-destination" className="text-sm text-gray-400">
+              {t(destinationKind === 'folder' ? 'batchExport.folderPath' : 'batchExport.filePath')}
+            </label>
+            <div className="flex gap-2">
+              <input id="export-destination" className="ui-input flex-1" value={destination}
+                onChange={(event) => setDestination(event.target.value)}
+                placeholder={destinationKind === 'folder' ? t('batchExport.chooseFolder') : defaultFileName} />
+              <button type="button" className="ui-icon-btn" onClick={() => void browseDestination()}
+                title={t('fileOperations.destination')} aria-label={t('fileOperations.destination')}>
+                <FolderOpen size={14} />
+              </button>
+            </div>
           </div>
 
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
