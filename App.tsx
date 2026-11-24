@@ -818,6 +818,11 @@ export default function App() {
 
   const [comfyUIWorkspaceToolbarHost, setComfyUIWorkspaceToolbarHost] = useState<HTMLDivElement | null>(null);
   const canvasUIHidden = useBoardUIStore(state => state.uiHidden) && libraryView === 'canvas';
+  useEffect(() => {
+    const handleOpenCanvas = () => setLibraryView('canvas');
+    window.addEventListener('imh:open-canvas', handleOpenCanvas);
+    return () => window.removeEventListener('imh:open-canvas', handleOpenCanvas);
+  }, []);
   const globalHeaderRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const header = globalHeaderRef.current;

@@ -234,7 +234,7 @@ export class TeamWorkspaceService {
       active = {
         manifest,
         rootPath: normalizedRoot,
-        pendingOps: [],
+        flushing: false,
         flushTimer: null,
         reconcileTimer: null,
         watcher: null,
@@ -249,6 +249,15 @@ export class TeamWorkspaceService {
     } else {
       active.manifest = manifest;
       active.rootPath = normalizedRoot;
+    }
+
+    // Recover and flush any durable pending ops left over from a prior unexpected crash.
+    if (this.repository.listPendingOps(manifest.workspaceId).length > 0) {
+      try {
+        await this.flushPendingOps(manifest.workspaceId);
+      } catch (error) {
+        this.logger.warn('[IMH Team] Deferred recovery flush for pending ops:', error);
+      }
     }
 
     await this.reconcileWorkspace(manifest.workspaceId);
@@ -297,7 +306,8 @@ export class TeamWorkspaceService {
       authorName: opInput.authorName || this.localProfile.displayName,
     };
 
-    active.pendingOps.push(op);
+    // Persist durably in local SQLite before returning so crashes never drop un-flushed edits.
+    this.repository.enqueuePendingOp(workspaceId, op);
 
     if (flushNow || this.flushDebounceMs <= 0) {
       if (active.flushTimer) {
@@ -318,16 +328,21 @@ export class TeamWorkspaceService {
   }
 
   /**
-   * Flush all pending operations for this workspace into ONE immutable write-once batch file:
+   * Flush all durably queued pending operations for this workspace into ONE immutable write-once batch file:
    * `.imh-team/ops/<deviceId>/<000001>-<shortHash>.json`
    */
   async flushPendingOps(workspaceId) {
     const active = this.activeWorkspaces.get(workspaceId);
-    if (!active || active.pendingOps.length === 0) {
+    if (!active || active.flushing) {
       return null;
     }
 
-    const opsToFlush = active.pendingOps.splice(0, active.pendingOps.length);
+    const opsToFlush = this.repository.listPendingOps(workspaceId);
+    if (opsToFlush.length === 0) {
+      return null;
+    }
+
+    active.flushing = true;
     const deviceId = this.localProfile.deviceId;
     const cursor = this.repository.getCursor(workspaceId, deviceId);
     const sequence = cursor.nextSeq;
@@ -354,27 +369,26 @@ export class TeamWorkspaceService {
     try {
       await writeJsonAtomic(targetPath, batchPayload);
       const maxClock = opsToFlush.reduce((acc, op) => Math.max(acc, op.lamportClock), cursor.lastLamportClock);
-      this.repository.advanceCursor(workspaceId, deviceId, {
-        nextSeq: sequence + 1,
-        lastLamportClock: maxClock,
-      });
-      this.repository.applyBatchFile({
+      this.repository.markPendingOpsFlushed({
         workspaceId,
         deviceId,
         filename,
         ops: opsToFlush,
         localDeviceId: deviceId,
+        nextSeq: sequence + 1,
+        maxClock,
       });
       active.lastSyncedAt = new Date().toISOString();
       this.#notifyUpdated(workspaceId);
       return { filename, batchId, opCount: opsToFlush.length };
     } catch (error) {
-      // Put ops back at front of queue so they aren't lost on transient network errors.
-      active.pendingOps.unshift(...opsToFlush);
+      // Pending ops remain safely stored in local SQLite `team_pending_ops` for automatic retry.
       active.syncState = 'error';
       active.error = error instanceof Error ? error.message : String(error);
       this.#notifyUpdated(workspaceId);
       throw error;
+    } finally {
+      active.flushing = false;
     }
   }
 
@@ -449,7 +463,10 @@ export class TeamWorkspaceService {
   }
 
   listOps(workspaceId) {
-    return this.repository.listOps(workspaceId);
+    const applied = this.repository.listOps(workspaceId);
+    const pending = this.repository.listPendingOps(workspaceId);
+    if (pending.length === 0) return applied;
+    return [...applied, ...pending];
   }
 
   listAssetIdentities(workspaceId) {
@@ -477,7 +494,7 @@ export class TeamWorkspaceService {
         lastSyncedAt: active.lastSyncedAt,
         appliedFileCount: stats.appliedFileCount,
         appliedOpCount: stats.appliedOpCount,
-        pendingLocalOps: active.pendingOps.length,
+        pendingLocalOps: stats.pendingOpCount,
         memberCount: active.members.length,
         error: active.error,
       },

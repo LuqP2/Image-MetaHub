@@ -1,36 +1,65 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Copy,
+  ExternalLink,
   FileText,
   Layers,
   Package,
   Plus,
   Trash2,
-  AlertCircle,
+  Upload,
 } from 'lucide-react';
 import { useTeamWorkspaceStore } from '../../store/useTeamWorkspaceStore';
 import { useImageStore } from '../../store/useImageStore';
-import { compareLocalModelsAgainstManifest } from '../../services/team/teamModelsManifest';
-import type { TeamExpectedModelEntry } from '../../services/team/teamWorkspaceTypes';
+import { useBoardStore } from '../../store/useBoardStore';
+import { useFeatureAccess } from '../../hooks/useFeatureAccess';
+import { normalizeBoardDocument } from '../../services/boards/document.mjs';
+import {
+  compareLocalModelsAgainstManifest,
+  normalizeBoardPathsForTeam,
+  resolveTeamBoardPaths,
+} from '../../services/team/teamModelsManifest';
+import type {
+  TeamBoardEnvelope,
+  TeamExpectedModelEntry,
+} from '../../services/team/teamWorkspaceTypes';
 
 interface TeamSharedResourcesTabsProps {
   workspaceId: string;
+  onBoardOpened?: () => void;
 }
 
 type ResourceTab = 'prompts' | 'boards' | 'models';
 
-export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = ({ workspaceId }) => {
+export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = ({
+  workspaceId,
+  onBoardOpened,
+}) => {
+  const { canUseTeams } = useFeatureAccess();
+  const workspace = useTeamWorkspaceStore((state) => state.workspacesById[workspaceId] ?? null);
   const teamPrompts = useTeamWorkspaceStore((state) => state.teamPromptsByWorkspace[workspaceId] ?? []);
   const teamBoards = useTeamWorkspaceStore((state) => state.teamBoardsByWorkspace[workspaceId] ?? []);
   const modelsManifest = useTeamWorkspaceStore((state) => state.modelsManifestByWorkspace[workspaceId] ?? null);
+  const linkedBoardsByLocalId = useTeamWorkspaceStore((state) => state.linkedBoardsByLocalId);
   const saveTeamPrompt = useTeamWorkspaceStore((state) => state.saveTeamPrompt);
   const deleteTeamPrompt = useTeamWorkspaceStore((state) => state.deleteTeamPrompt);
+  const loadTeamBoard = useTeamWorkspaceStore((state) => state.loadTeamBoard);
+  const saveTeamBoard = useTeamWorkspaceStore((state) => state.saveTeamBoard);
   const deleteTeamBoard = useTeamWorkspaceStore((state) => state.deleteTeamBoard);
+  const setLinkedBoardMeta = useTeamWorkspaceStore((state) => state.setLinkedBoardMeta);
   const writeModelsManifest = useTeamWorkspaceStore((state) => state.writeModelsManifest);
 
   const availableModels = useImageStore((state) => state.availableModels);
   const availableLoras = useImageStore((state) => state.availableLoras);
+
+  const activeBoardId = useBoardStore((state) => state.activeBoardId);
+  const activeBoardSession = useBoardStore((state) => (
+    state.activeBoardId ? state.sessions[state.activeBoardId] ?? null : null
+  ));
+  const adoptBoard = useBoardStore((state) => state.adoptBoard);
 
   const [tab, setTab] = useState<ResourceTab>('prompts');
   const [promptTitle, setPromptTitle] = useState('');
@@ -38,9 +67,18 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
   const [negativePrompt, setNegativePrompt] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const [boardNotice, setBoardNotice] = useState<string | null>(null);
+  const [boardConflict, setBoardConflict] = useState<{
+    teamBoardId: string;
+    remote: TeamBoardEnvelope;
+  } | null>(null);
+
   const [modelName, setModelName] = useState('');
   const [modelType, setModelType] = useState('checkpoint');
   const [busy, setBusy] = useState(false);
+
+  const activeBoardLink = activeBoardId ? linkedBoardsByLocalId[activeBoardId] ?? null : null;
+  const activeBoardBelongsToWorkspace = Boolean(activeBoardLink && activeBoardLink.workspaceId === workspaceId);
 
   const modelsComparison = useMemo(() => {
     const localRefs = [
@@ -52,7 +90,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
 
   const handleAddPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!positivePrompt.trim() || busy) return;
+    if (!canUseTeams || !positivePrompt.trim() || busy) return;
     setBusy(true);
     try {
       await saveTeamPrompt(workspaceId, {
@@ -78,9 +116,90 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
     }
   };
 
+  const openEnvelopeInCanvas = (envelope: TeamBoardEnvelope) => {
+    if (!workspace) return;
+    const resolvedDoc = resolveTeamBoardPaths(envelope.document, workspace.rootPath);
+    const normalized = normalizeBoardDocument({
+      ...resolvedDoc,
+      id: typeof (resolvedDoc as { id?: unknown }).id === 'string'
+        ? (resolvedDoc as { id: string }).id
+        : `team-${envelope.boardId}`,
+      name: envelope.name,
+    });
+    adoptBoard(normalized);
+    setLinkedBoardMeta(normalized.id, {
+      workspaceId,
+      boardId: envelope.boardId,
+      revision: envelope.revision,
+      contentHash: envelope.contentHash,
+    });
+    setBoardConflict(null);
+    window.dispatchEvent(new CustomEvent('imh:open-canvas'));
+    onBoardOpened?.();
+  };
+
+  const handleOpenTeamBoard = async (boardId: string) => {
+    if (busy) return;
+    setBusy(true);
+    setBoardNotice(null);
+    try {
+      const envelope = await loadTeamBoard(workspaceId, boardId);
+      if (!envelope) {
+        setBoardNotice('Could not load shared board from disk.');
+        return;
+      }
+      openEnvelopeInCanvas(envelope);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePushActiveBoard = async (options: { asCopy?: boolean; forceOverwrite?: boolean } = {}) => {
+    if (!canUseTeams || !workspace || !activeBoardSession || busy) return;
+    setBusy(true);
+    setBoardNotice(null);
+    try {
+      const doc = activeBoardSession.document;
+      const portableDoc = normalizeBoardPathsForTeam(doc, workspace.rootPath) as unknown as Record<string, unknown>;
+      const targetBoardId = options.asCopy
+        ? `${activeBoardLink?.boardId || doc.id}-copy-${Date.now().toString(36)}`
+        : (activeBoardBelongsToWorkspace && activeBoardLink ? activeBoardLink.boardId : doc.id);
+      const targetName = options.asCopy ? `${doc.name} (Copy)` : doc.name;
+
+      const result = await saveTeamBoard({
+        workspaceId,
+        boardId: targetBoardId,
+        name: targetName,
+        document: portableDoc,
+        expectedRevision: options.asCopy ? 0 : (activeBoardBelongsToWorkspace ? (activeBoardLink?.revision ?? 0) : 0),
+        expectedHash: options.asCopy ? null : (activeBoardBelongsToWorkspace ? (activeBoardLink?.contentHash ?? null) : null),
+        forceOverwrite: Boolean(options.forceOverwrite),
+      });
+
+      if (!result) return;
+      if (result.saved) {
+        setBoardConflict(null);
+        setLinkedBoardMeta(doc.id, {
+          workspaceId,
+          boardId: result.envelope.boardId,
+          revision: result.envelope.revision,
+          contentHash: result.envelope.contentHash,
+        });
+        setBoardNotice(`Saved "${result.envelope.name}" (rev ${result.envelope.revision}).`);
+      } else if (result.conflict) {
+        setBoardConflict({
+          teamBoardId: targetBoardId,
+          remote: result.remote,
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleAddModel = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!modelName.trim() || busy) return;
+    if (!canUseTeams || !modelName.trim() || busy) return;
     setBusy(true);
     try {
       const existing: TeamExpectedModelEntry[] = modelsManifest?.models ?? [];
@@ -95,6 +214,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
   };
 
   const handleRemoveModel = async (nameToRemove: string) => {
+    if (!canUseTeams) return;
     setBusy(true);
     try {
       const existing: TeamExpectedModelEntry[] = modelsManifest?.models ?? [];
@@ -144,39 +264,41 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
 
       {tab === 'prompts' && (
         <div className="space-y-3">
-          <form onSubmit={handleAddPrompt} className="space-y-2 rounded-lg border border-gray-800 bg-gray-950/40 p-2.5">
-            <input
-              type="text"
-              value={promptTitle}
-              onChange={(e) => setPromptTitle(e.target.value)}
-              placeholder="Prompt title"
-              className="w-full rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-            />
-            <textarea
-              rows={2}
-              value={positivePrompt}
-              onChange={(e) => setPositivePrompt(e.target.value)}
-              placeholder="Positive prompt..."
-              className="w-full rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-            />
-            <div className="flex items-center gap-2">
+          {canUseTeams && (
+            <form onSubmit={handleAddPrompt} className="space-y-2 rounded-lg border border-gray-800 bg-gray-950/40 p-2.5">
               <input
                 type="text"
-                value={negativePrompt}
-                onChange={(e) => setNegativePrompt(e.target.value)}
-                placeholder="Negative prompt (optional)"
-                className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                value={promptTitle}
+                onChange={(e) => setPromptTitle(e.target.value)}
+                placeholder="Prompt title"
+                className="w-full rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               />
-              <button
-                type="submit"
-                disabled={busy || !positivePrompt.trim()}
-                className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Save
-              </button>
-            </div>
-          </form>
+              <textarea
+                rows={2}
+                value={positivePrompt}
+                onChange={(e) => setPositivePrompt(e.target.value)}
+                placeholder="Positive prompt..."
+                className="w-full rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={negativePrompt}
+                  onChange={(e) => setNegativePrompt(e.target.value)}
+                  placeholder="Negative prompt (optional)"
+                  className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || !positivePrompt.trim()}
+                  className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Save
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
             {teamPrompts.length === 0 ? (
@@ -196,14 +318,16 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                       >
                         <Copy className={`h-3.5 w-3.5 ${copiedId === prompt.id ? 'text-emerald-400' : ''}`} />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteTeamPrompt(workspaceId, prompt.id)}
-                        className="rounded p-1 text-gray-500 hover:bg-gray-700 hover:text-red-400"
-                        title="Delete team prompt"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {canUseTeams && (
+                        <button
+                          type="button"
+                          onClick={() => void deleteTeamPrompt(workspaceId, prompt.id)}
+                          className="rounded p-1 text-gray-500 hover:bg-gray-700 hover:text-red-400"
+                          title="Delete team prompt"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <p className="mt-1 line-clamp-2 text-[11px] text-gray-300">{prompt.positivePrompt}</p>
@@ -215,66 +339,152 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
       )}
 
       {tab === 'boards' && (
-        <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
-          {teamBoards.length === 0 ? (
-            <div className="py-6 text-center text-xs text-gray-500">
-              No shared boards in <code className="text-gray-400">.imh-team/boards/</code> yet.
-            </div>
-          ) : (
-            teamBoards.map((board) => (
-              <div
-                key={board.boardId}
-                className="flex items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-800/40 px-3 py-2 text-xs"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium text-gray-200">{board.name}</div>
-                  <div className="text-[11px] text-gray-400">
-                    rev {board.revision} · {board.updatedByName}
-                  </div>
+        <div className="space-y-3">
+          {canUseTeams && activeBoardSession && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2 text-xs">
+              <div className="min-w-0">
+                <div className="truncate font-medium text-gray-200">
+                  Active Canvas: {activeBoardSession.document.name}
                 </div>
+                <div className="text-[11px] text-gray-400">
+                  {activeBoardBelongsToWorkspace && activeBoardLink
+                    ? `Linked to Team (rev ${activeBoardLink.revision})`
+                    : 'Not yet shared to this Team Workspace'}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handlePushActiveBoard()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {activeBoardBelongsToWorkspace ? 'Push to Team' : 'Share to Team'}
+              </button>
+            </div>
+          )}
+
+          {boardConflict && (
+            <div className="space-y-2 rounded-lg border border-rose-600/70 bg-rose-950/50 p-2.5 text-xs text-rose-100">
+              <div className="flex items-center gap-1.5 font-semibold text-rose-200">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Board updated remotely by {boardConflict.remote.updatedByName} (rev {boardConflict.remote.revision})
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => void deleteTeamBoard(workspaceId, board.boardId)}
-                  className="rounded p-1 text-gray-500 hover:bg-gray-700 hover:text-red-400"
-                  title="Delete shared board"
+                  disabled={busy}
+                  onClick={() => openEnvelopeInCanvas(boardConflict.remote)}
+                  className="rounded border border-rose-400/60 bg-rose-900/70 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-rose-800"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  Reload remote
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handlePushActiveBoard({ asCopy: true })}
+                  className="rounded border border-gray-600 bg-gray-800 px-2.5 py-1 text-[11px] font-medium text-gray-100 hover:bg-gray-700"
+                >
+                  Save as copy
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handlePushActiveBoard({ forceOverwrite: true })}
+                  className="rounded border border-amber-500/70 bg-amber-900/60 px-2.5 py-1 text-[11px] font-medium text-amber-100 hover:bg-amber-800"
+                >
+                  Overwrite
                 </button>
               </div>
-            ))
+            </div>
           )}
+
+          {boardNotice && (
+            <div className="rounded-md border border-blue-800/60 bg-blue-950/40 px-2.5 py-1.5 text-xs text-blue-200">
+              {boardNotice}
+            </div>
+          )}
+
+          <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
+            {teamBoards.length === 0 ? (
+              <div className="py-6 text-center text-xs text-gray-500">
+                No shared boards in <code className="text-gray-400">.imh-team/boards/</code> yet.
+              </div>
+            ) : (
+              teamBoards.map((board) => (
+                <div
+                  key={board.boardId}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-800/40 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-gray-200">{board.name}</div>
+                    <div className="text-[11px] text-gray-400">
+                      rev {board.revision} · {board.updatedByName}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleOpenTeamBoard(board.boardId)}
+                      className="inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] font-medium text-gray-200 hover:bg-gray-700"
+                      title="Open in Canvas"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Open
+                    </button>
+                    {canUseTeams && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void deleteTeamBoard(workspaceId, board.boardId)}
+                        className="rounded p-1 text-gray-500 hover:bg-gray-700 hover:text-red-400"
+                        title="Delete shared board"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
       {tab === 'models' && (
         <div className="space-y-3">
-          <form onSubmit={handleAddModel} className="flex items-center gap-2">
-            <select
-              value={modelType}
-              onChange={(e) => setModelType(e.target.value)}
-              className="rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-200 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="checkpoint">Checkpoint</option>
-              <option value="lora">LoRA</option>
-              <option value="vae">VAE</option>
-              <option value="controlnet">ControlNet</option>
-            </select>
-            <input
-              type="text"
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-              placeholder="Expected model filename or name..."
-              className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={busy || !modelName.trim()}
-              className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add
-            </button>
-          </form>
+          {canUseTeams && (
+            <form onSubmit={handleAddModel} className="flex items-center gap-2">
+              <select
+                value={modelType}
+                onChange={(e) => setModelType(e.target.value)}
+                className="rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-200 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="checkpoint">Checkpoint</option>
+                <option value="lora">LoRA</option>
+                <option value="vae">VAE</option>
+                <option value="controlnet">ControlNet</option>
+              </select>
+              <input
+                type="text"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                placeholder="Expected model filename or name..."
+                className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={busy || !modelName.trim()}
+                className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </button>
+            </form>
+          )}
 
           <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
             {(modelsManifest?.models.length ?? 0) === 0 ? (
@@ -293,14 +503,16 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                         Missing · {model.type}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleRemoveModel(model.name)}
-                      className="rounded p-1 text-gray-400 hover:text-red-400"
-                      title="Remove from manifest"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {canUseTeams && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveModel(model.name)}
+                        className="rounded p-1 text-gray-400 hover:text-red-400"
+                        title="Remove from manifest"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
                 {modelsComparison.installed.map((model) => (
@@ -315,14 +527,16 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                         Installed · {model.type}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleRemoveModel(model.name)}
-                      className="rounded p-1 text-gray-500 hover:text-red-400"
-                      title="Remove from manifest"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {canUseTeams && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveModel(model.name)}
+                        className="rounded p-1 text-gray-500 hover:text-red-400"
+                        title="Remove from manifest"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </>

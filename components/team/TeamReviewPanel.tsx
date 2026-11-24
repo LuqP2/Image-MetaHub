@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Check, MapPin, MessageSquare, Send, Users, X } from 'lucide-react';
 import type { Directory, IndexedImage } from '../../types';
+import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useTeamWorkspaceStore } from '../../store/useTeamWorkspaceStore';
 import {
   REVIEW_STATUS_META,
@@ -19,6 +20,7 @@ interface TeamReviewPanelProps {
 }
 
 export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directories }) => {
+  const { canUseTeams } = useFeatureAccess();
   const workspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
   const assetStatesByWorkspace = useTeamWorkspaceStore((state) => state.assetStatesByWorkspace);
   const pinPlacementActive = useTeamWorkspaceStore((state) => state.pinPlacementActive);
@@ -45,6 +47,7 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
   const comments = context.assetState?.comments ?? [];
 
   const handleStatusClick = async (status: TeamReviewStatus) => {
+    if (!canUseTeams) return;
     setBusy(true);
     try {
       const nextStatus = currentStatus === status && !conflict ? 'none' : status;
@@ -60,7 +63,7 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim() || busy) return;
+    if (!canUseTeams || !commentText.trim() || busy) return;
     setBusy(true);
     try {
       await addAssetComment(context, commentText, draftPin);
@@ -78,6 +81,11 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
         <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-200">
           <Users className="h-3.5 w-3.5 text-blue-400" />
           <span>Team Review</span>
+          {!canUseTeams && (
+            <span className="rounded bg-amber-950/80 px-1.5 py-0.5 text-[10px] font-medium text-amber-200 border border-amber-700/60">
+              Read-only
+            </span>
+          )}
         </div>
         <span className="truncate text-[11px] text-gray-400" title={context.workspace.manifest.name}>
           {context.workspace.manifest.name}
@@ -118,7 +126,7 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
             <button
               key={status}
               type="button"
-              disabled={busy}
+              disabled={busy || !canUseTeams}
               onClick={() => void handleStatusClick(status)}
               className={`rounded-md border px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
                 isActive
@@ -146,6 +154,7 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
           </span>
           <button
             type="button"
+            disabled={!canUseTeams}
             onClick={() => setPinPlacementActive(!pinPlacementActive)}
             className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
               pinPlacementActive
@@ -233,12 +242,13 @@ export const TeamReviewPanel: React.FC<TeamReviewPanelProps> = ({ image, directo
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add review note..."
-            className="min-w-0 flex-1 rounded-md border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+            disabled={!canUseTeams}
+            placeholder={canUseTeams ? 'Add review note...' : 'Teams license required to comment'}
+            className="min-w-0 flex-1 rounded-md border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={busy || !commentText.trim()}
+            disabled={busy || !canUseTeams || !commentText.trim()}
             className="inline-flex items-center justify-center rounded-md bg-blue-600 p-1.5 text-white hover:bg-blue-500 disabled:opacity-40"
             aria-label="Send comment"
           >

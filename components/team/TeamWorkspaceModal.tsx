@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, Users, FolderCheck, X, FileDown, FileUp } from 'lucide-react';
 import { useTeamWorkspaceStore } from '../../store/useTeamWorkspaceStore';
 import { useImageStore } from '../../store/useImageStore';
+import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { resolveImageTeamContext } from '../../services/team/reviewService';
 import {
   buildClientReviewSheetHtml,
@@ -49,6 +50,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
   const [busy, setBusy] = useState(false);
   const [clientNotice, setClientNotice] = useState<string | null>(null);
 
+  const { canUseTeams } = useFeatureAccess();
   const workspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
   const assetStatesByWorkspace = useTeamWorkspaceStore((state) => state.assetStatesByWorkspace);
   const queueOp = useTeamWorkspaceStore((state) => state.queueOp);
@@ -81,6 +83,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
   const isSyncing = activeWorkspace ? Boolean(syncingWorkspaceIds[activeWorkspace.manifest.workspaceId]) : false;
 
   const handleSaveProfile = async () => {
+    if (!canUseTeams) return;
     setBusy(true);
     try {
       await updateProfile({ displayName, color });
@@ -90,7 +93,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
   };
 
   const handleExportClientReviewSheet = async () => {
-    if (!activeWorkspace || !window.electronAPI?.team?.saveTextFile) return;
+    if (!canUseTeams || !activeWorkspace || !window.electronAPI?.team?.saveTextFile) return;
     setBusy(true);
     setClientNotice(null);
     try {
@@ -153,7 +156,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
   };
 
   const handleImportClientFeedback = async () => {
-    if (!activeWorkspace || !window.electronAPI?.team?.pickAndReadFeedback) return;
+    if (!canUseTeams || !activeWorkspace || !window.electronAPI?.team?.pickAndReadFeedback) return;
     setBusy(true);
     setClientNotice(null);
     try {
@@ -178,9 +181,12 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
   };
 
   const handleEnableOrConnect = async () => {
+    if (!detectedName && !canUseTeams) return;
     setBusy(true);
     try {
-      await updateProfile({ displayName, color });
+      if (canUseTeams) {
+        await updateProfile({ displayName, color });
+      }
       if (detectedName) {
         await openWorkspace(directoryPath);
       } else {
@@ -213,6 +219,12 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
           <div className="rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs text-gray-400">
             <div className="truncate font-mono text-gray-300" title={directoryPath}>{directoryPath}</div>
           </div>
+
+          {!canUseTeams && (
+            <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+              Teams license required to enable workspaces or write collaborative changes. Existing workspace data stays readable and exportable.
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="block text-xs font-medium text-gray-300">Display name (local attribution)</label>
@@ -261,11 +273,11 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
 
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || (!detectedName && !canUseTeams)}
                 onClick={handleEnableOrConnect}
                 className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
               >
-                {detectedName ? 'Connect to Team Workspace' : 'Enable Team Workspace'}
+                {detectedName ? (canUseTeams ? 'Connect to Team Workspace' : 'Open Team Workspace (Read-only)') : 'Enable Team Workspace'}
               </button>
             </div>
           ) : (
@@ -309,7 +321,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
 
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !canUseTeams}
                 onClick={handleSaveProfile}
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 disabled:opacity-50"
               >
@@ -321,7 +333,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || !canUseTeams}
                     onClick={() => void handleExportClientReviewSheet()}
                     className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800/80 px-3 py-2 text-xs font-medium text-gray-100 hover:bg-gray-700 disabled:opacity-50"
                   >
@@ -330,7 +342,7 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || !canUseTeams}
                     onClick={() => void handleImportClientFeedback()}
                     className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800/80 px-3 py-2 text-xs font-medium text-gray-100 hover:bg-gray-700 disabled:opacity-50"
                   >
@@ -345,7 +357,10 @@ export const TeamWorkspaceModal: React.FC<TeamWorkspaceModalProps> = ({
                 )}
               </div>
 
-              <TeamSharedResourcesTabs workspaceId={activeWorkspace.manifest.workspaceId} />
+              <TeamSharedResourcesTabs
+                workspaceId={activeWorkspace.manifest.workspaceId}
+                onBoardOpened={onClose}
+              />
             </div>
           )}
 

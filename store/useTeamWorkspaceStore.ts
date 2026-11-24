@@ -32,6 +32,7 @@ interface TeamWorkspaceStoreState {
   teamPromptsByWorkspace: Record<string, TeamSharedPrompt[]>;
   teamBoardsByWorkspace: Record<string, TeamBoardSummary[]>;
   modelsManifestByWorkspace: Record<string, TeamModelsManifest | null>;
+  linkedBoardsByLocalId: Record<string, { workspaceId: string; boardId: string; revision: number; contentHash: string }>;
   syncingWorkspaceIds: Record<string, boolean>;
   reviewStatusFilter: 'all' | 'approved' | 'needs_changes' | 'in_review' | 'rejected' | 'conflict' | 'unreviewed';
   pinPlacementActive: boolean;
@@ -44,6 +45,7 @@ interface TeamWorkspaceStoreState {
   setPinPlacementActive: (active: boolean) => void;
   setDraftPin: (pin: TeamCommentPin | null) => void;
   setHighlightedCommentId: (commentId: string | null) => void;
+  setLinkedBoardMeta: (localBoardId: string, meta: { workspaceId: string; boardId: string; revision: number; contentHash: string } | null) => void;
   detectWorkspace: (rootPath: string) => Promise<{ manifest: TeamWorkspaceSummary['manifest']; rootPath: string } | null>;
   initWorkspace: (rootPath: string, name?: string) => Promise<TeamWorkspaceSummary | null>;
   openWorkspace: (rootPath: string) => Promise<TeamWorkspaceSummary | null>;
@@ -85,6 +87,7 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
   teamPromptsByWorkspace: {},
   teamBoardsByWorkspace: {},
   modelsManifestByWorkspace: {},
+  linkedBoardsByLocalId: {},
   syncingWorkspaceIds: {},
   reviewStatusFilter: 'all',
   pinPlacementActive: false,
@@ -96,6 +99,12 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
   setPinPlacementActive: (pinPlacementActive) => set({ pinPlacementActive }),
   setDraftPin: (draftPin) => set({ draftPin }),
   setHighlightedCommentId: (highlightedCommentId) => set({ highlightedCommentId }),
+  setLinkedBoardMeta: (localBoardId, meta) => set((state) => {
+    const next = { ...state.linkedBoardsByLocalId };
+    if (meta) next[localBoardId] = meta;
+    else delete next[localBoardId];
+    return { linkedBoardsByLocalId: next };
+  }),
 
   initialize: async () => {
     const bridge = typeof window !== 'undefined' ? window.electronAPI?.team : undefined;
@@ -243,12 +252,34 @@ export const useTeamWorkspaceStore = create<TeamWorkspaceStoreState>((set, get) 
     const res = await bridge.listOps(workspaceId);
     if (!res.success || !Array.isArray(res.data)) return;
     const reduced = reduceTeamOps(res.data);
+    const reducedRecord = mapToRecord(reduced);
     set((state) => ({
       assetStatesByWorkspace: {
         ...state.assetStatesByWorkspace,
-        [workspaceId]: mapToRecord(reduced),
+        [workspaceId]: reducedRecord,
       },
     }));
+
+    // Propagate remote tags, ratings, and favorites into the local image library without re-emitting.
+    try {
+      const [{ useImageStore }, { computeTeamAnnotationDiffs, runWithRemoteTeamSyncGuard }] = await Promise.all([
+        import('./useImageStore'),
+        import('../services/team/teamAnnotationSync'),
+      ]);
+      const imageState = useImageStore.getState();
+      const diffs = computeTeamAnnotationDiffs(
+        imageState.images,
+        imageState.directories,
+        workspaceId,
+        get().workspacesById,
+        reducedRecord,
+      );
+      if (diffs.length > 0) {
+        await runWithRemoteTeamSyncGuard(() => imageState.applySyncedTeamAnnotations(diffs));
+      }
+    } catch {
+      // Non-fatal in isolated test environments without full image store hydration.
+    }
   },
 
   queueOp: async (workspaceId, op, flushNow = false) => {

@@ -87,6 +87,18 @@ export class TeamWorkspaceRepository {
 
       CREATE INDEX IF NOT EXISTS idx_team_asset_identities_path
         ON team_asset_identities(workspace_id, relative_path);
+
+      CREATE TABLE IF NOT EXISTS team_pending_ops (
+        workspace_id TEXT NOT NULL,
+        op_id TEXT NOT NULL,
+        lamport_clock INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, op_id)
+      ) STRICT;
+
+      CREATE INDEX IF NOT EXISTS idx_team_pending_ops_workspace_clock
+        ON team_pending_ops(workspace_id, lamport_clock, op_id);
     `);
   }
 
@@ -281,10 +293,83 @@ export class TeamWorkspaceRepository {
     const opsRow = this.db.prepare(`
       SELECT COUNT(*) AS count FROM team_ops WHERE workspace_id = ?
     `).get(workspaceId);
+    const pendingRow = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM team_pending_ops WHERE workspace_id = ?
+    `).get(workspaceId);
     return {
       appliedFileCount: Number(filesRow?.count ?? 0),
       appliedOpCount: Number(opsRow?.count ?? 0),
+      pendingOpCount: Number(pendingRow?.count ?? 0),
     };
+  }
+
+  enqueuePendingOp(workspaceId, op) {
+    const nowIso = op.createdAt || new Date().toISOString();
+    const clock = Number.isFinite(Number(op.lamportClock)) ? Math.trunc(Number(op.lamportClock)) : 0;
+    this.db.prepare(`
+      INSERT OR REPLACE INTO team_pending_ops (workspace_id, op_id, lamport_clock, payload_json, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(workspaceId, op.opId, clock, JSON.stringify(op), nowIso);
+  }
+
+  listPendingOps(workspaceId) {
+    const rows = this.db.prepare(`
+      SELECT payload_json AS payloadJson
+      FROM team_pending_ops
+      WHERE workspace_id = ?
+      ORDER BY lamport_clock ASC, op_id ASC
+    `).all(workspaceId);
+    const ops = [];
+    for (const row of rows) {
+      try {
+        ops.push(JSON.parse(row.payloadJson));
+      } catch {
+        // Ignore corrupted rows defensively.
+      }
+    }
+    return ops;
+  }
+
+  markPendingOpsFlushed({ workspaceId, deviceId, filename, ops, localDeviceId, nextSeq, maxClock, nowIso = new Date().toISOString() }) {
+    return runTransaction(this.db, () => {
+      const insertOp = this.db.prepare(`
+        INSERT OR IGNORE INTO team_ops (
+          workspace_id, op_id, device_id, asset_key, relative_path,
+          content_hash, op_type, lamport_clock, created_at, payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const deletePending = this.db.prepare(`
+        DELETE FROM team_pending_ops WHERE workspace_id = ? AND op_id = ?
+      `);
+
+      for (const op of ops) {
+        if (!op || typeof op.opId !== 'string') continue;
+        const clock = Number.isFinite(Number(op.lamportClock)) ? Math.trunc(Number(op.lamportClock)) : 0;
+        insertOp.run(
+          workspaceId,
+          op.opId,
+          String(op.deviceId || deviceId),
+          String(op.assetKey || ''),
+          String(op.relativePath || ''),
+          typeof op.contentHash === 'string' ? op.contentHash : null,
+          op.type,
+          clock,
+          String(op.createdAt || nowIso),
+          JSON.stringify(op),
+        );
+        deletePending.run(workspaceId, op.opId);
+      }
+
+      this.db.prepare(`
+        INSERT OR IGNORE INTO team_applied_files (workspace_id, device_id, filename, applied_at)
+        VALUES (?, ?, ?, ?)
+      `).run(workspaceId, deviceId, filename, nowIso);
+
+      this.advanceCursor(workspaceId, localDeviceId, {
+        nextSeq,
+        lastLamportClock: maxClock,
+      });
+    });
   }
 
   close() {

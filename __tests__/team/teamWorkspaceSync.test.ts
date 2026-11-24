@@ -118,4 +118,67 @@ describe('TeamWorkspaceService immutable event sync', () => {
       await serviceB.dispose();
     }
   });
+
+  it('recovers durably queued pending ops from local SQLite after an unexpected crash before flush', async () => {
+    const sharedFolder = makeTempDir('imh-crash-shared-');
+    const userDataA = makeTempDir('imh-crash-devA-');
+    const userDataB = makeTempDir('imh-crash-devB-');
+
+    const serviceA1 = new TeamWorkspaceService({
+      userDataPath: userDataA,
+      enableWatcher: false,
+      reconcileIntervalMs: 0,
+      flushDebounceMs: 60_000, // Long debounce so op stays pending in SQLite
+    });
+
+    const wsA = await serviceA1.initWorkspace(sharedFolder, {
+      name: 'Crash Safe Studio',
+      profile: { displayName: 'Alice' },
+    });
+    const wsId = wsA.manifest.workspaceId;
+
+    await serviceA1.queueOperation(wsId, {
+      type: 'set_rating',
+      assetKey: 'p:shot_crash.png',
+      relativePath: 'shot_crash.png',
+      contentHash: null,
+      rating: 5,
+    }, { flushNow: false });
+
+    // Confirm op is queued in SQLite but NOT yet written to .imh-team/ops/
+    const devAOpsDir = path.join(sharedFolder, '.imh-team', 'ops', serviceA1.getLocalProfile().deviceId);
+    expect(fs.existsSync(devAOpsDir)).toBe(false);
+
+    // Simulate abrupt crash: clear timer and close DB WITHOUT flushing pending ops
+    const activeInternal = serviceA1.activeWorkspaces.get(wsId);
+    if (activeInternal?.flushTimer) clearTimeout(activeInternal.flushTimer);
+    serviceA1.repository.close();
+
+    // Restart Device A with a fresh TeamWorkspaceService -> must automatically recover and flush!
+    const serviceA2 = new TeamWorkspaceService({
+      userDataPath: userDataA,
+      enableWatcher: false,
+      reconcileIntervalMs: 0,
+      flushDebounceMs: 0,
+    });
+    const serviceB = new TeamWorkspaceService({
+      userDataPath: userDataB,
+      enableWatcher: false,
+      reconcileIntervalMs: 0,
+      flushDebounceMs: 0,
+    });
+
+    try {
+      await serviceA2.openWorkspace(sharedFolder);
+      expect(fs.existsSync(devAOpsDir)).toBe(true);
+      expect(fs.readdirSync(devAOpsDir)).toHaveLength(1);
+
+      await serviceB.openWorkspace(sharedFolder, { profile: { displayName: 'Bob' } });
+      const stateB = reduceTeamOps(serviceB.listOps(wsId)).get('p:shot_crash.png');
+      expect(stateB?.rating).toBe(5);
+    } finally {
+      await serviceA2.dispose();
+      await serviceB.dispose();
+    }
+  });
 });
