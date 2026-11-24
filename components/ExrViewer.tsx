@@ -4,7 +4,7 @@ import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 
 import type { IndexedImage, ZoomState } from '../types';
 import type { ExrAssetInfo, ExrColorProfile, ExrConfigInfo, ExrMode, ExrPreviewResult } from '../services/exr/contracts';
 import { DEFAULT_EXR_PROFILE, EXR_CONFIGS, exrChannelGroups, exrDefaultSelection } from '../services/exr/model';
-import { loadExrPreview, resolveExrPath, subscribeExrChanged, unwrapExr } from '../services/exr/client';
+import { inspectExrPath, loadExrPreview, resolveExrPath, subscribeExrChanged, unwrapExr } from '../services/exr/client';
 import SettingsModal from './SettingsModal';
 import { ExrPreviewLayers } from './ExrPreviewLayers';
 
@@ -65,7 +65,8 @@ export default function ExrViewer({ image, directoryPath, externalZoom, onZoomCh
       if (!api) { setAvailabilityError('imageViewer.exr.desktop'); return; }
       const status = unwrapExr(await api.status());
       if (!status.installed || !status.enabled) { if (current) setAvailabilityError('imageViewer.exr.disabled'); return; }
-      const info = unwrapExr(await api.inspect(await resolveExrPath(image, directoryPath)));
+      const boardId = (image.handle as FileSystemFileHandle & { _boardId?: string })?._boardId;
+      const info = await inspectExrPath(await resolveExrPath(image, directoryPath), boardId);
       if (!current) return;
       const selected = exrDefaultSelection(info.parts);
       const part = selected?.part ?? info.parts[0];

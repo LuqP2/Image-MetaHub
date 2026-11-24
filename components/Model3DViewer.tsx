@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Camera, Download, Grid3X3, Image as ImageIcon, Maximize2, Palette, RotateCcw, Sun, X } from 'lucide-react';
 import { captureModel3DCamera, applyModel3DCamera, sameModel3DCamera, type Model3DCameraState } from '../services/model3DCamera';
 import type { IndexedImage } from '../types';
-import { getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
+import { getElectronBoardId, getRelativeImagePath, mediaSourceCache } from '../services/mediaSourceCache';
 import { hasCompactedRuntimeMetadata, hydrateImageRawMetadata } from '../services/rawMetadataHydration';
 import { useImageStore } from '../store/useImageStore';
 import { getFileExtension } from '../utils/mediaTypes.js';
@@ -169,29 +169,69 @@ export const safeModel3DAssetPath = (directoryPath: string, relativeModelPath: s
   return [base, ...resolvedParts].join(separator);
 };
 
-const buildProtocolUrl = (absolutePath: string) =>
-  `imh-media://local/?path=${encodeURIComponent(absolutePath)}`;
+const normalizeBoardId = (boardId?: string | null): string | null =>
+  typeof boardId === 'string' && boardId.trim().length > 0 ? boardId.trim() : null;
+
+const buildProtocolUrl = (absolutePath: string, boardId?: string | null) => {
+  const normalizedBoardId = normalizeBoardId(boardId);
+  if (normalizedBoardId) {
+    const params = new URLSearchParams({ boardId: normalizedBoardId, path: absolutePath });
+    return `imh-board-media://local/?${params.toString()}`;
+  }
+  return `imh-media://local/?path=${encodeURIComponent(absolutePath)}`;
+};
 
 const VIRTUAL_LOCAL_RESOURCE_PREFIX = 'imh-media://local/';
+const VIRTUAL_BOARD_RESOURCE_PREFIX = 'imh-board-media://local/';
+
+const extractBoardIdFromSourceUrl = (sourceUrl: string): string | null => {
+  if (!sourceUrl.startsWith(VIRTUAL_BOARD_RESOURCE_PREFIX)) return null;
+  try {
+    return normalizeBoardId(new URL(sourceUrl).searchParams.get('boardId'));
+  } catch {
+    return null;
+  }
+};
 
 export const resolveModel3DResourceUrl = (
   directoryPath: string | undefined,
   relativeModelPath: string,
   sourceUrl: string,
   resourceUrl: string,
+  explicitBoardId?: string | null,
 ): string | null => {
   if (resourceUrl === sourceUrl || /^(?:blob:|data:)/i.test(resourceUrl)) {
     return resourceUrl;
   }
   if (!directoryPath) return null;
 
+  const boardId = normalizeBoardId(explicitBoardId) ?? extractBoardIdFromSourceUrl(sourceUrl);
+
+  const isVirtualBoardResource = resourceUrl.startsWith(VIRTUAL_BOARD_RESOURCE_PREFIX)
+    && !resourceUrl.slice(VIRTUAL_BOARD_RESOURCE_PREFIX.length).startsWith('?');
   const isVirtualLocalResource = resourceUrl.startsWith(VIRTUAL_LOCAL_RESOURCE_PREFIX)
     && !resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length).startsWith('?');
-  const relativeUrl = isVirtualLocalResource
-    ? resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length)
-    : resourceUrl;
+  const relativeUrl = isVirtualBoardResource
+    ? resourceUrl.slice(VIRTUAL_BOARD_RESOURCE_PREFIX.length)
+    : isVirtualLocalResource
+      ? resourceUrl.slice(VIRTUAL_LOCAL_RESOURCE_PREFIX.length)
+      : resourceUrl;
   const resolved = safeModel3DAssetPath(directoryPath, relativeModelPath, relativeUrl);
-  return resolved ? buildProtocolUrl(resolved) : null;
+  return resolved ? buildProtocolUrl(resolved, boardId) : null;
+};
+
+export const resolveObjMaterialLibraryUrl = (
+  directoryPath: string | undefined,
+  relativeModelPath: string,
+  sourceUrl: string,
+  materialLibrary: string,
+  explicitBoardId?: string | null,
+): string | null => {
+  if (!directoryPath) return null;
+  const materialPath = safeModel3DAssetPath(directoryPath, relativeModelPath, materialLibrary);
+  if (!materialPath) return null;
+  const boardId = normalizeBoardId(explicitBoardId) ?? extractBoardIdFromSourceUrl(sourceUrl);
+  return buildProtocolUrl(materialPath, boardId);
 };
 
 export const extractObjMaterialLibraries = (objText: string): string[] => {
@@ -237,10 +277,11 @@ export const combineObjMaterialLibraries = <T,>(
   },
 });
 
-const getVirtualResourceDirectory = (resourcePath: string): string => {
+export const getVirtualResourceDirectory = (resourcePath: string, boardId?: string | null): string => {
+  const prefix = normalizeBoardId(boardId) ? VIRTUAL_BOARD_RESOURCE_PREFIX : VIRTUAL_LOCAL_RESOURCE_PREFIX;
   const parts = resourcePath.replace(/\\/g, '/').split('/');
   parts.pop();
-  return parts.length > 0 ? `${VIRTUAL_LOCAL_RESOURCE_PREFIX}${parts.join('/')}/` : VIRTUAL_LOCAL_RESOURCE_PREFIX;
+  return parts.length > 0 ? `${prefix}${parts.join('/')}/` : prefix;
 };
 
 const parseMetadataRecord = (value: unknown): Record<string, unknown> | null => {
@@ -540,13 +581,14 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
         scene.add(fillLight);
 
         const sourceUrl = await mediaSourceCache.getOrLoad(image, directoryPath);
+        const sourceBoardId = getElectronBoardId(image) ?? extractBoardIdFromSourceUrl(sourceUrl);
         const manager = new THREE.LoadingManager();
         const relativeModelPath = getRelativeImagePath(image);
         const trustedLocalResourceUrls = new Set([sourceUrl]);
         if (window.electronAPI) {
           manager.setURLModifier((url) => {
             if (trustedLocalResourceUrls.has(url)) return url;
-            const resolved = resolveModel3DResourceUrl(directoryPath, relativeModelPath, sourceUrl, url);
+            const resolved = resolveModel3DResourceUrl(directoryPath, relativeModelPath, sourceUrl, url, sourceBoardId);
             if (!resolved) {
               throw new Error(translateModel('imageViewer.model3d.blockedResource', { url: url }));
             }
@@ -573,14 +615,19 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({
             const loadedMaterialLibraries: Array<ObjMaterialLibrary<import('three').Material>> = [];
 
             for (const materialLibrary of materialLibraries) {
-              const materialPath = safeModel3DAssetPath(directoryPath, relativeModelPath, materialLibrary);
-              if (!materialPath) continue;
+              const materialUrl = resolveObjMaterialLibraryUrl(
+                directoryPath,
+                relativeModelPath,
+                sourceUrl,
+                materialLibrary,
+                sourceBoardId,
+              );
+              if (!materialUrl) continue;
 
               try {
-                const materialUrl = buildProtocolUrl(materialPath);
                 trustedLocalResourceUrls.add(materialUrl);
                 const materialLoader = new MTLLoader(manager);
-                materialLoader.setResourcePath(getVirtualResourceDirectory(materialLibrary));
+                materialLoader.setResourcePath(getVirtualResourceDirectory(materialLibrary, sourceBoardId));
                 const materials = await materialLoader.loadAsync(materialUrl);
                 materials.preload();
                 loadedMaterialLibraries.push(materials);

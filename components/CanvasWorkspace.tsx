@@ -1,5 +1,5 @@
 import { useTranslation } from '../i18n/useTranslation';
-import { externalBoardReference, loadExternalBoardAsset } from '../services/boards/externalAssets';
+import { externalBoardPath, externalBoardReference, loadExternalBoardAsset } from '../services/boards/externalAssets';
 import { getElectronAbsoluteMediaPath } from '../services/mediaSourceCache';
 import { areFilesystemPathsEqual } from '../utils/filesystemPath';
 import { isSupportedMediaFileName } from '../utils/mediaTypes.js';
@@ -79,10 +79,17 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
         const path = window.electronAPI?.getPathForFile?.(file);
         if (!path || !isSupportedMediaFileName(file.name)) throw new Error('Unsupported file');
         const existing = images.find(image => { const source = getElectronAbsoluteMediaPath(image); return source && areFilesystemPathsEqual(source, path); });
-        const reference = existing ? createBoardAssetReference(existing, directories, await getBoardReferenceBaseline()) : externalBoardReference(path);
-        const image = existing ?? await loadExternalBoardAsset(reference);
-        if (!image) throw new Error('File unavailable');
-        inputs.push({ reference, name: image.name, mediaType: boardMediaType(image) });
+        if (existing) {
+          const reference = createBoardAssetReference(existing, directories, await getBoardReferenceBaseline());
+          inputs.push({ reference, name: existing.name, mediaType: boardMediaType(existing) });
+          continue;
+        }
+        const authorization = await window.electronAPI?.boardsAuthorizeDroppedFile?.(destination, file);
+        if (!authorization || authorization.success === false) throw new Error((authorization && authorization.success === false && authorization.error) || 'External file access unavailable.');
+        const reference = externalBoardReference(authorization.data);
+        const loaded = await loadExternalBoardAsset(destination, reference);
+        if (loaded.status !== 'resolved') throw new Error('File unavailable');
+        inputs.push({ reference, name: loaded.image.name, mediaType: boardMediaType(loaded.image) });
       } catch { ignored.push(file.name); }
     }
     const state = useBoardStore.getState();
@@ -90,20 +97,23 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
     if (inputs.length) state.executeOperation(destination, document => addAssets(document, inputs, anchor));
     setError(ignored.length ? `Could not add: ${ignored.join(', ')}. Drag supported media files rather than folders.` : null);
   };
-  const relinkExternal = async (file: File) => {
+  const pickExternal = async () => {
     if (!editable || !boardId || !selectedAsset) return;
     const destination = boardId, objectId = selectedAsset.id;
+    const defaultPath = selectedAsset.reference.kind === 'external' ? externalBoardPath(selectedAsset.reference) : undefined;
     try {
-      const path = window.electronAPI?.getPathForFile?.(file);
-      if (!path) throw new Error('File path unavailable.');
-      const reference = externalBoardReference(path);
-      const image = await loadExternalBoardAsset(reference);
-      if (!image) throw new Error('File unavailable.');
+      const picked = await window.electronAPI?.boardsPickExternalFile?.({ boardId: destination, defaultPath });
+      if (!picked) throw new Error('External files require the updated desktop app.');
+      if (picked.success === false) throw new Error(picked.error);
+      if (!picked.data) return;
+      const reference = externalBoardReference(picked.data);
+      const loaded = await loadExternalBoardAsset(destination, reference);
+      if (loaded.status !== 'resolved') throw new Error('File unavailable.');
       const state = useBoardStore.getState();
       if (state.activeBoardId !== destination || !state.sessions[destination] || state.closing || state.sessions[destination].recovering || !editableRef.current) return;
-      state.executeOperation(destination, document => updateObjects(document, [{ id: objectId, reference, name: image.name, mediaType: boardMediaType(image) }]));
+      state.executeOperation(destination, document => updateObjects(document, [{ id: objectId, reference, name: loaded.image.name, mediaType: boardMediaType(loaded.image) }]));
       refreshExternalAssets();
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const selected = session?.document.objects.filter(object => session.selectedObjectIds.includes(object.id)) ?? [];
   const selectedAsset = selected.length === 1 && selected[0].type === 'asset' ? selected[0] : null;
@@ -134,7 +144,7 @@ export default function CanvasWorkspace({ loading, onOpenImage, onCompareImages,
     {libraryBacked && <RatingStars size={16} className="board-rating" rating={resolution.image.rating} onChange={rating => { void useImageStore.getState().setImageRating(resolution.image.id, rating).catch(cause => setError(String(cause))); }} />}
   </> : null;
   const metadata = resolution?.status === 'resolved' ? <ComparisonMetadataPanel promptActions={selectedAsset ? <BoardImagePromptActions image={resolution.image} object={selectedAsset} editable={editable} /> : undefined} className="board-embedded-metadata" image={resolution.image} isExpanded onToggleExpanded={() => {}} presentation="embedded" /> : null;
-  const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? t('canvas.loadingLibrary') : resolution?.status === 'ambiguous' ? t('canvas.ambiguous') : t('canvas.missing')}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous') && <><label className="board-button">{t('canvasFeedback.locateExternal')}<input type="file" className="hidden" disabled={!editable} onChange={event => { const file = event.target.files?.[0]; if (file) void relinkExternal(file); event.target.value = ''; }} /></label><p>{t('canvas.relinkHelp')}</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>{t('canvas.locate')}</button></>}</div> : null;
+  const status = selectedAsset && resolution?.status !== 'resolved' ? <div className="board-asset-status"><p>{resolution?.status === 'loading' ? t('canvas.loadingLibrary') : resolution?.status === 'ambiguous' ? t('canvas.ambiguous') : resolution?.status === 'approval-required' ? t('canvasFeedback.approvalRequired') : t('canvas.missing')}</p>{(resolution?.status === 'missing' || resolution?.status === 'ambiguous' || resolution?.status === 'approval-required') && <><button className="board-button" disabled={!editable} onClick={() => { void pickExternal(); }}>{resolution?.status === 'approval-required' ? t('canvasFeedback.approveExternal') : t('canvasFeedback.locateExternal')}</button><p>{t('canvas.relinkHelp')}</p><button className="board-button" disabled={!editable} onClick={() => { useBoardUIStore.getState().setLibraryOpen(true); setRelinkId(selectedAsset.id); }}>{t('canvas.locate')}</button></>}</div> : null;
 
   const captureReferences = async (selected: IndexedImage[]): Promise<BoardAssetReference[]> => {
     const baseline = await getBoardReferenceBaseline();

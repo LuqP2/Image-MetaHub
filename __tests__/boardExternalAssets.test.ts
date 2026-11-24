@@ -4,41 +4,109 @@ import { loadExternalBoardAsset, externalBoardPath, externalBoardReference } fro
 import { reparseIndexedImage } from '../services/fileIndexer';
 import { createBoardDocument, normalizeBoardDocument } from '../services/boards/document.mjs';
 import { addAssets } from '../services/boards/operations';
+import { mediaSourceCache } from '../services/mediaSourceCache';
+import { inspectExrPath } from '../services/exr/client';
 
 vi.mock('../services/fileIndexer', () => ({ reparseIndexedImage: vi.fn() }));
 const bytes = new Uint8Array([1, 2, 3]);
-const readFile = vi.fn();
+const boardsReadFile = vi.fn();
+const boardsStatFile = vi.fn();
+const genericReadFile = vi.fn();
+const genericGetFileStats = vi.fn();
 beforeEach(() => {
-  readFile.mockReset().mockResolvedValue({ success: true, data: bytes });
+  boardsReadFile.mockReset().mockResolvedValue({ success: true, data: bytes });
+  boardsStatFile.mockReset().mockResolvedValue({ success: true, data: { size: 3, mtimeMs: 1234, isDirectory: false } });
+  genericReadFile.mockReset();
+  genericGetFileStats.mockReset();
   window.electronAPI = {
-    boardsAuthorizeFile: vi.fn().mockResolvedValue({ success: true, data: '/synthetic/file' }),
-    getFileStats: vi.fn().mockResolvedValue({ success: true, stats: { size: 3, mtimeMs: 1234 } }),
-    readFile,
+    boardsStatFile,
+    boardsReadFile,
+    readFile: genericReadFile,
+    getFileStats: genericGetFileStats,
   } as unknown as Window['electronAPI'];
-  vi.mocked(reparseIndexedImage).mockImplementation(async image => ({ ...image, handle: { kind: 'file', name: image.name, _filePath: externalBoardPath(externalBoardReference(`/synthetic/${image.name}`)) } } as unknown as IndexedImage));
+  vi.mocked(reparseIndexedImage).mockImplementation(async image => ({ ...image, handle: { kind: 'file', name: image.name, _filePath: externalBoardPath(externalBoardReference(`/synthetic/${image.name}`)), _boardId: 'board-1' } } as unknown as IndexedImage));
 });
 afterEach(() => { delete window.electronAPI; vi.unstubAllGlobals(); });
 
 describe('external Canvas assets', () => {
-  it.each([['reference.avif', 'image/avif'], ['clip.mp4', 'video/mp4']])('returns a lazy File-compatible handle after reparsing %s', async (name, type) => {
-    const image = await loadExternalBoardAsset(externalBoardReference(`/synthetic/${name}`));
-    expect(image).not.toBeNull();
-    expect(readFile).not.toHaveBeenCalled();
-    const file = await image!.handle.getFile();
-    expect(readFile).toHaveBeenCalledWith(`/synthetic/${name}`);
+  it.each([['reference.avif', 'image/avif'], ['clip.mp4', 'video/mp4']])('returns a lazy board-scoped File-compatible handle after reparsing %s without touching generic channels', async (name, type) => {
+    const resolved = await loadExternalBoardAsset('board-1', externalBoardReference(`/synthetic/${name}`));
+    expect(resolved.status).toBe('resolved');
+    if (resolved.status !== 'resolved') throw new Error('Expected resolved');
+    expect(boardsReadFile).not.toHaveBeenCalled();
+    expect(genericGetFileStats).not.toHaveBeenCalled();
+    const file = await resolved.image.handle.getFile();
+    expect(boardsReadFile).toHaveBeenCalledWith({ boardId: 'board-1', filePath: `/synthetic/${name}` });
+    expect(genericReadFile).not.toHaveBeenCalled();
     expect(file).toBeInstanceOf(File);
     expect({ name: file.name, type: file.type, size: file.size, lastModified: file.lastModified }).toEqual({ name, type, size: 3, lastModified: 1234 });
     const reader = new FileReader();
     const contents = new Promise<ArrayBuffer>(resolve => { reader.onload = () => resolve(reader.result as ArrayBuffer); });
     reader.readAsArrayBuffer(file);
     expect(new Uint8Array(await contents)).toEqual(bytes);
-    readFile.mockResolvedValueOnce({ success: false, error: 'File removed' });
-    await expect(image!.handle.getFile()).rejects.toThrow('File removed');
+    boardsReadFile.mockResolvedValueOnce({ success: false, code: 'BOARD_FILE_NOT_FOUND', error: 'File removed' });
+    await expect(resolved.image.handle.getFile()).rejects.toThrow('File removed');
   });
-  it('retains parser failure without creating an unusable image', async () => {
+
+  it('distinguishes approval-required from missing without auto-authorizing', async () => {
+    boardsStatFile.mockResolvedValueOnce({ success: false, code: 'BOARD_APPROVAL_REQUIRED', error: 'Approval required' });
+    expect(await loadExternalBoardAsset('board-1', externalBoardReference('/synthetic/unapproved.png'))).toEqual({ status: 'approval-required' });
+
+    boardsStatFile.mockResolvedValueOnce({ success: false, code: 'BOARD_FILE_NOT_FOUND', error: 'Missing' });
+    expect(await loadExternalBoardAsset('board-1', externalBoardReference('/synthetic/missing.png'))).toEqual({ status: 'missing' });
+  });
+
+  it('retains parser failure as missing without creating an unusable image', async () => {
     vi.mocked(reparseIndexedImage).mockResolvedValueOnce(null);
-    expect(await loadExternalBoardAsset(externalBoardReference('/synthetic/missing.png'))).toBeNull();
+    expect(await loadExternalBoardAsset('board-1', externalBoardReference('/synthetic/missing.png'))).toEqual({ status: 'missing' });
   });
+
+  it('scopes MediaSourceCache URLs per board so closing one board cannot break another', async () => {
+    const boardsResolveMediaUrl = vi.fn(async ({ boardId, filePath }: { boardId: string; filePath: string }) => ({
+      success: true as const,
+      data: `imh-board-media://local/?boardId=${encodeURIComponent(boardId)}&path=${encodeURIComponent(filePath)}`,
+    }));
+    const resolveMediaUrl = vi.fn();
+    window.electronAPI = {
+      ...window.electronAPI,
+      boardsResolveMediaUrl,
+      resolveMediaUrl,
+    } as unknown as Window['electronAPI'];
+
+    const makeBoardImage = (boardId: string) => ({
+      id: 'canvas-external:/synthetic/shared.mp4::shared.mp4',
+      name: 'shared.mp4',
+      directoryId: 'canvas-external:/synthetic/shared.mp4',
+      lastModified: 1234,
+      fileType: 'video/mp4',
+      handle: { kind: 'file', name: 'shared.mp4', _filePath: '/synthetic/shared.mp4', _boardId: boardId },
+    }) as unknown as IndexedImage;
+
+    const urlA = await mediaSourceCache.getOrLoad(makeBoardImage('board-a'), '/synthetic');
+    const urlB = await mediaSourceCache.getOrLoad(makeBoardImage('board-b'), '/synthetic');
+
+    expect(urlA).toContain('boardId=board-a');
+    expect(urlB).toContain('boardId=board-b');
+    expect(urlA).not.toBe(urlB);
+    expect(boardsResolveMediaUrl).toHaveBeenCalledTimes(2);
+    expect(resolveMediaUrl).not.toHaveBeenCalled();
+  });
+
+  it('routes board EXR inspection through boardsExrInspect instead of generic exr.inspect', async () => {
+    const boardsExrInspect = vi.fn().mockResolvedValue({ success: true, data: { parts: [{ index: 0, width: 64, height: 64, channels: [] }] } });
+    const genericInspect = vi.fn();
+    window.electronAPI = {
+      ...window.electronAPI,
+      boardsExrInspect,
+      exr: { inspect: genericInspect },
+    } as unknown as Window['electronAPI'];
+
+    const result = await inspectExrPath('/synthetic/render.exr', 'board-1');
+    expect(result.parts[0]).toMatchObject({ width: 64, height: 64 });
+    expect(boardsExrInspect).toHaveBeenCalledWith({ boardId: 'board-1', filePath: '/synthetic/render.exr' });
+    expect(genericInspect).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['C:\\picture.png', 'C:/', 'C:/picture.png'],
     ['D:/clip.mp4', 'D:/', 'D:/clip.mp4'],

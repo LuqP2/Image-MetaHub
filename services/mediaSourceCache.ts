@@ -23,7 +23,7 @@ type MediaSourceLoadOptions = {
 const MAX_STREAM_URL_CACHE_ENTRIES = 64;
 const MAX_OBJECT_URL_CACHE_ENTRIES = 16;
 const MAX_RENDERER_READ_BYTES = 200 * 1024 * 1024;
-type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
+type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string; _boardId?: string };
 
 const getFileDataByteLength = (data: unknown): number | undefined => {
   if (typeof data === 'string') {
@@ -83,6 +83,13 @@ export const getElectronAbsoluteMediaPath = (image: IndexedImage): string | null
   const fallbackHandle = image.thumbnailHandle as ElectronFileHandle | undefined;
   const absolutePath = primaryHandle?._filePath || fallbackHandle?._filePath || null;
   return typeof absolutePath === 'string' && absolutePath.trim().length > 0 ? absolutePath : null;
+};
+
+export const getElectronBoardId = (image: IndexedImage): string | null => {
+  const primaryHandle = image.handle as ElectronFileHandle | undefined;
+  const fallbackHandle = image.thumbnailHandle as ElectronFileHandle | undefined;
+  const boardId = primaryHandle?._boardId || fallbackHandle?._boardId || null;
+  return typeof boardId === 'string' && boardId.trim().length > 0 ? boardId : null;
 };
 
 class MediaSourceCache {
@@ -210,7 +217,8 @@ class MediaSourceCache {
   }
 
   private getCacheKey(image: IndexedImage, directoryPath?: string): string {
-    return `${directoryPath || ''}::${image.id}::${image.lastModified}${isExrFileName(image.name) ? `::exr:${exrClientRevision()}` : ''}`;
+    const boardId = getElectronBoardId(image);
+    return `${boardId ? `board:${boardId}::` : ''}${directoryPath || ''}::${image.id}::${image.lastModified}${isExrFileName(image.name) ? `::exr:${exrClientRevision()}` : ''}`;
   }
 
   private async loadRendererObjectSource(
@@ -247,9 +255,12 @@ class MediaSourceCache {
           throw new Error('Could not create editable object URL; refusing to read full media file into renderer memory.');
         }
 
-        const fileResult = await window.electronAPI.readFile(absolutePath);
-        if (!fileResult.success || !fileResult.data) {
-          throw new Error(fileResult.error || 'Failed to read file via Electron API.');
+        const boardId = getElectronBoardId(image);
+        const fileResult = boardId
+          ? await window.electronAPI.boardsReadFile?.({ boardId, filePath: absolutePath })
+          : await window.electronAPI.readFile(absolutePath);
+        if (!fileResult?.success || !fileResult.data) {
+          throw new Error((fileResult && 'error' in fileResult && fileResult.error) || 'Failed to read file via Electron API.');
         }
 
         const byteLength = getFileDataByteLength(fileResult.data);
@@ -316,16 +327,22 @@ class MediaSourceCache {
         absolutePath = pathResult.path;
       }
 
-      if (absolutePath && window.electronAPI.resolveMediaUrl) {
+      const boardId = getElectronBoardId(image);
+      if (absolutePath && (boardId ? window.electronAPI.boardsResolveMediaUrl : window.electronAPI.resolveMediaUrl)) {
         const resolveStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const resolvedUrl = await window.electronAPI.resolveMediaUrl(absolutePath);
-        if (resolvedUrl.success && resolvedUrl.url) {
+        const resolvedUrl = boardId
+          ? await window.electronAPI.boardsResolveMediaUrl!({ boardId, filePath: absolutePath })
+          : await window.electronAPI.resolveMediaUrl!(absolutePath);
+        const resolvedMediaUrl = resolvedUrl.success
+          ? ('data' in resolvedUrl ? resolvedUrl.data : resolvedUrl.url)
+          : undefined;
+        if (resolvedUrl.success && resolvedMediaUrl) {
           return {
-            url: resolvedUrl.url,
+            url: resolvedMediaUrl,
             revoke: false,
             detail: {
               urlKind: 'stream-url',
-              sourceMode: 'electron-resolved-url',
+              sourceMode: boardId ? 'electron-board-resolved-url' : 'electron-resolved-url',
               usedHandlePath: Boolean(electronAbsoluteMediaPath),
               joinPathMs,
               resolveUrlMs: Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - resolveStartedAt) * 100) / 100,
@@ -336,8 +353,8 @@ class MediaSourceCache {
 
         recordPerformanceCounter('media-source-cache.resolve-url-fallback', {
           imageId: image.id,
-          error: resolvedUrl.error || 'unknown',
-          errorType: resolvedUrl.errorType,
+          error: ('error' in resolvedUrl && resolvedUrl.error) || 'unknown',
+          errorType: 'errorType' in resolvedUrl ? resolvedUrl.errorType : ('code' in resolvedUrl ? resolvedUrl.code : undefined),
         });
       }
 
@@ -347,9 +364,11 @@ class MediaSourceCache {
         }
 
         const readStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const fileResult = await window.electronAPI.readFile(absolutePath);
-        if (!fileResult.success || !fileResult.data) {
-          throw new Error(fileResult.error || 'Failed to read file via Electron API.');
+        const fileResult = boardId
+          ? await window.electronAPI.boardsReadFile?.({ boardId, filePath: absolutePath })
+          : await window.electronAPI.readFile(absolutePath);
+        if (!fileResult?.success || !fileResult.data) {
+          throw new Error((fileResult && 'error' in fileResult && fileResult.error) || 'Failed to read file via Electron API.');
         }
 
         const byteLength = getFileDataByteLength(fileResult.data);

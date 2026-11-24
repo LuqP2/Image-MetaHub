@@ -3629,5 +3629,7 @@
   "canvasFeedback.resetLight": "Licht zurücksetzen",
   "canvasFeedback.locateExternal": "Externe Datei suchen",
   "integrations.discardWorkspaceDraftConfirm": "Diesen Arbeitsbereichsentwurf verwerfen?",
-  "integrations.discardBlockEditConfirm": "Die ungespeicherten Änderungen an diesem Baustein verwerfen?"
+  "integrations.discardBlockEditConfirm": "Die ungespeicherten Änderungen an diesem Baustein verwerfen?",
+  "canvasFeedback.approvalRequired": "Freigabe erforderlich, um auf diese externe Datei zuzugreifen.",
+  "canvasFeedback.approveExternal": "Externe Datei freigeben"
 }

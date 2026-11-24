@@ -20,10 +20,19 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   const externalAccess = createBoardExternalAccess();
   const externalPath = path.join(root, 'external.png');
   await fs.writeFile(externalPath, nativeImage.createFromBitmap(Buffer.from([0, 0, 255, 255]), { width: 1, height: 1 }).toPNG());
-  const persistence = registerBoardIpc({ authorizeExternalFile: file => externalAccess.authorize(file), ipcMain, app, BrowserWindow, clipboard: { readText: () => 'synthetic canvas clipboard' }, getMainWindow: () => window, dialog: {
-    showSaveDialog: async (_window, options) => ({ canceled: false, filePath: options.filters[0].extensions[0] === 'png' ? pngPath : exportedPath }),
-    showOpenDialog: async () => ({ canceled: false, filePaths: [exportedPath] }),
-  } });
+  const persistence = registerBoardIpc({
+    externalAccess,
+    buildBoardMediaUrl: (boardId, filePath) => `imh-board-media://local/?boardId=${encodeURIComponent(boardId)}&path=${encodeURIComponent(filePath)}`,
+    ipcMain,
+    app,
+    BrowserWindow,
+    clipboard: { readText: () => 'synthetic canvas clipboard' },
+    getMainWindow: () => window,
+    dialog: {
+      showSaveDialog: async (_window, options) => ({ canceled: false, filePath: options.filters[0].extensions[0] === 'png' ? pngPath : exportedPath }),
+      showOpenDialog: async (_window, options) => ({ canceled: false, filePaths: [options.filters?.[0]?.extensions?.includes('imhboard.json') ? exportedPath : externalPath] }),
+    },
+  });
   await window.loadURL('data:text/html,<html><body>Canvas functional smoke</body></html>');
   const document = createBoardDocument('Packaged synthetic board');
   const directoryPath = path.join(root, 'synthetic-library');
@@ -38,8 +47,11 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
   const result = await window.webContents.executeJavaScript(`(async () => {
     const api = window.electronAPI;
     const unwrap = result => { if (!result.success) throw new Error(result.error); return result.data; };
-    unwrap(await api.boardsAuthorizeFile(${JSON.stringify(externalPath)}));
     let saved = unwrap(await api.boardsSave({ document: ${JSON.stringify(document)}, expectedRevision: 0 }));
+    const deniedBeforeApproval = await api.boardsStatFile({ boardId: saved.id, filePath: ${JSON.stringify(externalPath)} });
+    if (deniedBeforeApproval.success || deniedBeforeApproval.code !== 'BOARD_APPROVAL_REQUIRED') throw new Error('Unapproved external file was not rejected');
+    unwrap(await api.boardsPickExternalFile({ boardId: saved.id }));
+    unwrap(await api.boardsStatFile({ boardId: saved.id, filePath: ${JSON.stringify(externalPath)} }));
     unwrap(await api.boardsRemapReferences(${JSON.stringify(remaps)}));
     for (let index = 0; index < 3; index++) {
       saved = unwrap(await api.boardsLoad(saved.id));
@@ -56,7 +68,7 @@ export async function runBoardPackagedSmoke({ app, BrowserWindow, ipcMain, root,
     unwrap(await api.boardsFlush());
     return { boardId: saved.id, importedId: imported.id, revision: saved.revision };
   })()`);
-  if (!externalAccess.allows(externalPath) || externalAccess.allows(path.join(root, 'unapproved.png'))) throw new Error('External file authorization escaped its scope.');
+  if (!externalAccess.allows(result.boardId, externalPath) || externalAccess.allows(result.importedId, externalPath) || externalAccess.allows(result.boardId, path.join(root, 'unapproved.png'))) throw new Error('External file authorization escaped its scope.');
   // Exercise the bridge with a synthetic clipboard, independent of the operator's data.
   const clipboardText = await window.webContents.executeJavaScript('window.electronAPI.boardsReadClipboard()');
   if (!clipboardText.success || clipboardText.data !== 'synthetic canvas clipboard') throw new Error('System clipboard bridge failed');

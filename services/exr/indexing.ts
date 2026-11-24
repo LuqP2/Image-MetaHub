@@ -1,6 +1,6 @@
 import type { IndexedImage } from '../../types';
 import type { ExrAssetInfo } from './contracts';
-import { unwrapExr, subscribeExrChanged } from './client';
+import { inspectExrPath, unwrapExr, subscribeExrChanged } from './client';
 import { resolveFileSortDate } from '../../utils/fileTimestamps.js';
 
 let watching = false;
@@ -44,12 +44,14 @@ export async function indexExrEntry(entry: { handle: FileSystemFileHandle; path:
   let info: ExrAssetInfo | undefined;
   let error: string | undefined;
   const api = window.electronAPI?.exr;
-  const filePath = (entry.handle as FileSystemFileHandle & { _filePath?: string })._filePath;
+  const handle = entry.handle as FileSystemFileHandle & { _filePath?: string; _boardId?: string };
+  const filePath = handle._filePath;
+  const boardId = handle._boardId;
   if (api && filePath) {
     try {
       const status = unwrapExr(await api.status());
       if (status.installed && status.enabled) {
-        const inspected = unwrapExr(await api.inspect(filePath));
+        const inspected = await inspectExrPath(filePath, boardId);
         info = { parts: inspected.parts };
       }
     } catch (e) { error = e instanceof Error ? e.message : String(e); }
