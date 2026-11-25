@@ -373,7 +373,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               metadataStrippedFromDeliverables: metadataPolicy === 'strip',
             };
             await window.electronAPI.team.writeAuditReports({
-              destDir: destResult.path,
+              destDir: destinationKind === 'file' ? targetPath.replace(/[^\\/]+$/, '') || '.' : targetPath,
               csvContent: serializeAuditReportCsv(entries),
               jsonContent: serializeAuditReportJson(entries, meta),
               htmlContent: serializeAuditReportHtml(entries, meta),

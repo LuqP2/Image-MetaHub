@@ -193,6 +193,8 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
           remote: result.remote,
         });
       }
+    } catch (error) {
+      setBoardNotice(error instanceof Error ? error.message : 'Could not publish the shared board.');
     } finally {
       setBusy(false);
     }

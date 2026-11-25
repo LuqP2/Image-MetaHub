@@ -4,12 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BatchExportModal from '../components/BatchExportModal';
 import type { IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTeamWorkspaceStore } from '../store/useTeamWorkspaceStore';
+import { reduceTeamOps } from '../services/team/teamOpsReducer';
+import type { TeamWorkspaceSummary } from '../services/team/teamWorkspaceTypes';
 
 vi.mock('../services/userDataPersistenceAdapter', () => ({ getPersistedShadowMetadata: async () => null }));
 
 const images = ['first.png', 'second.png'].map((name, index) => ({ id: String(index), name, directoryId: 'fixture' }) as IndexedImage);
 const completed = { success: true, exportedCount: 1, failedCount: 0 };
 const api = {
+  team: { writeAuditReports: vi.fn() },
   showSaveDialog: vi.fn(), showDirectoryDialog: vi.fn(),
   exportBatchToFolder: vi.fn(), exportBatchToZip: vi.fn(), showItemInFolder: vi.fn(),
 };
@@ -29,6 +33,7 @@ function setup(count = 1, options: { name?: string } = {}) {
 
 beforeEach(() => {
   useSettingsStore.setState({ language: 'en' });
+  useTeamWorkspaceStore.setState({ workspacesById: {}, assetStatesByWorkspace: {} });
   vi.clearAllMocks();
   api.showSaveDialog.mockResolvedValue({ success: true, path: 'D:/exports/result.png' });
   api.showDirectoryDialog.mockResolvedValue({ success: true, path: 'D:/exports' });
@@ -39,6 +44,30 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('export destination and completion', () => {
+  it('exports the approved subset as a single file and writes its audit reports beside it', async () => {
+    const workspace = {
+      rootPath: 'D:/synthetic-input', manifest: { workspaceId: 'ws', name: 'Synthetic workspace' },
+    } as TeamWorkspaceSummary;
+    const states = reduceTeamOps([{
+      type: 'set_review_status', workspaceId: 'ws', assetKey: 'p:first.png', relativePath: 'first.png',
+      contentHash: null, opId: 'approved', deviceId: 'synthetic', lamportClock: 1,
+      createdAt: '2026-11-25T00:00:00Z', status: 'approved', baseOpId: null,
+    }]);
+    useTeamWorkspaceStore.setState({ workspacesById: { ws: workspace }, assetStatesByWorkspace: { ws: Object.fromEntries(states) } });
+    const closed = setup(2);
+    fireEvent.click(screen.getByRole('checkbox', { name: /Client Delivery Pack/ }));
+    fireEvent.change(screen.getByLabelText('File path'), { target: { value: 'D:/exports/approved.png' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export', exact: true }));
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(api.exportBatchToFolder).toHaveBeenCalledWith(expect.objectContaining({
+      destFilePath: 'D:/exports/approved.png', metadataPolicy: 'strip',
+      files: [expect.objectContaining({ imageId: '0' })],
+    }));
+    expect(api.team.writeAuditReports).toHaveBeenCalledWith(expect.objectContaining({
+      destDir: 'D:/exports/', csvContent: expect.stringContaining('first.png'),
+    }));
+  });
+
   it('selects a file for one image, closes, and keeps a working reveal action after closing', async () => {
     const closed = setup();
     expect(screen.getByRole('button', { name: 'File', exact: true })).toBeTruthy();
