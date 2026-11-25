@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TeamWorkspaceService } from '../../electron/teamWorkspaceService.mjs';
+import { buildBoardAssetLookup, createBoardAssetReference, resolveBoardAsset } from '../../services/boards/assetResolver';
+import type { IndexedImage } from '../../types';
 import {
   normalizeBoardPathsForTeam,
   resolveTeamBoardPaths,
@@ -150,6 +152,24 @@ describe('Team Boards optimistic revision concurrency', () => {
     } finally {
       for (const service of services) await service.dispose();
     }
+  });
+
+  it('relocates root locators as well as descendants between workspace mounts', () => {
+    const board = { locator: { directoryPath: 'Z:\\Studio\\ProjectA', relativePath: 'hero.png' },
+      nested: { directoryPath: 'Z:/Studio/ProjectA/shots' }, outside: 'Z:/Studio/ProjectAB/other.png' };
+    const portable = normalizeBoardPathsForTeam(board, 'Z:/Studio/ProjectA/');
+    expect(portable.locator.directoryPath).toBe('$workspace');
+    const resolved = resolveTeamBoardPaths(portable, '/Volumes/ProjectA/');
+    expect(resolved.locator).toEqual({ directoryPath: '/Volumes/ProjectA', relativePath: 'hero.png' });
+    expect(resolved.nested.directoryPath).toBe('/Volumes/ProjectA/shots');
+    expect(resolved.outside).toBe(board.outside);
+    expect(resolveTeamBoardPaths('$workspace/', '/Volumes/ProjectA')).toBe('/Volumes/ProjectA');
+    const alice = { id: 'alice-image', directoryId: 'alice-dir', name: 'hero.png' } as IndexedImage;
+    const reference = createBoardAssetReference(alice, [{ id: 'alice-dir', path: '/alice/project' }]);
+    const relocated = resolveTeamBoardPaths(normalizeBoardPathsForTeam(reference, '/alice/project'), '/bob/project');
+    const bob = { ...alice, id: 'bob-image', directoryId: 'bob-dir' };
+    expect(resolveBoardAsset(relocated, buildBoardAssetLookup([bob], [{ id: 'bob-dir', path: '/bob/project' }])))
+      .toEqual({ status: 'resolved', image: bob });
   });
 
   it('normalizes and resolves board asset paths across Windows and macOS mounts', () => {

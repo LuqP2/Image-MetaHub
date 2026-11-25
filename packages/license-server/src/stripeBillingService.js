@@ -538,8 +538,8 @@ export class StripeBillingService {
       await this.repository.recordSubscriptionSnapshot(command);
       if (priceId && tierForPrice(priceId, this.config) === 'teams') {
         const seatLimit = subscriptionItemQuantity(subscription, priceId, this.config);
-        const existingLicense = await this.repository.findLicenseByStripeSubscriptionId?.(subscription.id);
-        if (existingLicense && existingLicense.seatLimit !== seatLimit) {
+        const existingLicense = await this.repository.findLicenseByStripeSubscriptionId(subscription.id);
+        if (existingLicense && (existingLicense.tier !== 'teams' || existingLicense.seatLimit !== seatLimit)) {
           await this.licenseService.updateLicense(existingLicense.id, {
             tier: 'teams',
             seatLimit,

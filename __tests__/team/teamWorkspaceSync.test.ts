@@ -21,6 +21,56 @@ afterEach(() => {
 });
 
 describe('TeamWorkspaceService immutable event sync', () => {
+  it('waits for in-flight publication and drains concurrent flushNow operations', async () => {
+    const shared = makeTempDir('imh-team-flush-race-');
+    const a = new TeamWorkspaceService({ userDataPath: makeTempDir('imh-flush-A-'), enableWatcher: false, reconcileIntervalMs: 0 });
+    const b = new TeamWorkspaceService({ userDataPath: makeTempDir('imh-flush-B-'), enableWatcher: false, reconcileIntervalMs: 0 });
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    try {
+      const { manifest } = await a.initWorkspace(shared);
+      const id = manifest.workspaceId;
+      await b.openWorkspace(shared);
+      const rename = fs.promises.rename.bind(fs.promises);
+      const spy = vi.spyOn(fs.promises, 'rename').mockImplementationOnce(async (...args) => {
+        entered(); await blocked; return rename(...args);
+      });
+      const op = { type: 'set_favorite', assetKey: 'p:synthetic.png', relativePath: 'synthetic.png', contentHash: null, isFavorite: true };
+      const first = a.queueOperation(id, op, { flushNow: true });
+      await started;
+      let secondCompleted = false;
+      const second = a.queueOperation(id, { ...op, isFavorite: false }, { flushNow: true }).then(result => { secondCompleted = true; return result; });
+      await Promise.resolve();
+      expect(secondCompleted).toBe(false);
+      release();
+      const queued = await Promise.all([first, second]);
+      spy.mockRestore();
+      expect(a.repository.listPendingOps(id)).toHaveLength(0);
+      await b.reconcileWorkspace(id);
+      expect(b.listOps(id).map(item => item.opId).sort()).toEqual(queued.map(item => item.opId).sort());
+      expect(b.getWorkspaceSummary(id)?.syncStatus.appliedFileCount).toBe(2);
+    } finally {
+      release(); vi.restoreAllMocks(); await a.dispose(); await b.dispose();
+    }
+  });
+
+  it('keeps failed publications durable and drains them on the next flush', async () => {
+    const service = new TeamWorkspaceService({ userDataPath: makeTempDir('imh-flush-retry-'), enableWatcher: false, reconcileIntervalMs: 0 });
+    try {
+      const { manifest } = await service.initWorkspace(makeTempDir('imh-flush-retry-share-'));
+      const id = manifest.workspaceId;
+      const op = { type: 'set_favorite', assetKey: 'p:synthetic.png', relativePath: 'synthetic.png', contentHash: null, isFavorite: true };
+      vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('synthetic publication failure'));
+      await expect(service.queueOperation(id, op, { flushNow: true })).rejects.toThrow('synthetic publication failure');
+      expect(service.repository.listPendingOps(id)).toHaveLength(1);
+      await service.queueOperation(id, { ...op, isFavorite: false }, { flushNow: true });
+      expect(service.repository.listPendingOps(id)).toHaveLength(0);
+      expect(service.listOps(id)).toHaveLength(2);
+    } finally { vi.restoreAllMocks(); await service.dispose(); }
+  });
+
   it('notifies resource-only additions, edits and deletions without annotation operations', async () => {
     const shared = makeTempDir('imh-team-resources-');
     const notify = vi.fn();

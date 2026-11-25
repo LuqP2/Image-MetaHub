@@ -79,6 +79,7 @@ export function normalizeBoardPathsForTeam<T>(value: T, workspaceRootPath: strin
     if (typeof node === 'string') {
       const candidatePosix = node.replace(/\\/g, '/');
       const candidateLower = candidatePosix.toLowerCase();
+      if (candidateLower.replace(/\/+$/, '') === rootLower) return '$workspace';
       if (candidateLower.startsWith(`${rootLower}/`)) {
         const rel = candidatePosix.slice(rootPosix.length + 1);
         return `$workspace/${rel}`;
@@ -109,6 +110,7 @@ export function resolveTeamBoardPaths<T>(value: T, workspaceRootPath: string): T
   const prefix = '$workspace/';
 
   const walk = (node: unknown): unknown => {
+    if (node === '$workspace' || node === '$workspace/') return rootPosix;
     if (typeof node === 'string' && node.startsWith(prefix)) {
       const rel = node.slice(prefix.length).replace(/^\/+/, '');
       if (rel.split('/').some((seg) => seg === '..')) {

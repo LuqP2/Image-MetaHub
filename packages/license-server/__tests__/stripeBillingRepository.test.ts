@@ -4,6 +4,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { LicenseService } from '../src/licenseService.js';
+import { StripeBillingService } from '../src/stripeBillingService.js';
 import { D1LicenseRepository } from '../src/d1Repository.js';
 import { D1StripeBillingRepository } from '../src/stripeBillingRepository.js';
 
@@ -182,6 +184,45 @@ describe('D1 Stripe billing reducer', () => {
       repository: new D1StripeBillingRepository(database),
     };
   }
+
+  it('persists Teams entitlements through the actual paid-invoice insert', async () => {
+    const { repository, database } = await setup();
+    const paid = paidInvoice('teams', 100, period1);
+    Object.assign(paid.candidateLicense, { tier: 'teams', orgName: 'Synthetic studio', seatLimit: 5, maxActivations: 5 });
+    await repository.applyPaidInvoice(paid);
+    await repository.applyPaidInvoice(paid); // Stripe retry remains idempotent.
+    const license = await new D1LicenseRepository(database).findLicenseById(paid.candidateLicense.id);
+    expect(license).toMatchObject({ tier: 'teams', orgName: 'Synthetic studio', seatLimit: 5, maxActivations: 5 });
+    expect(await repository.findLicenseByStripeSubscriptionId('sub_1'))
+      .toMatchObject({ id: paid.candidateLicense.id, tier: 'teams', seatLimit: 5 });
+    expect(await repository.findLicenseByStripeSubscriptionId('missing')).toBeNull();
+  });
+
+  it('applies subscription seat increases and reductions through the real repositories', async () => {
+    const { repository, database } = await setup();
+    const paid = paidInvoice('seats', 100, period1);
+    Object.assign(paid.candidateLicense, { tier: 'teams', seatLimit: 5, maxActivations: 5 });
+    await repository.applyPaidInvoice(paid);
+    const licenses = new D1LicenseRepository(database);
+    const licenseService = new LicenseService({ repository: licenses, now: () => new Date(now) });
+    const service = new StripeBillingService({
+      repository, licenseService, stripeClient: {}, config: {
+        teamMonthlyPriceId: 'price_team', teamProductId: 'prod_team',
+        monthlyHistoricalPriceIds: [], annualHistoricalPriceIds: [],
+      },
+      now: () => new Date(now),
+    });
+    for (const [index, quantity] of [8, 2].entries()) {
+      await service.handleSubscription({
+        eventId: `evt_seats_${index}`, eventType: 'customer.subscription.updated', eventCreatedAt: 500 + index,
+        objectSnapshot: { id: 'sub_1', object: 'subscription', status: 'active', items: { data: [
+          { quantity, price: { id: 'price_team', product: 'prod_team' } },
+        ] } },
+      });
+      expect(await licenses.findLicenseById(paid.candidateLicense.id))
+        .toMatchObject({ tier: 'teams', seatLimit: quantity, maxActivations: quantity });
+    }
+  });
 
   it('preserves every pre-existing administrative status while migrating 0001', async () => {
     const sqlite = new DatabaseSync(':memory:');

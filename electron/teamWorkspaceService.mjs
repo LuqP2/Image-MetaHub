@@ -262,7 +262,7 @@ export class TeamWorkspaceService {
       active = {
         manifest,
         rootPath: normalizedRoot,
-        flushing: false,
+        flushPromise: null,
         flushTimer: null,
         reconcileTimer: null,
         watcher: null,
@@ -356,21 +356,31 @@ export class TeamWorkspaceService {
   }
 
   /**
-   * Flush all durably queued pending operations for this workspace into ONE immutable write-once batch file:
+   * Drain durable pending operations into immutable batches, waiting for any active publication:
    * `.imh-team/ops/<deviceId>/<000001>-<shortHash>.json`
    */
   async flushPendingOps(workspaceId) {
     const active = this.activeWorkspaces.get(workspaceId);
-    if (!active || active.flushing) {
-      return null;
+    if (!active) return null;
+    let result = null;
+    while (true) {
+      if (active.flushPromise) {
+        await active.flushPromise;
+        continue;
+      }
+      const opsToFlush = this.repository.listPendingOps(workspaceId);
+      if (opsToFlush.length === 0) return result;
+      const publication = this.#flushPendingBatch(workspaceId, active, opsToFlush);
+      active.flushPromise = publication;
+      try {
+        result = await publication;
+      } finally {
+        active.flushPromise = null;
+      }
     }
+  }
 
-    const opsToFlush = this.repository.listPendingOps(workspaceId);
-    if (opsToFlush.length === 0) {
-      return null;
-    }
-
-    active.flushing = true;
+  async #flushPendingBatch(workspaceId, active, opsToFlush) {
     const deviceId = this.localProfile.deviceId;
     const cursor = this.repository.getCursor(workspaceId, deviceId);
     const sequence = cursor.nextSeq;
@@ -415,8 +425,6 @@ export class TeamWorkspaceService {
       active.error = error instanceof Error ? error.message : String(error);
       this.#notifyUpdated(workspaceId);
       throw error;
-    } finally {
-      active.flushing = false;
     }
   }
 

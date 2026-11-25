@@ -59,7 +59,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
   const activeBoardSession = useBoardStore((state) => (
     state.activeBoardId ? state.sessions[state.activeBoardId] ?? null : null
   ));
-  const adoptBoard = useBoardStore((state) => state.adoptBoard);
+  const importBoard = useBoardStore((state) => state.importBoard);
 
   const [tab, setTab] = useState<ResourceTab>('prompts');
   const [promptTitle, setPromptTitle] = useState('');
@@ -117,7 +117,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
     }
   };
 
-  const openEnvelopeInCanvas = (envelope: TeamBoardEnvelope) => {
+  const openEnvelopeInCanvas = async (envelope: TeamBoardEnvelope) => {
     if (!workspace) return;
     const resolvedDoc = resolveTeamBoardPaths(envelope.document, workspace.rootPath);
     const normalized = normalizeBoardDocument({
@@ -127,8 +127,8 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
         : `team-${envelope.boardId}`,
       name: envelope.name,
     });
-    adoptBoard(normalized);
-    setLinkedBoardMeta(normalized.id, {
+    const localId = await importBoard(normalized);
+    setLinkedBoardMeta(localId, {
       workspaceId,
       boardId: envelope.boardId,
       revision: envelope.revision,
@@ -149,7 +149,9 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
         setBoardNotice('Could not load shared board from disk.');
         return;
       }
-      openEnvelopeInCanvas(envelope);
+      await openEnvelopeInCanvas(envelope);
+    } catch (error) {
+      setBoardNotice(error instanceof Error ? error.message : 'Could not import the shared board.');
     } finally {
       setBusy(false);
     }
@@ -379,7 +381,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => openEnvelopeInCanvas(boardConflict.remote)}
+                  onClick={() => void handleOpenTeamBoard(boardConflict.teamBoardId)}
                   className="rounded border border-rose-400/60 bg-rose-900/70 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-rose-800"
                 >
                   Reload remote

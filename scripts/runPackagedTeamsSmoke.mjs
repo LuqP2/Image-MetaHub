@@ -78,6 +78,14 @@ function child(role) {
     await a.reconcileWorkspace(id);
     assert.equal(notifications, 1);
     assert.deepEqual(await a.listTeamPrompts(id), []);
+    const op = { type: 'set_favorite', assetKey: 'p:synthetic.png', relativePath: 'synthetic.png', contentHash: null, isFavorite: true };
+    await Promise.all([
+      a.queueOperation(id, op, { flushNow: true }),
+      a.queueOperation(id, { ...op, isFavorite: false }, { flushNow: true }),
+    ]);
+    assert.equal(a.repository.listPendingOps(id).length, 0);
+    await b.reconcileWorkspace(id);
+    assert.equal(b.listOps(id).length, 2);
     await a.saveTeamBoard(id, { boardId: 'race', name: 'Synthetic board', document: { original: true } });
     const children = Promise.all([child('writer-a'), child('writer-b')]);
     await Promise.all(['writer-a', 'writer-b'].map(role => waitFile(path.join(root, role + '.ready'))));
@@ -91,7 +99,7 @@ function child(role) {
     assert.equal(saved[0].envelope.revision, 2);
     assert.deepEqual(conflicts[0].remote, saved[0].envelope);
     assert.deepEqual(await a.loadTeamBoard(id, 'race'), saved[0].envelope);
-    console.log(JSON.stringify({ success: true, coverage: 'packaged-node-runtime', sqlite: true, resourceNotifications: true, crossProcessPublication: true }));
+    console.log(JSON.stringify({ success: true, coverage: 'packaged-node-runtime', sqlite: true, resourceNotifications: true, concurrentFlushDrain: true, crossProcessPublication: true }));
   } finally { await a.dispose(); await b.dispose(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
 `, 'utf8');
