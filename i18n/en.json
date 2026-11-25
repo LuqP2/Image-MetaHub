@@ -3638,5 +3638,9 @@
   "batchExport.folderPath": "Folder path",
   "batchExport.chooseFolder": "Select folder",
   "batchExport.replaceFile": "Replace the existing file at {path}?",
-  "batchExport.replace": "Replace"
+  "batchExport.replace": "Replace",
+  "batchExport.clientDeliveryPack": "Client Delivery Pack — Approved only ({count})",
+  "batchExport.metadataStripped": "Metadata stripped",
+  "batchExport.includeAuditReport": "Include Provenance & Approval Audit Report (CSV + JSON + HTML)",
+  "libraryFolders.teamWorkspace": "Team Workspace"
 }

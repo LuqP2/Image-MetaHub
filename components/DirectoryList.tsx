@@ -1151,8 +1151,8 @@ export default function DirectoryList({
                               ? 'text-blue-400 hover:text-blue-300'
                               : 'text-gray-500 hover:text-gray-200'
                           }`}
-                          title="Team Workspace"
-                          aria-label="Team Workspace"
+                          title={t('libraryFolders.teamWorkspace')}
+                          aria-label={t('libraryFolders.teamWorkspace')}
                         >
                           <Users className="w-4 h-4" />
                         </button>

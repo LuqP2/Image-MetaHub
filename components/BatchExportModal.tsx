@@ -527,10 +527,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
                       }}
                       className="rounded border-emerald-600 bg-gray-900 text-emerald-500 focus:ring-emerald-500"
                     />
-                    <span>Client Delivery Pack — Approved only ({approvedImagesInSource.length})</span>
+                    <span>{t('batchExport.clientDeliveryPack', { count: approvedImagesInSource.length })}</span>
                   </label>
                   {approvedOnly && (
-                    <span className="text-[11px] text-emerald-300">Metadata stripped</span>
+                    <span className="text-[11px] text-emerald-300">{t('batchExport.metadataStripped')}</span>
                   )}
                 </div>
                 {approvedOnly && output === 'folder' && (
@@ -541,7 +541,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
                       onChange={(e) => setIncludeAuditReport(e.target.checked)}
                       className="rounded border-emerald-600 bg-gray-900 text-emerald-500 focus:ring-emerald-500"
                     />
-                    <span>Include Provenance &amp; Approval Audit Report (CSV + JSON + HTML)</span>
+                    <span>{t('batchExport.includeAuditReport')}</span>
                   </label>
                 )}
               </div>
