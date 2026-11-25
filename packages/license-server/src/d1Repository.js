@@ -8,6 +8,9 @@ const mapLicense = (row) => row && ({
   keyHash: row.key_hash,
   emailLookup: row.email_lookup,
   plan: row.plan,
+  tier: row.tier ?? 'pro',
+  orgName: row.org_name ?? null,
+  seatLimit: row.seat_limit ?? null,
   status: effectiveLicenseStatus(row),
   adminStatus: row.admin_status,
   billingState: row.billing_state ?? null,
@@ -38,6 +41,7 @@ const mapActivation = (row) => row && ({
   deactivatedAt: row.deactivated_at,
   appVersion: row.app_version,
   platform: row.platform,
+  deviceLabel: row.device_label ?? null,
 });
 
 export class D1LicenseRepository {
@@ -48,15 +52,18 @@ export class D1LicenseRepository {
   async createLicense(record) {
     await this.database.prepare(`
       INSERT INTO licenses (
-        id, key_hash, email_lookup, plan, status, admin_status, source, created_at, updated_at,
+        id, key_hash, email_lookup, plan, tier, org_name, seat_limit, status, admin_status, source, created_at, updated_at,
         expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
         stripe_price_id, stripe_checkout_session_id, external_reference
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       record.id,
       record.keyHash,
       record.emailLookup,
       record.plan,
+      record.tier ?? 'pro',
+      record.orgName ?? null,
+      record.seatLimit ?? null,
       record.status,
       record.status,
       record.source,
@@ -96,6 +103,9 @@ export class D1LicenseRepository {
   async updateLicense(id, patch) {
     const columns = {
       plan: 'plan',
+      tier: 'tier',
+      orgName: 'org_name',
+      seatLimit: 'seat_limit',
       status: 'admin_status',
       expiresAt: 'expires_at',
       maxActivations: 'max_activations',
@@ -145,9 +155,9 @@ export class D1LicenseRepository {
     const result = await this.database.prepare(`
       INSERT INTO activations (
         id, license_id, installation_hash, created_at, last_seen_at,
-        deactivated_at, app_version, platform
+        deactivated_at, app_version, platform, device_label
       )
-      SELECT ?, ?, ?, ?, ?, NULL, ?, ?
+      SELECT ?, ?, ?, ?, ?, NULL, ?, ?, ?
       FROM licenses current_license
       LEFT JOIN stripe_entitlements current_entitlement
         ON current_entitlement.license_id = current_license.id
@@ -173,7 +183,8 @@ export class D1LicenseRepository {
         last_seen_at = excluded.last_seen_at,
         deactivated_at = NULL,
         app_version = excluded.app_version,
-        platform = excluded.platform
+        platform = excluded.platform,
+        device_label = COALESCE(excluded.device_label, activations.device_label)
     `).bind(
       record.id,
       record.licenseId,
@@ -182,6 +193,7 @@ export class D1LicenseRepository {
       record.lastSeenAt,
       record.appVersion,
       record.platform,
+      record.deviceLabel ?? null,
       record.licenseId,
       authorizedAt,
       maxActivations,
@@ -228,5 +240,23 @@ export class D1LicenseRepository {
       WHERE license_id = ? AND installation_hash = ?
     `).bind(deactivatedAt, deactivatedAt, licenseId, installationHash).run();
     return true;
+  }
+
+  async listActivationsForLicense(licenseId) {
+    const result = await this.database.prepare(`
+      SELECT * FROM activations
+      WHERE license_id = ?
+      ORDER BY deactivated_at IS NOT NULL ASC, last_seen_at DESC
+    `).bind(licenseId).all();
+    return (result?.results || []).map(mapActivation);
+  }
+
+  async revokeActivationById(licenseId, activationId, deactivatedAt) {
+    const result = await this.database.prepare(`
+      UPDATE activations
+      SET deactivated_at = COALESCE(deactivated_at, ?), last_seen_at = ?
+      WHERE license_id = ? AND id = ? AND deactivated_at IS NULL
+    `).bind(deactivatedAt, deactivatedAt, licenseId, activationId).run();
+    return Boolean(result.meta?.changes);
   }
 }

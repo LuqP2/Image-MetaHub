@@ -5,6 +5,12 @@ import { compileWorkerPredicate } from '../services/libraryQuery/predicates';
 import type { LibraryQueryImage as SearchWorkerImage, LibraryWorkerCriteria } from '../services/libraryQuery/types';
 import { toLibraryQueryImage as toSearchWorkerImage } from '../services/libraryQuery/dataset';
 import { create } from 'zustand';
+import {
+  emitTeamFavoriteOp,
+  emitTeamRatingOp,
+  emitTeamTagsAddOp,
+  emitTeamTagsRemoveOp,
+} from '../services/team/teamAnnotationSync';
 import { getHiddenSensitiveTagSet as getHiddenSensitiveTags, isVisibleWithSafeMode } from '../utils/safeModeVisibility';
 import { createBoardReferenceRemap } from '../services/boards/assetResolver';
 import { queueBoardReferenceRemaps } from '../services/boards/referenceSync';
@@ -858,6 +864,7 @@ interface ImageState {
   bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
   addTagToImage: (imageId: string, tag: string) => Promise<void>;
   removeTagFromImage: (imageId: string, tag: string) => Promise<void>;
+  applySyncedTeamAnnotations: (patches: Array<{ imageId: string; isFavorite?: boolean; rating?: ImageRating | null; tags?: string[] }>) => Promise<void>;
   removeAutoTagFromImage: (imageId: string, tag?: string) => void;
   removeAutoTags: (tag?: string) => void;
   renameAutoTag: (source: string, target: string) => void;
@@ -4215,6 +4222,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             try {
                 const updatedAnnotation = await patchAnnotation(imageId, { set: { isFavorite: newIsFavorite } });
                 if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+                const stateAfter = get();
+                void emitTeamFavoriteOp(getImageById(stateAfter, imageId), stateAfter.directories, newIsFavorite);
             } catch (error) {
                 console.error('Failed to save annotation:', error);
                 set({ error: error instanceof Error ? error.message : String(error) });
@@ -4228,6 +4237,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                     imageId,
                     patch: { set: { isFavorite } },
                 })));
+                const stateAfter = get();
+                for (const imageId of imageIds) {
+                    void emitTeamFavoriteOp(getImageById(stateAfter, imageId), stateAfter.directories, isFavorite);
+                }
             } catch (error) {
                 console.error('Failed to bulk save annotations:', error);
                 set({ error: error instanceof Error ? error.message : String(error) });
@@ -4248,6 +4261,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                     ? { set: initialSet, remove: ['rating'] }
                     : { set: { ...initialSet, rating } });
                 if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+                const stateAfter = get();
+                void emitTeamRatingOp(getImageById(stateAfter, imageId), stateAfter.directories, rating);
             } catch (error) {
                 console.error('Failed to save image rating:', error);
                 set({ error: error instanceof Error ? error.message : String(error) });
@@ -4277,6 +4292,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                             : { set: { ...initialSet, rating } };
                     })(),
                 })));
+                const stateAfter = get();
+                for (const imageId of imageIds) {
+                    void emitTeamRatingOp(getImageById(stateAfter, imageId), stateAfter.directories, rating);
+                }
             } catch (error) {
                 console.error('Failed to bulk save image ratings:', error);
                 set({ error: error instanceof Error ? error.message : String(error) });
@@ -4301,6 +4320,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                     unsuppressTags: [normalizedTag],
                 });
                 if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+                const stateAfter = get();
+                void emitTeamTagsAddOp(getImageById(stateAfter, imageId), stateAfter.directories, [normalizedTag]);
                 const nextRecentTags = updateRecentTags(get().recentTags, normalizedTag);
                 set({ recentTags: nextRecentTags });
                 persistRecentTags(nextRecentTags);
@@ -4327,12 +4348,34 @@ export const useImageStore = create<ImageState>((set, get) => {
                     suppressTags: [tag],
                 });
                 if (updatedAnnotation) applyConfirmedAnnotations([updatedAnnotation]);
+                const stateAfter = get();
+                void emitTeamTagsRemoveOp(getImageById(stateAfter, imageId), stateAfter.directories, [tag]);
             } catch (error) {
                 console.error('Failed to save annotation:', error);
                 set({ error: error instanceof Error ? error.message : String(error) });
                 throw error;
             }
             await get().refreshAvailableTags();
+        },
+
+        applySyncedTeamAnnotations: async (patches) => {
+            if (!Array.isArray(patches) || patches.length === 0) return;
+            try {
+                await persistAnnotationPatchBatch(patches.map((entry) => ({
+                    imageId: entry.imageId,
+                    patch: {
+                        set: {
+                            ...(entry.isFavorite !== undefined ? { isFavorite: entry.isFavorite } : {}),
+                            ...(entry.tags !== undefined ? { tags: entry.tags } : {}),
+                            ...(entry.rating != null ? { rating: entry.rating } : {}),
+                        },
+                        ...(entry.rating === null ? { remove: ['rating'] } : {}),
+                    },
+                })));
+                await get().refreshAvailableTags();
+            } catch (error) {
+                console.warn('[IMH Team] Failed to apply synced team annotations:', error);
+            }
         },
 
         removeAutoTagFromImage: (imageId, tag) => {

@@ -157,6 +157,12 @@ export async function handleRequest(request, env, context) {
   if (request.method === 'POST' && url.pathname === '/v1/deactivate') {
     return json(await service.deactivate(body));
   }
+  if (request.method === 'POST' && url.pathname === '/v1/team/seats') {
+    return json({ seats: await service.listTeamSeats(body) });
+  }
+  if (request.method === 'POST' && url.pathname === '/v1/team/seats/revoke') {
+    return json(await service.revokeTeamSeat(body));
+  }
 
   if (url.pathname.startsWith('/v1/admin/')) {
     const deliveryResolution = url.pathname.match(
@@ -186,6 +192,9 @@ export async function handleRequest(request, env, context) {
         license: {
           id: result.license.id,
           plan: result.license.plan,
+          tier: result.license.tier ?? 'pro',
+          orgName: result.license.orgName ?? null,
+          seatLimit: result.license.seatLimit ?? null,
           status: result.license.status,
           source: result.license.source,
           expiresAt: result.license.expiresAt,

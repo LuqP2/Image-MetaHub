@@ -73,6 +73,21 @@ describe('useImageStore manual tag catalog actions', () => {
     await seedStore([]);
   });
 
+  it('persists partial team patches without clearing unrelated local annotations', async () => {
+    await seedStore([
+      { imageId: 'img-1', isFavorite: true, rating: 4, tags: ['local'], addedAt: 1, updatedAt: 1 },
+    ]);
+    await useImageStore.getState().applySyncedTeamAnnotations([{ imageId: 'img-1', rating: null }]);
+    expect(useImageStore.getState().annotations.get('img-1')).toMatchObject({
+      isFavorite: true, tags: ['local'],
+    });
+    expect(useImageStore.getState().annotations.get('img-1')?.rating).toBeUndefined();
+    await useImageStore.getState().applySyncedTeamAnnotations([{ imageId: 'img-1', isFavorite: false }]);
+    expect(useImageStore.getState().annotations.get('img-1')).toMatchObject({ isFavorite: false, tags: ['local'] });
+    await useImageStore.getState().applySyncedTeamAnnotations([{ imageId: 'img-1', tags: [] }]);
+    expect(useImageStore.getState().annotations.get('img-1')).toMatchObject({ isFavorite: false, tags: [] });
+  });
+
   it('includes zero-use persisted tags in availableTags', async () => {
     await ensureManualTagExists('ghost-tag');
     await useImageStore.getState().refreshAvailableTags();

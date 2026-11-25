@@ -331,9 +331,9 @@ const licenseInsert = (database, record, eligibilitySql, eligibilityBindings) =>
   INSERT INTO licenses (
     id, key_hash, email_lookup, plan, status, admin_status, source, created_at, updated_at,
     expires_at, max_activations, stripe_customer_id, stripe_subscription_id,
-    stripe_price_id, stripe_checkout_session_id, external_reference
+    stripe_price_id, stripe_checkout_session_id, external_reference, tier, org_name, seat_limit
   )
-  SELECT ?, ?, ?, ?, 'active', 'active', 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, ?
+  SELECT ?, ?, ?, ?, 'active', 'active', 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
   WHERE NOT EXISTS (
     SELECT 1 FROM licenses
     WHERE (? IS NOT NULL AND stripe_subscription_id = ?)
@@ -354,6 +354,9 @@ const licenseInsert = (database, record, eligibilitySql, eligibilityBindings) =>
   record.stripePriceId,
   record.stripeCheckoutSessionId,
   record.externalReference,
+  record.tier ?? 'pro',
+  record.orgName ?? null,
+  record.seatLimit ?? null,
   record.stripeSubscriptionId,
   record.stripeSubscriptionId,
   record.stripeCheckoutSessionId,
@@ -663,6 +666,13 @@ const recoverUndeliveredDelivery = (
 export class D1StripeBillingRepository {
   constructor(database) {
     this.database = database;
+  }
+
+  async findLicenseByStripeSubscriptionId(subscriptionId) {
+    const row = await this.database.prepare(`
+      SELECT id, tier, seat_limit FROM licenses WHERE stripe_subscription_id = ?
+    `).bind(subscriptionId).first();
+    return row ? { id: row.id, tier: row.tier, seatLimit: row.seat_limit } : null;
   }
 
   async enqueueEvent(record) {

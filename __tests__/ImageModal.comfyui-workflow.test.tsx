@@ -213,13 +213,24 @@ describe('ImageModal ComfyUI workflow action', () => {
     const image = createImage();
     image.metadata.normalizedMetadata!.negativePrompt = 'negative {fixture} 海';
     const clipboard = vi.spyOn(imageUtils, 'copyTextToClipboard').mockResolvedValue({ success: true });
-    render(<ImageModal image={image} onClose={vi.fn()} directoryPath="C:/synthetic" isActive />);
+    const view = render(<ImageModal image={image} onClose={vi.fn()} directoryPath="C:/synthetic" isActive />);
     const viewport = await screen.findByRole('dialog', { name: `Image viewer: ${image.name}` });
+    const schedule = vi.spyOn(globalThis, 'setTimeout');
     fireEvent.contextMenu(viewport.querySelector('img')!);
     act(() => useSettingsStore.setState({ language: 'pt-BR' }));
     fireEvent.click(screen.getByRole('button', { name: 'Copiar prompt negativo' }));
     await waitFor(() => expect(clipboard).toHaveBeenCalledWith('negative {fixture} 海'));
     expect(screen.queryByRole('button', { name: 'Copiar prompt negativo' })).toBeNull();
+    const dismiss = schedule.mock.calls.find(([, delay]) => delay === 2000)?.[0];
+    expect(typeof dismiss).toBe('function');
+    view.unmount();
+    // Reproduce a delayed notification firing after jsdom has torn down globals.
+    vi.stubGlobal('document', undefined);
+    try {
+      expect(() => (dismiss as () => void)()).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it.each(['modal', 'sidebar'] as const)('copies the embedded UI workflow from the %s', async (surface) => {

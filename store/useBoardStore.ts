@@ -37,6 +37,7 @@ interface BoardStore {
   showBoardList(): void;
   loadBoardList(): Promise<void>;
   createBoard(name?: string): Promise<string>;
+  importBoard(document: BoardDocument): Promise<string>;
   openBoard(id: string): Promise<void>;
   renameBoard(id: string, name: string): void;
   duplicateBoard(id: string): Promise<string>;
@@ -223,6 +224,13 @@ export function createBoardStore(repository: BoardRepository = boardService, del
           const sessions = { ...state.sessions }; delete sessions[id];
           return { sessions, openBoardIds: state.openBoardIds.filter(item => item !== id), activeBoardId: state.activeBoardId === id ? state.openBoardIds[index + 1] ?? state.openBoardIds[index - 1] ?? null : state.activeBoardId };
         });
+      },
+      async importBoard(document) {
+        if (!get().tabsRestored) await get().restoreTabs();
+        if (get().closing) throw new Error('The application is closing.');
+        const saved = await repository.save(duplicateBoardDocument(document, document.name), 0);
+        setDocument(saved.id, saved);
+        return saved.id;
       },
       adoptBoard(document) { setDocument(document.id, document); },
       executeOperation(id, operation) {

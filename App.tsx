@@ -5,6 +5,8 @@ import { useLibraryCanvas } from './hooks/useLibraryCanvas';
 import React, { startTransition, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { flushSync } from 'react-dom';
 import { useImageStore } from './store/useImageStore';
+import { useTeamWorkspaceStore } from './store/useTeamWorkspaceStore';
+import { filterImagesByTeamReview } from './services/team/reviewService';
 import { useSettingsStore } from './store/useSettingsStore';
 import { resolveTheme } from './src/theme/themeRegistry';
 import { useSemanticStore } from './store/useSemanticStore';
@@ -816,6 +818,11 @@ export default function App() {
 
   const [comfyUIWorkspaceToolbarHost, setComfyUIWorkspaceToolbarHost] = useState<HTMLDivElement | null>(null);
   const canvasUIHidden = useBoardUIStore(state => state.uiHidden) && libraryView === 'canvas';
+  useEffect(() => {
+    const handleOpenCanvas = () => setLibraryView('canvas');
+    window.addEventListener('imh:open-canvas', handleOpenCanvas);
+    return () => window.removeEventListener('imh:open-canvas', handleOpenCanvas);
+  }, []);
   const globalHeaderRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const header = globalHeaderRef.current;
@@ -2889,11 +2896,32 @@ export default function App() {
     [findSimilarGridFilter],
   );
 
-  // ComfyUI workflow-node filter (OR), applied as a post-filter on the filtered library.
-  const nodeFilteredImages = useMemo(
-    () => (selectedNodes.length > 0 ? filterImagesByWorkflowNodes(safeFilteredImages, selectedNodes) : safeFilteredImages),
-    [safeFilteredImages, selectedNodes],
-  );
+  const teamWorkspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
+  const teamAssetStatesByWorkspace = useTeamWorkspaceStore((state) => state.assetStatesByWorkspace);
+  const teamReviewStatusFilter = useTeamWorkspaceStore((state) => state.reviewStatusFilter);
+
+  // ComfyUI workflow-node filter (OR) + Team Review status filter, applied as post-filters on the filtered library.
+  const nodeFilteredImages = useMemo(() => {
+    const afterNodes = selectedNodes.length > 0
+      ? filterImagesByWorkflowNodes(safeFilteredImages, selectedNodes)
+      : safeFilteredImages;
+    return teamReviewStatusFilter !== 'all'
+      ? filterImagesByTeamReview(
+          afterNodes,
+          teamReviewStatusFilter,
+          directories,
+          teamWorkspacesById,
+          teamAssetStatesByWorkspace,
+        )
+      : afterNodes;
+  }, [
+    safeFilteredImages,
+    selectedNodes,
+    teamReviewStatusFilter,
+    directories,
+    teamWorkspacesById,
+    teamAssetStatesByWorkspace,
+  ]);
 
   // Deferred: buildWorkflowNodeCatalog scans every image's workflowNodes and is
   // only used to populate the node-filter dropdown, not the displayed grid, so

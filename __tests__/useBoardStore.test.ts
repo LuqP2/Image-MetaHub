@@ -21,6 +21,30 @@ function fixture() {
 }
 
 describe('board sessions and history', () => {
+  it('persists an imported shared revision under a fresh local identity before opening it', async () => {
+    const { store, repository, documents } = fixture();
+    const original = normalizeBoardDocument({ ...boardWithAsset(), revision: 17 });
+    const id = await store.getState().importBoard(original);
+    expect(id).not.toBe(original.id);
+    expect(documents.get(id)?.revision).toBe(1);
+    expect(store.getState().sessions[id].savedRevision).toBe(1);
+    const restored = createBoardStore(repository, 60000);
+    await restored.getState().openBoard(id);
+    expect(restored.getState().sessions[id].document.objects).toEqual(original.objects);
+    store.getState().executeOperation(id, document => addText(document, { x: 20, y: 30 }));
+    await store.getState().flushBoard(id);
+    expect(documents.get(id)?.revision).toBe(2);
+    expect(documents.get(id)?.objects).toHaveLength(original.objects.length + 1);
+    expect(documents.has(original.id)).toBe(false);
+  });
+
+  it('keeps failed imports out of saved in-memory sessions', async () => {
+    const { store, repository } = fixture();
+    vi.mocked(repository.save).mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(store.getState().importBoard(boardWithAsset())).rejects.toThrow('storage unavailable');
+    expect(Object.keys(store.getState().sessions)).toHaveLength(0);
+  });
+
   it('saves each board background independently and includes color changes in undo/redo', async () => {
     const { store, documents } = fixture();
     const a = await store.getState().createBoard('White board');

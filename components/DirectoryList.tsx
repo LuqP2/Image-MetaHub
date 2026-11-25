@@ -1,8 +1,10 @@
 import { useTranslation, type Translate } from '../i18n/useTranslation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Directory, IndexedImage } from '../types';
-import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff, Eye, FolderPlus, Edit2, Clipboard } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff, Eye, FolderPlus, Edit2, Clipboard, Users } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
+import { useTeamWorkspaceStore } from '../store/useTeamWorkspaceStore';
+import { TeamWorkspaceModal } from './team/TeamWorkspaceModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { getActiveDragImageIds, clearActiveDragImageIds } from './ImageGrid';
@@ -348,6 +350,34 @@ export default function DirectoryList({
   } | null>(null);
   const [folderPromptValue, setFolderPromptValue] = useState('');
   const folderPromptInputRef = useRef<HTMLInputElement>(null);
+  const [teamModalDir, setTeamModalDir] = useState<{ path: string; name: string } | null>(null);
+  const teamInitialized = useTeamWorkspaceStore((state) => state.initialized);
+  const teamWorkspacesById = useTeamWorkspaceStore((state) => state.workspacesById);
+  const initializeTeamStore = useTeamWorkspaceStore((state) => state.initialize);
+  const detectTeamWorkspace = useTeamWorkspaceStore((state) => state.detectWorkspace);
+  const openTeamWorkspace = useTeamWorkspaceStore((state) => state.openWorkspace);
+  const getTeamWorkspaceForRootPath = useTeamWorkspaceStore((state) => state.getWorkspaceForRootPath);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.team) return;
+    let cancelled = false;
+    void (async () => {
+      if (!teamInitialized) {
+        await initializeTeamStore();
+      }
+      if (cancelled) return;
+      for (const dir of directories) {
+        if (!dir.path || getTeamWorkspaceForRootPath(dir.path)) continue;
+        const detected = await detectTeamWorkspace(dir.path);
+        if (detected && !cancelled) {
+          await openTeamWorkspace(dir.path);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [directories, teamInitialized, initializeTeamStore, detectTeamWorkspace, openTeamWorkspace, getTeamWorkspaceForRootPath]);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -1107,6 +1137,26 @@ export default function DirectoryList({
                           {isScanning ? t('libraryFolders.scanning') : `${Math.round(progressPercent)}%`}
                         </span>
                       )}
+                      {typeof window !== 'undefined' && window.electronAPI?.team && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTeamModalDir({ path: dir.path, name: dir.name });
+                          }}
+                          className={`transition-colors ${
+                            Object.values(teamWorkspacesById).some(
+                              (ws) => normalizePath(ws.rootPath).toLowerCase() === normalizePath(dir.path).toLowerCase(),
+                            )
+                              ? 'text-blue-400 hover:text-blue-300'
+                              : 'text-gray-500 hover:text-gray-200'
+                          }`}
+                          title={t('libraryFolders.teamWorkspace')}
+                          aria-label={t('libraryFolders.teamWorkspace')}
+                        >
+                          <Users className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                             onUpdateDirectory(dir.id);
@@ -1481,6 +1531,14 @@ export default function DirectoryList({
             </div>
           </div>
         </div>
+      )}
+      {teamModalDir && (
+        <TeamWorkspaceModal
+          isOpen={true}
+          onClose={() => setTeamModalDir(null)}
+          directoryPath={teamModalDir.path}
+          directoryName={teamModalDir.name}
+        />
       )}
     </div>
   );

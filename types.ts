@@ -462,10 +462,15 @@ export interface DesktopRuntimeInfo {
 
 export type LicensePlan = 'lifetime' | 'monthly' | 'annual';
 
+export type LicenseTier = 'pro' | 'teams';
+
 export interface LicenseClientStatus {
   authorized: boolean;
   licenseStatus: 'free' | 'pro' | 'lifetime';
   plan: LicensePlan | null;
+  tier?: LicenseTier | null;
+  orgName?: string | null;
+  seatLimit?: number | null;
   licenseEmail: string | null;
   expiresAt: string | null;
   refreshAfter: string | null;
@@ -495,6 +500,35 @@ export type LibraryView = 'library' | 'prompts' | 'explore' | 'models' | 'collec
 
 export interface ElectronAPI {
   comparison?: import('./services/comparisonContracts').ComparisonBridge;
+  team?: {
+    detectWorkspace: (rootPath: string) => Promise<{ success: boolean; data?: { manifest: import('./services/team/teamWorkspaceTypes').TeamWorkspaceManifest; rootPath: string } | null; code?: string; error?: string }>;
+    initWorkspace: (args: { rootPath: string; name?: string; profile?: Partial<import('./services/team/teamWorkspaceTypes').TeamMemberProfile> }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary; code?: string; error?: string }>;
+    openWorkspace: (args: { rootPath: string; profile?: Partial<import('./services/team/teamWorkspaceTypes').TeamMemberProfile> }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary; code?: string; error?: string }>;
+    closeWorkspace: (workspaceId: string) => Promise<{ success: boolean; data?: null; code?: string; error?: string }>;
+    listWorkspaces: () => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary[]; code?: string; error?: string }>;
+    getProfile: () => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamMemberProfile; code?: string; error?: string }>;
+    updateProfile: (profile: Partial<Pick<import('./services/team/teamWorkspaceTypes').TeamMemberProfile, 'displayName' | 'initials' | 'color'>>) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamMemberProfile; code?: string; error?: string }>;
+    queueOp: (args: { workspaceId: string; op: import('./services/team/teamWorkspaceTypes').TeamOpInput; flushNow?: boolean }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamOpEvent; code?: string; error?: string }>;
+    flushOps: (workspaceId: string) => Promise<{ success: boolean; data?: { filename: string; batchId: string; opCount: number } | null; code?: string; error?: string }>;
+    syncNow: (workspaceId?: string) => Promise<{ success: boolean; data?: unknown; code?: string; error?: string }>;
+    listOps: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamOpEvent[]; code?: string; error?: string }>;
+    listAssetIdentities: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').WorkspaceAssetIdentity[]; code?: string; error?: string }>;
+    upsertAssetIdentities: (args: { workspaceId: string; identities: import('./services/team/teamWorkspaceTypes').WorkspaceAssetIdentity[] }) => Promise<{ success: boolean; data?: null; code?: string; error?: string }>;
+    listPrompts: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamSharedPrompt[]; code?: string; error?: string }>;
+    savePrompt: (args: { workspaceId: string; prompt: import('./services/team/teamWorkspaceTypes').TeamSharedPromptInput }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamSharedPrompt; code?: string; error?: string }>;
+    deletePrompt: (args: { workspaceId: string; promptId: string }) => Promise<{ success: boolean; data?: { id: string; deleted: boolean }; code?: string; error?: string }>;
+    listBoards: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamBoardSummary[]; code?: string; error?: string }>;
+    loadBoard: (args: { workspaceId: string; boardId: string }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamBoardEnvelope | null; code?: string; error?: string }>;
+    saveBoard: (args: { workspaceId: string; boardId?: string; name: string; document: Record<string, unknown>; expectedRevision?: number; expectedHash?: string | null; forceOverwrite?: boolean }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamBoardSaveResult; code?: string; error?: string }>;
+    deleteBoard: (args: { workspaceId: string; boardId: string }) => Promise<{ success: boolean; data?: { boardId: string; deleted: boolean }; code?: string; error?: string }>;
+    readModelsManifest: (workspaceId: string) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamModelsManifest | null; code?: string; error?: string }>;
+    writeModelsManifest: (args: { workspaceId: string; models: import('./services/team/teamWorkspaceTypes').TeamExpectedModelEntry[] }) => Promise<{ success: boolean; data?: import('./services/team/teamWorkspaceTypes').TeamModelsManifest; code?: string; error?: string }>;
+    writeAuditReports: (args: { destDir: string; csvContent?: string; jsonContent?: string; htmlContent?: string }) => Promise<{ success: boolean; data?: { written: string[] }; code?: string; error?: string }>;
+    saveTextFile: (args: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }>; content: string }) => Promise<{ success: boolean; data?: { saved: boolean; filePath: string | null }; code?: string; error?: string }>;
+    pickAndReadFeedback: () => Promise<{ success: boolean; data?: { filePath: string; content: string } | null; code?: string; error?: string }>;
+    buildThumbnailDataUrl: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: string; code?: string; error?: string }>;
+    onWorkspaceUpdated: (callback: (summary: import('./services/team/teamWorkspaceTypes').TeamWorkspaceSummary) => void) => () => void;
+  };
   boardsPickExternalFile?: (input: string | { boardId: string; defaultPath?: string }) => Promise<import('./services/boards/types').BoardApiResult<string | null>>;
   boardsAuthorizeDroppedFile?: (boardId: string, file: File) => Promise<import('./services/boards/types').BoardApiResult<string>>;
   boardsRevokeExternalAccess?: (input: string | { boardId: string; filePath?: string }) => Promise<import('./services/boards/types').BoardApiResult<null>>;

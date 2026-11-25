@@ -36,6 +36,7 @@ import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import { RATING_VALUES, RatingValueIcons, getRatingChipClasses } from './RatingStars';
+import { ImageCardTeamReviewBadge } from './team/TeamReviewBadge';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import ProBadge from './ProBadge';
@@ -570,6 +571,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         >
           {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </motion.button>
+
+        <ImageCardTeamReviewBadge image={image} />
 
         {thumbnailsDisabled ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-900 text-gray-500">

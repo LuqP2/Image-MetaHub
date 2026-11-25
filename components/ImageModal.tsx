@@ -71,6 +71,8 @@ import ImageLineageSection from './ImageLineageSection';
 import ProvenanceSection from './ProvenanceSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
+import { TeamReviewPanel } from './team/TeamReviewPanel';
+import { TeamPinOverlay } from './team/TeamPinOverlay';
 import TagInputCombobox from './TagInputCombobox';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
@@ -2028,11 +2030,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       notification.textContent = t('comparison.copiedField', { label: type });
       document.body.appendChild(notification);
-      setTimeout(() => {
-        if (document.body.contains(notification)) {
-          document.body.removeChild(notification);
-        }
-      }, 2000);
+      setTimeout(() => notification.remove(), 2000);
     }
     return true;
   };
@@ -2131,7 +2129,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
       notification.textContent = t('libraryGallery.imageCopiedToClipboard');
       document.body.appendChild(notification);
-      setTimeout(() => document.body.removeChild(notification), 2000);
+      setTimeout(() => notification.remove(), 2000);
     } else {
       alert(t('imageViewer.actions.copyImageFailed', { error: result.error || '' }));
     }
@@ -3940,6 +3938,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   title={hasImageEditChanges && editedPreviewUrl ? t('imageViewer.navigation.holdCompare') : undefined}
                   draggable={canDragExternally && zoom === 1}
                 />
+                <TeamPinOverlay
+                  image={image}
+                  directories={directories}
+                  imageRef={fullImageElementRef}
+                  zoom={zoom}
+                  pan={pan}
+                />
                 {showCropOverlay && cropOverlayStyle && (
                   <div
                     data-no-window-drag="true"
@@ -4315,6 +4320,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <Ban className="h-4 w-4" />
                 </button>
               </div>
+
+              <TeamReviewPanel image={image} directories={directories} />
 
               {/* Tags Pills */}
               <div className="space-y-2">
