@@ -122,6 +122,36 @@ describe('Team Boards optimistic revision concurrency', () => {
     }
   });
 
+  it('allows only one concurrent publication from the same revision, including creation', async () => {
+    const shared = makeTempDir('imh-board-race-');
+    const services = ['A', 'B'].map((device) => new TeamWorkspaceService({
+      userDataPath: makeTempDir(`imh-board-race-${device}-`), enableWatcher: false,
+      reconcileIntervalMs: 0, flushDebounceMs: 0,
+    }));
+    const [a, b] = services;
+    try {
+      const { manifest } = await a.initWorkspace(shared);
+      const wsId = manifest.workspaceId;
+      await b.openWorkspace(shared);
+      for (const expectedRevision of [0, 1, 2]) {
+        const results = await Promise.all(services.map((service, index) => service.saveTeamBoard(wsId, {
+          boardId: 'contested', name: 'Concurrent Board', expectedRevision,
+          document: { editor: index, round: expectedRevision },
+        })));
+        const winners = results.filter((result) => result.saved);
+        const losers = results.filter((result) => !result.saved);
+        expect(winners).toHaveLength(1);
+        expect(losers).toHaveLength(1);
+        expect(winners[0].envelope.revision).toBe(expectedRevision + 1);
+        expect(losers[0].remote).toEqual(winners[0].envelope);
+        expect(await a.loadTeamBoard(wsId, 'contested')).toEqual(winners[0].envelope);
+      }
+      expect(fs.existsSync(path.join(shared, '.imh-team/boards/contested.imhboard.json.publish-lock'))).toBe(false);
+    } finally {
+      for (const service of services) await service.dispose();
+    }
+  });
+
   it('normalizes and resolves board asset paths across Windows and macOS mounts', () => {
     const winDoc = {
       items: [

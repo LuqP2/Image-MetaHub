@@ -171,6 +171,7 @@ interface InternalAssetReducerState {
   relativePath: string;
   contentHash: string | null;
   tags: Map<string, InternalTagEntry>;
+  tagsInitialized: boolean;
   rating: { value: number | null; clock: number; opId: string } | null;
   favorite: { value: boolean; clock: number; opId: string } | null;
   shadow: { fields: Record<string, { value: unknown; clock: number; opId: string }> };
@@ -205,6 +206,7 @@ function createInternalState(op: TeamOpEvent): InternalAssetReducerState {
     relativePath: op.relativePath,
     contentHash: op.contentHash,
     tags: new Map(),
+    tagsInitialized: false,
     rating: null,
     favorite: null,
     shadow: { fields: {} },
@@ -220,6 +222,7 @@ function mergeInternalStates(
   target: InternalAssetReducerState,
   source: InternalAssetReducerState,
 ): void {
+  target.tagsInitialized ||= source.tagsInitialized;
   for (const [tag, entry] of source.tags.entries()) {
     const existing = target.tags.get(tag);
     if (!existing) {
@@ -338,6 +341,7 @@ export function reduceTeamOps(ops: TeamOpEvent[]): Map<string, TeamAssetState> {
 
     switch (op.type) {
       case 'tags_add': {
+        state.tagsInitialized = true;
         for (const rawTag of op.tags) {
           const tag = rawTag.trim().toLowerCase();
           if (!tag) continue;
@@ -353,6 +357,7 @@ export function reduceTeamOps(ops: TeamOpEvent[]): Map<string, TeamAssetState> {
       }
 
       case 'tags_remove': {
+        state.tagsInitialized = true;
         for (const rawTag of op.tags) {
           const tag = rawTag.trim().toLowerCase();
           if (!tag) continue;
@@ -544,6 +549,11 @@ export function reduceTeamOps(ops: TeamOpEvent[]): Map<string, TeamAssetState> {
       tags: activeTags,
       rating: state.rating ? state.rating.value : null,
       isFavorite: state.favorite ? state.favorite.value : false,
+      annotationFields: {
+        tags: state.tagsInitialized,
+        rating: state.rating !== null,
+        isFavorite: state.favorite !== null,
+      },
       reviewStatus,
       reviewDecision,
       reviewConflict,

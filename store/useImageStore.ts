@@ -864,7 +864,7 @@ interface ImageState {
   bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
   addTagToImage: (imageId: string, tag: string) => Promise<void>;
   removeTagFromImage: (imageId: string, tag: string) => Promise<void>;
-  applySyncedTeamAnnotations: (patches: Array<{ imageId: string; isFavorite: boolean; rating: ImageRating | null; tags: string[] }>) => Promise<void>;
+  applySyncedTeamAnnotations: (patches: Array<{ imageId: string; isFavorite?: boolean; rating?: ImageRating | null; tags?: string[] }>) => Promise<void>;
   removeAutoTagFromImage: (imageId: string, tag?: string) => void;
   removeAutoTags: (tag?: string) => void;
   renameAutoTag: (source: string, target: string) => void;
@@ -4363,9 +4363,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             try {
                 await persistAnnotationPatchBatch(patches.map((entry) => ({
                     imageId: entry.imageId,
-                    patch: entry.rating === null
-                        ? { set: { isFavorite: entry.isFavorite, tags: entry.tags }, remove: ['rating'] }
-                        : { set: { isFavorite: entry.isFavorite, rating: entry.rating, tags: entry.tags } },
+                    patch: {
+                        set: {
+                            ...(entry.isFavorite !== undefined ? { isFavorite: entry.isFavorite } : {}),
+                            ...(entry.tags !== undefined ? { tags: entry.tags } : {}),
+                            ...(entry.rating != null ? { rating: entry.rating } : {}),
+                        },
+                        ...(entry.rating === null ? { remove: ['rating'] } : {}),
+                    },
                 })));
                 await get().refreshAvailableTags();
             } catch (error) {

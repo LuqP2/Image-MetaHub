@@ -69,6 +69,34 @@ async function readJsonSafe(filePath) {
   }
 }
 
+/** Serialize check + publication across processes on a shared filesystem.
+ * Never steal a lock based on time: a slow/offline writer may still own it.
+ * Cloud replicas still require their provider's conflict handling; mkdir only
+ * arbitrates writers that see the same filesystem.
+ */
+async function withBoardPublicationLock(filePath, operation) {
+  await fsp.mkdir(path.dirname(filePath), { recursive: true });
+  const lockPath = `${filePath}.publish-lock`;
+  const deadline = Date.now() + 5000;
+  while (true) {
+    try {
+      await fsp.mkdir(lockPath);
+      break;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      if (Date.now() >= deadline) {
+        throw new Error('Board publication is busy. Retry after the other writer finishes.');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  try {
+    return await operation();
+  } finally {
+    await fsp.rmdir(lockPath);
+  }
+}
+
 export class TeamWorkspaceService {
   constructor({
     userDataPath,
@@ -445,11 +473,20 @@ export class TeamWorkspaceService {
         }
       }
 
-      active.members = await this.#readMembers(active.rootPath);
+      const members = await this.#readMembers(active.rootPath);
+      const resourcesHash = hashCanonical({
+        members,
+        prompts: await this.listTeamPrompts(workspaceId),
+        boards: await this.listTeamBoards(workspaceId),
+        models: await this.readModelsManifest(workspaceId),
+      });
+      const resourcesChanged = active.resourcesHash !== resourcesHash;
+      active.resourcesHash = resourcesHash;
+      active.members = members;
       active.syncState = 'idle';
       active.lastSyncedAt = new Date().toISOString();
 
-      if (totalAppliedFiles > 0 || totalAppliedOps > 0) {
+      if (totalAppliedFiles > 0 || totalAppliedOps > 0 || resourcesChanged) {
         this.#notifyUpdated(workspaceId);
       }
 
@@ -624,41 +661,43 @@ export class TeamWorkspaceService {
 
     const safeId = sanitizeSafeId(boardId, 'board');
     const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'boards', `${safeId}.imhboard.json`);
-    const current = await readJsonSafe(filePath);
+    return withBoardPublicationLock(filePath, async () => {
+      const current = await readJsonSafe(filePath);
 
-    if (current && current.format === 'image-metahub-team-board' && !forceOverwrite) {
-      const revisionMismatch = Number(current.revision) !== Number(expectedRevision);
-      const hashMismatch = Boolean(expectedHash && current.contentHash && current.contentHash !== expectedHash);
-      if (revisionMismatch || hashMismatch) {
-        return {
-          saved: false,
-          conflict: true,
-          remote: current,
-        };
+      if (current && current.format === 'image-metahub-team-board' && !forceOverwrite) {
+        const revisionMismatch = Number(current.revision) !== Number(expectedRevision);
+        const hashMismatch = Boolean(expectedHash && current.contentHash && current.contentHash !== expectedHash);
+        if (revisionMismatch || hashMismatch) {
+          return {
+            saved: false,
+            conflict: true,
+            remote: current,
+          };
+        }
       }
-    }
 
-    const nextRevision = Number(current?.revision ?? 0) + 1;
-    const contentHash = hashCanonical(document ?? {});
-    const nowIso = new Date().toISOString();
+      const nextRevision = Number(current?.revision ?? 0) + 1;
+      const contentHash = hashCanonical(document ?? {});
+      const nowIso = new Date().toISOString();
 
-    const envelope = {
-      format: 'image-metahub-team-board',
-      schemaVersion: TEAM_SCHEMA_VERSION,
-      boardId: safeId,
-      workspaceId,
-      name: String(name || 'Team Board').trim().slice(0, 120) || 'Team Board',
-      revision: nextRevision,
-      contentHash,
-      updatedAt: nowIso,
-      updatedByDeviceId: this.localProfile.deviceId,
-      updatedByName: this.localProfile.displayName,
-      document: document ?? {},
-    };
+      const envelope = {
+        format: 'image-metahub-team-board',
+        schemaVersion: TEAM_SCHEMA_VERSION,
+        boardId: safeId,
+        workspaceId,
+        name: String(name || 'Team Board').trim().slice(0, 120) || 'Team Board',
+        revision: nextRevision,
+        contentHash,
+        updatedAt: nowIso,
+        updatedByDeviceId: this.localProfile.deviceId,
+        updatedByName: this.localProfile.displayName,
+        document: document ?? {},
+      };
 
-    await writeJsonAtomic(filePath, envelope);
-    this.#notifyUpdated(workspaceId);
-    return { saved: true, conflict: false, envelope };
+      await writeJsonAtomic(filePath, envelope);
+      this.#notifyUpdated(workspaceId);
+      return { saved: true, conflict: false, envelope };
+    });
   }
 
   async deleteTeamBoard(workspaceId, boardId) {
@@ -666,14 +705,16 @@ export class TeamWorkspaceService {
     if (!active) throw new Error(`Team Workspace ${workspaceId} is not active.`);
     const safeId = sanitizeSafeId(boardId, 'board');
     const filePath = path.join(active.rootPath, TEAM_DIR_NAME, 'boards', `${safeId}.imhboard.json`);
-    try {
-      await fsp.unlink(filePath);
-      this.#notifyUpdated(workspaceId);
-      return { boardId: safeId, deleted: true };
-    } catch (error) {
-      if (error?.code === 'ENOENT') return { boardId: safeId, deleted: false };
-      throw error;
-    }
+    return withBoardPublicationLock(filePath, async () => {
+      try {
+        await fsp.unlink(filePath);
+        this.#notifyUpdated(workspaceId);
+        return { boardId: safeId, deleted: true };
+      } catch (error) {
+        if (error?.code === 'ENOENT') return { boardId: safeId, deleted: false };
+        throw error;
+      }
+    });
   }
 
   // --- Phase 3: Team Project Models Manifest (.imh-team/manifest/expected-models.json) ---
@@ -780,6 +821,8 @@ export class TeamWorkspaceService {
         });
         active.watcher.on('add', scheduleReconcile);
         active.watcher.on('change', scheduleReconcile);
+        active.watcher.on('unlink', scheduleReconcile);
+        active.watcher.on('unlinkDir', scheduleReconcile);
         active.watcher.on('error', (error) => {
           this.logger.warn('[IMH Team] Watcher error (periodic reconciliation remains active):', error);
         });

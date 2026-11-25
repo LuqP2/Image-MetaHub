@@ -137,9 +137,9 @@ export async function emitTeamTagsRemoveOp(
 
 export interface RemoteTeamAnnotationPatch {
   imageId: string;
-  isFavorite: boolean;
-  rating: ImageRating | null;
-  tags: string[];
+  isFavorite?: boolean;
+  rating?: ImageRating | null;
+  tags?: string[];
 }
 
 /**
@@ -175,14 +175,15 @@ export function computeTeamAnnotationDiffs(
       localTags.length !== remoteTags.length
       || localTags.some((tag, index) => tag !== remoteTags[index]);
 
-    if (localFavorite !== remote.isFavorite || localRating !== remoteRating || tagsChanged) {
-      patches.push({
-        imageId: image.id,
-        isFavorite: remote.isFavorite,
-        rating: remoteRating,
-        tags: remoteTags,
-      });
+    const patch: RemoteTeamAnnotationPatch = { imageId: image.id };
+    if (remote.annotationFields?.isFavorite && localFavorite !== remote.isFavorite) {
+      patch.isFavorite = remote.isFavorite;
     }
+    if (remote.annotationFields?.rating && localRating !== remoteRating) {
+      patch.rating = remoteRating;
+    }
+    if (remote.annotationFields?.tags && tagsChanged) patch.tags = remoteTags;
+    if (Object.keys(patch).length > 1) patches.push(patch);
   }
 
   return patches;

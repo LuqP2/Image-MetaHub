@@ -186,6 +186,8 @@ export interface TeamAssetState {
   tags: string[];
   rating: number | null;
   isFavorite: boolean;
+  /** Defaults are not authoritative until the corresponding annotation op exists. */
+  annotationFields?: { tags: boolean; rating: boolean; isFavorite: boolean };
   reviewStatus: TeamReviewStatus;
   reviewDecision: TeamReviewDecision | null;
   reviewConflict: TeamReviewConflict | null;

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TeamWorkspaceService } from '../../electron/teamWorkspaceService.mjs';
 import { reduceTeamOps } from '../../services/team/teamOpsReducer';
 
@@ -21,6 +21,47 @@ afterEach(() => {
 });
 
 describe('TeamWorkspaceService immutable event sync', () => {
+  it('notifies resource-only additions, edits and deletions without annotation operations', async () => {
+    const shared = makeTempDir('imh-team-resources-');
+    const notify = vi.fn();
+    const a = new TeamWorkspaceService({
+      userDataPath: makeTempDir('imh-resource-A-'), enableWatcher: false,
+      reconcileIntervalMs: 0, onWorkspaceUpdated: notify,
+    });
+    const b = new TeamWorkspaceService({
+      userDataPath: makeTempDir('imh-resource-B-'), enableWatcher: false, reconcileIntervalMs: 0,
+    });
+    try {
+      const { manifest } = await a.initWorkspace(shared);
+      const id = manifest.workspaceId;
+      await b.openWorkspace(shared);
+      await a.reconcileWorkspace(id);
+      const checkChange = async (mutate: () => Promise<unknown>) => {
+        notify.mockClear();
+        await mutate();
+        expect(await a.reconcileWorkspace(id)).toEqual({ appliedFiles: 0, appliedOps: 0 });
+        expect(notify).toHaveBeenCalledTimes(1);
+        notify.mockClear();
+        await a.reconcileWorkspace(id);
+        expect(notify).not.toHaveBeenCalled();
+      };
+      await checkChange(() => b.saveTeamPrompt(id, { id: 'prompt', positivePrompt: 'first' }));
+      await checkChange(() => b.saveTeamPrompt(id, { id: 'prompt', positivePrompt: 'edited' }));
+      await checkChange(() => b.deleteTeamPrompt(id, 'prompt'));
+      await checkChange(() => b.saveTeamBoard(id, { boardId: 'board', document: { nodes: [] } }));
+      await checkChange(() => b.saveTeamBoard(id, { boardId: 'board', expectedRevision: 1, document: { nodes: ['edited'] } }));
+      await checkChange(() => b.deleteTeamBoard(id, 'board'));
+      await checkChange(() => b.writeModelsManifest(id, [{ name: 'synthetic-model', type: 'checkpoint' }]));
+      await checkChange(async () => fs.unlinkSync(path.join(shared, '.imh-team/manifest/expected-models.json')));
+      await checkChange(() => b.updateLocalProfile({ displayName: 'Remote editor' }));
+      expect(a.getWorkspaceSummary(id)?.members.some((member) => member.displayName === 'Remote editor')).toBe(true);
+      await checkChange(async () => fs.unlinkSync(path.join(shared, '.imh-team/members', `${b.getLocalProfile().deviceId}.json`)));
+    } finally {
+      await a.dispose();
+      await b.dispose();
+    }
+  });
+
   it('writes immutable write-once batch files, ignores temp/conflicted copies, and reconciles two devices without watcher', async () => {
     const sharedFolder = makeTempDir('imh-team-shared-');
     const userDataA = makeTempDir('imh-team-devA-');

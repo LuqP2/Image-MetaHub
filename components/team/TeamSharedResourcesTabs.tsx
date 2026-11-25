@@ -80,12 +80,13 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
   const activeBoardLink = activeBoardId ? linkedBoardsByLocalId[activeBoardId] ?? null : null;
   const activeBoardBelongsToWorkspace = Boolean(activeBoardLink && activeBoardLink.workspaceId === workspaceId);
 
-  const modelsComparison = useMemo(() => {
+  const modelReferences = useMemo(() => {
     const localRefs = [
       ...availableModels.map((name) => ({ name })),
       ...availableLoras.map((name) => ({ name })),
     ];
-    return compareLocalModelsAgainstManifest(modelsManifest, localRefs);
+    const comparison = compareLocalModelsAgainstManifest(modelsManifest, localRefs);
+    return { referenced: comparison.installed, unreferenced: comparison.missing };
   }, [modelsManifest, availableModels, availableLoras]);
 
   const handleAddPrompt = async (e: React.FormEvent) => {
@@ -456,6 +457,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
 
       {tab === 'models' && (
         <div className="space-y-3">
+          <p className="text-xs text-gray-400">References in indexed images. Model installation is unverified.</p>
           {canUseTeams && (
             <form onSubmit={handleAddModel} className="flex items-center gap-2">
               <select
@@ -491,7 +493,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
               <div className="py-4 text-center text-xs text-gray-500">No project models listed yet.</div>
             ) : (
               <>
-                {modelsComparison.missing.map((model) => (
+                {modelReferences.unreferenced.map((model) => (
                   <div
                     key={`missing-${model.name}`}
                     className="flex items-center justify-between gap-2 rounded-lg border border-amber-800/60 bg-amber-950/30 px-2.5 py-1.5 text-xs"
@@ -500,7 +502,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                       <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
                       <span className="truncate text-amber-100">{model.name}</span>
                       <span className="rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] text-amber-200">
-                        Missing · {model.type}
+                        No reference · {model.type}
                       </span>
                     </div>
                     {canUseTeams && (
@@ -515,7 +517,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                     )}
                   </div>
                 ))}
-                {modelsComparison.installed.map((model) => (
+                {modelReferences.referenced.map((model) => (
                   <div
                     key={`installed-${model.name}`}
                     className="flex items-center justify-between gap-2 rounded-lg border border-emerald-800/50 bg-emerald-950/20 px-2.5 py-1.5 text-xs"
@@ -524,7 +526,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
                       <span className="truncate text-gray-200">{model.name}</span>
                       <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] text-emerald-200">
-                        Installed · {model.type}
+                        Referenced · {model.type}
                       </span>
                     </div>
                     {canUseTeams && (
