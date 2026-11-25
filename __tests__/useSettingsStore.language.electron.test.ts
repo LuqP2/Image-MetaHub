@@ -7,9 +7,9 @@ afterEach(() => {
 
 it('saves language independently of general settings snapshots in Electron', async () => {
   const persisted = { language: 'es' };
-  const saveSettings = vi.fn(async (changes: Record<string, unknown>, options?: { languageOnly: true }) => {
-    const { language, ...otherSettings } = changes;
-    Object.assign(persisted, options?.languageOnly ? { language } : otherSettings);
+  const saveSettings = vi.fn(async (changes: Record<string, unknown>, options?: { languageOnly?: true; themeOnly?: true }) => {
+    const { language, theme, ...otherSettings } = changes;
+    Object.assign(persisted, options?.languageOnly ? { language } : options?.themeOnly ? { theme } : otherSettings);
     return { success: true };
   });
   window.electronAPI = {

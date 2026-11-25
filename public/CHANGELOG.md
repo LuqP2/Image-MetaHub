@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - [2026-11-24]
+
+### Added
+
+- **Multi-Language Support (9 Languages)**: Image MetaHub is now localized across English, Portuguese (Brazil), Spanish, Japanese, German, French, Korean, Simplified Chinese, and Traditional Chinese. Localization covers Settings, Library browsing and filters, the Image Viewer and Editor, Comparison, Canvas, Prompt Library, Model Manager, ComfyUI Workspace, Analytics, dialogs, and notifications. Switch languages under Settings → General, with automatic fallback to English when needed.
+- **Canvas External Assets & Link Cards (Pro)**: Drag external images, videos, and 3D models directly from your file manager onto Canvas boards with persistent file references, relinking, and direct viewer inspection. Dropping URLs creates Link Cards with on-demand previews, and cards now support optional custom labels.
+- **3D Viewer Directional Lighting**: Added azimuth and elevation lighting controls to the 3D model viewer so you can inspect surface details and shading from any angle.
+
+### Improved
+
+- **Integrated Explore & Library Navigation**: Integrated Explore directly into the Library workspace with an inline view switcher in the Grid toolbar and Explore header, removing the extra navigation bar and freeing vertical space.
+- **UI & Theme Standardization**: Standardized themes, scrollbars, surfaces, and dialogs across Settings, Canvas, Model Manager, Prompt Library, Batch Export, File Transfer, and generation modals. Redesigned Library sidebar filters and unified the Image Modal layout for clearer, more consistent controls.
+- **Canvas Connections & Library Panel (Pro)**: Added direction reversal, endpoint editing, automatic handle anchoring, orthogonal ("circuit board") routing, and adjustable label placement and size for connections. Improved the Canvas Library Panel with multi-line filename wrapping, subfolder filtering, and 3D model thumbnails.
+- **3D Model Comparison Sync (Pro)**: Reworked synchronized camera controls in 3D Compare to use relative movement, allowing you to pause Sync, align models independently, and re-enable Sync without resetting their orientation.
+- **Canvas Usability (Pro)**: Smart Frames are now created directly inside the current board. Added clearer dock tooltips and explicit On/Off states for media playback controls.
+- **Batch Export Safety & Layout**: Standardized the Batch Export dialog and added destination validation to prevent exports from overwriting the original source file, including aliased or linked paths.
+
+### Fixed
+
+- **Canvas PNG Export**: Rewrote PNG export rasterization to avoid native hidden-window capture failures and ensured displaced node labels are included within the exported bounds.
+- **Canvas External Media & Board Isolation**: Scoped external file authorization and media caching per board so external assets, EXR inspection, OBJ material libraries, and comparison sources load reliably without cross-board access. Relinking an external asset now refreshes it even when the path is unchanged, and reconnecting edges preserves stacked image endpoints.
+- **3D Viewer Background**: Fixed background clearing issues in the 3D model viewer when changing themes or scenes.
+
 ## [0.23.1] - [2026-11-15]
 
 ### Fixed

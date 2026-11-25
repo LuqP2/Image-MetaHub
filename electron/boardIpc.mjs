@@ -28,16 +28,23 @@ export function registerBoardIpc({
 }) {
   let repository;
   const getRepository = () => repository ??= new BoardRepository({ directory: path.join(app.getPath('userData'), 'boards') });
-  const requireExternalAccess = (boardId, filePath) => {
+  const requireExternalAccess = async (boardId, filePath) => {
     if (!externalAccess) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'External files are unavailable.');
     if (typeof boardId !== 'string' || !boardId.trim() || typeof filePath !== 'string' || !filePath) {
       throw new BoardError('BOARD_APPROVAL_REQUIRED', 'External file access requires approval.');
     }
     const normalized = path.resolve(filePath);
-    if (!externalAccess.allows(boardId, normalized) && !externalAccess.hasGrant?.(boardId, normalized)) {
-      throw new BoardError('BOARD_APPROVAL_REQUIRED', 'External file access requires approval.');
+    const canonical = typeof externalAccess.resolveAllowed === 'function'
+      ? externalAccess.resolveAllowed(boardId, normalized)
+      : (externalAccess.allows(boardId, normalized) ? normalized : null);
+    if (canonical) return canonical;
+    if (externalAccess.hasGrant?.(boardId, normalized)) {
+      let missing = false;
+      try { await fs.lstat(normalized); }
+      catch (error) { if (error?.code === 'ENOENT') missing = true; }
+      if (missing) throw new BoardError('BOARD_FILE_NOT_FOUND', 'External file is unavailable.');
     }
-    return normalized;
+    throw new BoardError('BOARD_APPROVAL_REQUIRED', 'External file access requires approval.');
   };
   const mapFsError = error => {
     if (error?.code === 'ENOENT') throw new BoardError('BOARD_FILE_NOT_FOUND', 'External file is unavailable.');
@@ -81,21 +88,21 @@ export function registerBoardIpc({
     return null;
   });
   register('boards:stat-file', async (_repository, _window, input) => {
-    const filePath = requireExternalAccess(input?.boardId, input?.filePath);
+    const filePath = await requireExternalAccess(input?.boardId, input?.filePath);
     try {
       const stats = await fs.stat(filePath);
       return { size: stats.size, mtimeMs: stats.mtimeMs, birthtimeMs: stats.birthtimeMs, isDirectory: stats.isDirectory() };
     } catch (error) { mapFsError(error); }
   });
   register('boards:read-file', async (_repository, _window, input) => {
-    const filePath = requireExternalAccess(input?.boardId, input?.filePath);
+    const filePath = await requireExternalAccess(input?.boardId, input?.filePath);
     if (path.extname(filePath).toLowerCase() === '.exr') throw new BoardError('BOARD_EXR_UNSUPPORTED', 'EXR originals are not read into the renderer.');
     try { return await fs.readFile(filePath); }
     catch (error) { mapFsError(error); }
   });
   register('boards:resolve-media-url', async (_repository, _window, input) => {
     if (!buildBoardMediaUrl) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'External media streaming is unavailable.');
-    const filePath = requireExternalAccess(input?.boardId, input?.filePath);
+    const filePath = await requireExternalAccess(input?.boardId, input?.filePath);
     if (path.extname(filePath).toLowerCase() === '.exr') throw new BoardError('BOARD_EXR_UNSUPPORTED', 'EXR originals require EXR preview.');
     try {
       await fs.access(filePath);
@@ -104,25 +111,34 @@ export function registerBoardIpc({
   });
   register('boards:read-media-metadata', async (_repository, _window, input) => {
     if (!readMediaMetadata) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'Media metadata reader is unavailable.');
-    const filePath = requireExternalAccess(input?.boardId, input?.filePath);
+    const filePath = await requireExternalAccess(input?.boardId, input?.filePath);
     return readMediaMetadata(filePath);
   });
   register('boards:read-model3d-metadata', async (_repository, _window, input) => {
     if (!readModel3DMetadata) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', '3D metadata reader is unavailable.');
-    const filePath = requireExternalAccess(input?.boardId, input?.filePath);
+    const filePath = await requireExternalAccess(input?.boardId, input?.filePath);
     if (!isModel3DFileName(filePath)) throw new BoardError('BOARD_INVALID_MODEL', 'Not a supported 3D model.');
     return readModel3DMetadata(filePath);
   });
   register('boards:generate-thumbnail', async (_repository, _window, input) => {
     if (!generateThumbnail) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'Thumbnail generation is unavailable.');
-    const filePath = requireExternalAccess(input?.boardId, input?.filePath);
+    const filePath = await requireExternalAccess(input?.boardId, input?.filePath);
     return generateThumbnail({ filePath, maxEdge: input?.maxEdge, quality: input?.quality });
+  });
+  register('boards:exr-inspect', async (_repository, _window, input) => {
+    const exrRuntime = getExrRuntime?.();
+    if (!exrRuntime) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'EXR support is unavailable.');
+    const boardId = input?.boardId;
+    const filePath = await requireExternalAccess(boardId, input?.filePath);
+    return exrRuntime.inspect(filePath, {
+      allowPath: candidate => externalAccess.allows(boardId, candidate),
+    });
   });
   register('boards:exr-preview', async (_repository, window, input) => {
     const exrRuntime = getExrRuntime?.();
     if (!exrRuntime) throw new BoardError('BOARD_EXTERNAL_UNAVAILABLE', 'EXR support is unavailable.');
     const boardId = input?.boardId;
-    const filePath = requireExternalAccess(boardId, input?.request?.filePath);
+    const filePath = await requireExternalAccess(boardId, input?.request?.filePath);
     return exrRuntime.preview({ ...input.request, filePath }, window.webContents.id, {
       allowPath: candidate => externalAccess.allows(boardId, candidate),
     });

@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "このワークスペースの下書きを破棄しますか？",
   "integrations.discardBlockEditConfirm": "このブロックの未保存の変更を破棄しますか？",
   "canvasFeedback.approvalRequired": "この外部ファイルにアクセスするには承認が必要です。",
-  "canvasFeedback.approveExternal": "外部ファイルを承認"
+  "canvasFeedback.approveExternal": "外部ファイルを承認",
+  "batchExport.file": "ファイル",
+  "batchExport.saveFile": "ファイルを保存",
+  "batchExport.filePath": "ファイルのパス",
+  "batchExport.folderPath": "フォルダーのパス",
+  "batchExport.chooseFolder": "フォルダーを選択",
+  "batchExport.replaceFile": "{path} にある既存のファイルを置き換えますか？",
+  "batchExport.replace": "置き換える"
 }

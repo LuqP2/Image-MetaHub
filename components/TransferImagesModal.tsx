@@ -355,7 +355,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
     }
   };
 
-  const actionIcon = mode === 'move' ? <MoveRight className="w-5 h-5 text-amber-300" /> : <Copy className="w-5 h-5 text-blue-300" />;
+  const actionIcon = mode === 'move' ? <MoveRight className="w-5 h-5 text-amber-300" /> : <Copy className="w-5 h-5 text-accent" />;
 
   const progressPercent = progress && progress.total > 0
     ? Math.max(0, Math.min(100, Math.round((progress.processed / progress.total) * 100)))
@@ -373,7 +373,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       <React.Fragment key={option.id}>
         <div
           className={`flex items-center rounded-md transition-colors ${
-            isSelected ? 'bg-blue-500/15 text-blue-100' : 'text-gray-200 hover:bg-gray-800'
+            isSelected ? 'bg-accent/15 text-accent' : 'text-gray-200 hover:bg-gray-800'
           }`}
           style={{ paddingLeft: `${option.depth * 16}px` }}
         >
@@ -399,7 +399,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-left"
           >
             {hasChildren && isExpanded
-              ? <FolderOpen className="w-4 h-4 flex-shrink-0 text-blue-300" />
+              ? <FolderOpen className="w-4 h-4 flex-shrink-0 text-accent" />
               : <Folder className="w-4 h-4 flex-shrink-0 text-gray-400" />}
             <span className={`truncate text-sm ${isSelected ? 'font-medium' : ''}`}>
               {option.name}
@@ -413,7 +413,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700">
+      <div className="ui-dialog w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
         <div className="flex items-center justify-between p-5 border-b border-gray-700">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gray-800 rounded-lg">
@@ -428,7 +428,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            className="ui-icon-btn"
             title={t('modelLibrary.close')}
             aria-label={t('fileOperations.closeTransfer')}
             disabled={isSubmitting}
@@ -449,11 +449,11 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
               <div className="mt-3 space-y-2">
                 <div className="h-2 overflow-hidden rounded-full bg-gray-700">
                   <div
-                    className="h-full rounded-full bg-blue-500 transition-all duration-300 ease-out"
+                    className="h-full rounded-full bg-accent transition-all duration-300 ease-out"
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
-                <p className="text-xs text-blue-200">
+                <p className="text-xs text-accent">
                   {translatePresentationMessage(statusText || progress?.statusText || (mode === 'move' ? 'Moving files...' : 'Copying files...'), t)}
                 </p>
               </div>
@@ -468,7 +468,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                   type="button"
                   onClick={() => { setIsCreatingFolder(true); setCreateFolderError(null); }}
                   disabled={isSubmitting}
-                  className="flex items-center gap-1.5 text-xs text-blue-300 hover:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <FolderPlus className="w-4 h-4" />
                   {t('promptLibrary.newFolder')}</button>
@@ -492,13 +492,13 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                     }}
                     placeholder={t('promptLibrary.folderName')}
                     disabled={isSubmittingNewFolder}
-                    className="flex-1 rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-60"
+                    className="ui-input flex-1"
                   />
                   <button
                     type="button"
                     onClick={() => void handleCreateFolder()}
                     disabled={isSubmittingNewFolder || newFolderName.trim().length === 0}
-                    className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-accent-strong disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    className="ui-btn-primary"
                   >
                     {isSubmittingNewFolder ? t('fileOperations.creating') : t('canvas.createAction')}
                   </button>
@@ -506,7 +506,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                     type="button"
                     onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }}
                     disabled={isSubmittingNewFolder}
-                    className="px-3 py-1.5 rounded-md border border-gray-600 bg-gray-800 text-gray-200 text-sm hover:bg-gray-700 disabled:opacity-60 transition-colors"
+                    className="ui-btn"
                   >
                     {t('modelLibrary.cancel')}</button>
                 </div>
@@ -542,13 +542,13 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-colors"
+              className="ui-btn flex-1"
             >
               {isSubmitting ? t('imageViewer.collection.hide') : t('modelLibrary.cancel')}
             </button>
             <button
               onClick={() => selectedDirectory && onConfirm(selectedDirectory)}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-accent-strong transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="ui-btn-primary flex-1"
               disabled={!selectedDirectory || isSubmitting}
             >
               {isSubmitting

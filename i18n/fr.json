@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "Abandonner ce brouillon de l’espace de travail ?",
   "integrations.discardBlockEditConfirm": "Abandonner les modifications non enregistrées de ce bloc ?",
   "canvasFeedback.approvalRequired": "Autorisation requise pour accéder à ce fichier externe.",
-  "canvasFeedback.approveExternal": "Autoriser le fichier externe"
+  "canvasFeedback.approveExternal": "Autoriser le fichier externe",
+  "batchExport.file": "Fichier",
+  "batchExport.saveFile": "Enregistrer le fichier",
+  "batchExport.filePath": "Chemin du fichier",
+  "batchExport.folderPath": "Chemin du dossier",
+  "batchExport.chooseFolder": "Choisir un dossier",
+  "batchExport.replaceFile": "Remplacer le fichier existant à cet emplacement : {path} ?",
+  "batchExport.replace": "Remplacer"
 }

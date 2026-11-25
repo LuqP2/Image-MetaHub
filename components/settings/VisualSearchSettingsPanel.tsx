@@ -137,7 +137,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
         {enabled && (
           <div className="space-y-4">
             {/* Model choice */}
-            <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
+            <div className="rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
               <div>
                 <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.imageEmbeddingModel")}</p>
                 <p className="text-xs text-gray-400">
@@ -156,11 +156,11 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       aria-pressed={selected}
                       className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                         selected
-                          ? 'border-indigo-500 bg-indigo-500/10 light:border-accent/60 light:bg-accent/10'
+                          ? 'border-accent bg-accent/10 light:border-accent/60 light:bg-accent/10'
                           : 'border-gray-700 hover:bg-gray-800/60'
                       }`}
                     >
-                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200 light:text-gray-100' : 'text-gray-200'}`}>
+                      <p className={`text-xs font-medium ${selected ? 'text-accent light:text-gray-100' : 'text-gray-200'}`}>
                         {option.key === 'clip-b32' ? t('settings.visualSearch.balancedModel') : t('settings.visualSearch.higherQualityModel')}
                       </p>
                       <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.key === 'clip-b32' ? t('settings.visualSearch.balancedModelHelp') : t('settings.visualSearch.higherQualityModelHelp')}</p>
@@ -176,7 +176,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
               )}
             </div>
 
-            <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
+            <div className="rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-3">
               <div>
                 <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.experimentalTextQueryMatching")}</p>
                 <p className="text-xs text-gray-400">
@@ -195,11 +195,11 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       aria-pressed={selected}
                       className={`rounded-lg border px-3 py-2 text-left transition-colors ${
                         selected
-                          ? 'border-indigo-500 bg-indigo-500/10 light:border-accent/60 light:bg-accent/10'
+                          ? 'border-accent bg-accent/10 light:border-accent/60 light:bg-accent/10'
                           : 'border-gray-700 hover:bg-gray-800/60'
                       }`}
                     >
-                      <p className={`text-xs font-medium ${selected ? 'text-indigo-200 light:text-gray-100' : 'text-gray-200'}`}>
+                      <p className={`text-xs font-medium ${selected ? 'text-accent light:text-gray-100' : 'text-gray-200'}`}>
                         {option.label}
                       </p>
                       <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{option.description}</p>
@@ -210,7 +210,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
             </div>
 
             {/* Model download */}
-            <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
+            <div className="rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.searchModel")}</p>
@@ -221,14 +221,14 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 {modelDownloading ? (
                   <button
                     onClick={cancelModelDownload}
-                    className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
+                    className="ui-btn"
                   >
                     {t("settings.visualSearch.cancel")}
                   </button>
                 ) : !modelInstalled || gpuNeedsDownload ? (
                   <button
                     onClick={startModelDownload}
-                    className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+                    className="ui-btn-primary"
                   >
                     {gpuNeedsDownload ? t("settings.visualSearch.downloadGpuModel") : t("settings.visualSearch.downloadModel")}
                   </button>
@@ -242,7 +242,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
               {modelDownloading && (
                 <div className="space-y-1">
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
-                    <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${downloadPercent}%` }} />
+                    <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${downloadPercent}%` }} />
                   </div>
                   <p className="text-xs text-gray-500">
                     {modelProgress?.file} · {formatBytes(modelProgress?.receivedBytes ?? 0)}
@@ -254,7 +254,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
 
             {/* Index build */}
             {modelInstalled && (
-              <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
+              <div className="rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-100">{t("settings.visualSearch.searchIndex")}</p>
@@ -270,21 +270,21 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                       {isPaused ? (
                         <button
                           onClick={resumeBackfill}
-                          className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
+                          className="ui-btn"
                         >
                           {t("settings.visualSearch.resume")}
                         </button>
                       ) : (
                         <button
                           onClick={pauseBackfill}
-                          className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
+                          className="ui-btn"
                         >
                           {t("settings.visualSearch.pause")}
                         </button>
                       )}
                       <button
                         onClick={cancelBackfill}
-                        className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-800"
+                        className="ui-btn"
                       >
                         {t("settings.visualSearch.stop")}
                       </button>
@@ -292,7 +292,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                   ) : (
                     <button
                       onClick={() => startBackfill(cap)}
-                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+                      className="ui-btn-primary"
                     >
                       {coverage && coverage.embedded > 0 ? t("settings.visualSearch.updateIndex") : t("settings.visualSearch.buildIndex")}
                     </button>
@@ -302,7 +302,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 {isBackfilling && indexProgress && (
                   <div className="space-y-1">
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
-                      <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${indexPercent}%` }} />
+                      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${indexPercent}%` }} />
                     </div>
                     <p className="text-xs text-gray-500">
                       {indexProgress.current.toLocaleString()} / {indexProgress.total.toLocaleString()}
@@ -313,7 +313,7 @@ export const VisualSearchSettingsPanel: React.FC = () => {
                 )}
 
                 {!canUseUnlimitedSemanticSearch && coverage && coverage.total > SEMANTIC_FREE_TIER_LIMIT && (
-                  <p className="text-xs text-indigo-300/80 light:text-indigo-800">
+                  <p className="text-xs text-accent/80 light:text-accent">
                     {t("settings.visualSearch.upgradeForFullCoverage", { limit: SEMANTIC_FREE_TIER_LIMIT, total: coverage.total })}
                   </p>
                 )}
@@ -331,13 +331,13 @@ export const VisualSearchSettingsPanel: React.FC = () => {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={deleteIndex}
-                  className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
+                  className="ui-btn"
                 >
                   {t("settings.visualSearch.deleteSearchIndex")}
                 </button>
                 <button
                   onClick={deleteSemanticModel}
-                  className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
+                  className="ui-btn"
                 >
                   {t("settings.visualSearch.removeDownloadedModel")}
                 </button>

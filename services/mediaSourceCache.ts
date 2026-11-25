@@ -217,7 +217,8 @@ class MediaSourceCache {
   }
 
   private getCacheKey(image: IndexedImage, directoryPath?: string): string {
-    return `${directoryPath || ''}::${image.id}::${image.lastModified}${isExrFileName(image.name) ? `::exr:${exrClientRevision()}` : ''}`;
+    const boardId = getElectronBoardId(image);
+    return `${boardId ? `board:${boardId}::` : ''}${directoryPath || ''}::${image.id}::${image.lastModified}${isExrFileName(image.name) ? `::exr:${exrClientRevision()}` : ''}`;
   }
 
   private async loadRendererObjectSource(

@@ -395,7 +395,18 @@ export const useSettingsStore = create<SettingsState>()(
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       setLibraryGridLayout: (layout) => set({ libraryGridLayout: layout }),
       setGroupBy: (value) => set({ groupBy: value }),
-      setTheme: (theme) => set({ theme }),
+      setTheme: (theme) => {
+        set({ theme });
+        if (!isElectron) return;
+        // Only an explicit choice changes the saved theme. Startup/default and
+        // detached-window snapshots can arrive before settings hydration finishes.
+        void window.electronAPI.saveSettings({ theme }, { themeOnly: true }).then((result) => {
+          if (!result?.success) throw new Error(result?.error || 'Failed to persist theme.');
+        }).catch((error) => {
+          console.error('Failed to save theme:', error);
+          if (get().theme === theme) void useSettingsStore.persist.rehydrate();
+        });
+      },
       setLanguage: (language) => {
         const next = normalizeLanguage(language);
         set({ language: next });

@@ -1,3 +1,4 @@
+import { assertDistinctExportFile, resolveExportDestination, validateExportExtension } from './electron/exportDestination.mjs';
 import { createBoardExternalAccess } from './electron/boardExternalAccess.mjs';
 const boardExternalAccess = createBoardExternalAccess();
 import { formatMessage, normalizeLanguage } from './i18n/messages.mjs';
@@ -3418,7 +3419,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.23.1');
+    mainWindow.setTitle('Image MetaHub v0.24.0');
   }
 
   // Load the app
@@ -5142,12 +5143,14 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('save-settings', async (event, newSettings, options) => {
     try {
-      const { language, ...otherSettings } = newSettings ?? {};
-      // General saves also come from license and feature stores, which may have
-      // read settings before the renderer selected a different language.
+      const { language, theme, ...otherSettings } = newSettings ?? {};
+      // General saves also come from startup and other windows with stale defaults.
+      // Language and theme change only through their explicit preference actions.
       const settings = await queueSettingsUpdate((currentSettings) => options?.languageOnly === true
         ? { ...currentSettings, language: normalizeLanguage(language) }
-        : mergeSettingsUpdate(currentSettings, otherSettings));
+        : options?.themeOnly === true
+          ? { ...currentSettings, theme: typeof theme === 'string' ? theme : currentSettings.theme ?? 'system' }
+          : mergeSettingsUpdate(currentSettings, otherSettings));
       applyAppLanguage(settings);
       // Every window persists its *whole* settings state, so a window holding a
       // stale copy would revert another window's newer values on the next write.
@@ -8720,9 +8723,27 @@ function setupFileOperationHandlers() {
     return { success: true };
   });
 
+  const confirmExportReplacement = async (event, filePath) => {
+    if (!fsSync.existsSync(filePath)) return true;
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+    const options = {
+      type: 'question',
+      message: formatMessage(appLanguage, 'batchExport.replaceFile', { path: filePath }),
+      buttons: [formatMessage(appLanguage, 'batchExport.cancel'), formatMessage(appLanguage, 'batchExport.replace')],
+      defaultId: 0,
+      cancelId: 0,
+    };
+    const confirmation = parentWindow
+      ? await dialog.showMessageBox(parentWindow, options)
+      : await dialog.showMessageBox(options);
+    return confirmation.response === 1;
+  };
+
   ipcMain.handle('export-images-batch', async (event, {
     files,
     destDir,
+    destFilePath,
+    overwriteConfirmed = false,
     exportId,
     metadataPolicy = 'preserve',
     targetFormat = 'original',
@@ -8730,9 +8751,6 @@ function setupFileOperationHandlers() {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: formatMessage(appLanguage, 'batchExport.noFiles'), exportedCount: 0, failedCount: 0 };
-      }
-      if (!destDir) {
-        return { success: false, error: formatMessage(appLanguage, 'batchExport.noFolder'), exportedCount: 0, failedCount: 0 };
       }
       if (files.some((file) => isExternalResourceModel3DFileName(file?.relativePath))) {
         return {
@@ -8743,7 +8761,14 @@ function setupFileOperationHandlers() {
         };
       }
 
-      await fs.mkdir(destDir, { recursive: true });
+      const destination = resolveExportDestination({ files, destDir, destFilePath });
+      if (destination.filePath) {
+        await assertDistinctExportFile(path.resolve(files[0].directoryPath, files[0].relativePath), destination.filePath);
+      }
+      if (destination.filePath && !overwriteConfirmed && !await confirmExportReplacement(event, destination.filePath)) {
+        return { success: false, exportedCount: 0, failedCount: 0, error: formatMessage(appLanguage, 'batchExport.canceled') };
+      }
+      await fs.mkdir(destination.directory, { recursive: true });
       const usedNames = new Set();
       let exportedCount = 0;
       let failedCount = 0;
@@ -8802,7 +8827,8 @@ function setupFileOperationHandlers() {
             effectiveMetadata: file.effectiveMetadata,
           });
           const uniqueName = getUniqueName(artifact.fileName, usedNames);
-          const destPath = path.resolve(destDir, uniqueName);
+          const destPath = destination.filePath ?? path.resolve(destination.directory, uniqueName);
+          if (destination.filePath) validateExportExtension(destPath, artifact.fileName);
           const expectedOutputSha256 = crypto.createHash('sha256').update(artifact.buffer).digest('hex');
           await executeWithStableIdentity({
             kind: 'copy',
@@ -8810,6 +8836,7 @@ function setupFileOperationHandlers() {
             destinationPath: destPath,
             expectedOutputSha256,
             perform: async () => {
+              if (destination.filePath) await assertDistinctExportFile(sourcePath, destPath);
               if (metadataPolicy === 'preserve' && isModel3DFileName(sourcePath)) {
                 const sidecarPath = await getModel3DSidecarPathIfPresent(fs, sourcePath);
                 await writeModel3DExportWithSidecar(fs, destPath, artifact.buffer, sidecarPath);
@@ -8863,6 +8890,7 @@ function setupFileOperationHandlers() {
   ipcMain.handle('export-images-zip', async (event, {
     files,
     destZipPath,
+    overwriteConfirmed = false,
     exportId,
     metadataPolicy = 'preserve',
     targetFormat = 'original',
@@ -8883,6 +8911,12 @@ function setupFileOperationHandlers() {
         };
       }
 
+      if (typeof destZipPath !== 'string' || !path.isAbsolute(destZipPath) || path.extname(destZipPath).toLowerCase() !== '.zip') {
+        throw new Error('Choose an absolute destination path ending in .zip.');
+      }
+      if (!overwriteConfirmed && !await confirmExportReplacement(event, destZipPath)) {
+        return { success: false, exportedCount: 0, failedCount: 0, error: formatMessage(appLanguage, 'batchExport.canceled') };
+      }
       await fs.mkdir(path.dirname(destZipPath), { recursive: true });
       const usedNames = new Set();
       let exportedCount = 0;

@@ -236,7 +236,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           control={<SettingSwitch checked={globalAutoWatch} onChange={() => toggleGlobalAutoWatch()} />}
         />
 
-        <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+        <div className="space-y-3 rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-gray-100">{t("settings.library.startupVerification")}</p>
             <p className="text-sm text-gray-400">{t("settings.library.chooseHowMuchImageMetahubChecksSaved")}</p>
@@ -245,17 +245,17 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           <select
             value={startupVerificationMode}
             onChange={(event) => setStartupVerificationMode(event.target.value as 'off' | 'idle' | 'strict')}
-            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            className="ui-select w-full"
           >
             <option value="off">{startupVerificationModeDetails.off.label}</option>
             <option value="idle">{startupVerificationModeDetails.idle.label}</option>
             <option value="strict">{startupVerificationModeDetails.strict.label}</option>
           </select>
 
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-            <p className="text-sm font-medium text-blue-100 light:text-blue-900">{selectedStartupVerificationMode.title}</p>
-            <p className="mt-1 text-sm text-blue-100/85 light:text-blue-900/85">{selectedStartupVerificationMode.description}</p>
-            <p className="mt-2 text-xs text-blue-200/70 light:text-blue-800/80">{selectedStartupVerificationMode.impact}</p>
+          <div className="rounded-md border border-accent/20 bg-accent/10 px-4 py-3">
+            <p className="text-sm font-medium text-accent light:text-accent">{selectedStartupVerificationMode.title}</p>
+            <p className="mt-1 text-sm text-accent/85 light:text-accent/85">{selectedStartupVerificationMode.description}</p>
+            <p className="mt-2 text-xs text-accent/70 light:text-accent/80">{selectedStartupVerificationMode.impact}</p>
           </div>
         </div>
       </SettingsSectionCard>
@@ -271,7 +271,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
               max={maxConcurrency}
               value={indexingConcurrency}
               onChange={(event) => setIndexingConcurrency(Number(event.target.value) || 1)}
-              className="w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-right text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="ui-input w-24 text-right"
             />
           }
         />
@@ -290,7 +290,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
                 type="button"
                 disabled={isExportingBackup}
                 onClick={handleExportBackup}
-                className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+                className="ui-btn"
               >
                 {isExportingBackup ? t("settings.library.exporting") : t("settings.library.exportBackup")}
               </button>
@@ -305,7 +305,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
       )}
 
       <SettingsSectionCard title={isPortable ? t("settings.library.portableStorage") : t("settings.library.cacheLocation")}>
-        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+        <div className="rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
           <p className="truncate text-sm text-gray-200">{currentCachePath || t("settings.library.loadingCacheLocation")}</p>
           {isPortable ? (
             <p className="mt-2 text-xs text-gray-500">{t("settings.library.settingsBrowserDataAndCachesStayWith")}</p>
@@ -318,7 +318,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             <button
               type="button"
               onClick={handleSelectCacheDirectory}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 hover:text-gray-950"
+              className="ui-btn-primary"
             >
               {t("settings.library.changeLocation")}
             </button>
@@ -326,7 +326,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           <button
             type="button"
             onClick={handleOpenCacheLocation}
-            className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-600"
+            className="ui-btn"
           >
             {t("settings.library.openLocation")}
           </button>
@@ -335,7 +335,7 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
               type="button"
               onClick={handleResetCacheDirectory}
               disabled={!defaultCachePath || currentCachePath === defaultCachePath}
-              className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="ui-btn"
             >
               {t("settings.library.resetToDefault")}
             </button>
@@ -376,14 +376,14 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           description={t("settings.library.rebuildIndexedMetadataThumbnailsAndSmartLibrary")}
           className="space-y-3"
         >
-          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-gray-300">
+          <div className="rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-gray-300">
             <p>{t("settings.library.removesOnlyCacheDataThatCanBe")}</p>
           </div>
           <button
             type="button"
             onClick={handleClearLibraryCache}
             disabled={cacheClearState !== 'idle'}
-            className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-100 enabled:hover:bg-gray-600 disabled:cursor-wait disabled:opacity-70"
+            className="ui-btn"
           >
             {cacheClearState === 'clearing' ? t("settings.library.clearingLibraryCache") : cacheClearState === 'reloading' ? t("settings.library.reloadingLibrary") : t("settings.library.clearLibraryCache")}
           </button>
@@ -404,14 +404,14 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             tone="danger"
             className="space-y-3"
           >
-            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            <div className="flex items-start gap-3 rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>{t("settings.library.thisRemovesSavedFoldersPreferencesFiltersAnnotations")}</p>
             </div>
             <button
               type="button"
               onClick={handleResetAppData}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+              className="ui-btn-danger"
             >
               {t("settings.library.resetAppData")}
             </button>

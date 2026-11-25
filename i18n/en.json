@@ -3631,5 +3631,12 @@
   "integrations.discardWorkspaceDraftConfirm": "Discard this Workspace draft?",
   "integrations.discardBlockEditConfirm": "Discard this unsaved block edit?",
   "canvasFeedback.approvalRequired": "Approval required to access this external file.",
-  "canvasFeedback.approveExternal": "Approve external file"
+  "canvasFeedback.approveExternal": "Approve external file",
+  "batchExport.file": "File",
+  "batchExport.saveFile": "Save file",
+  "batchExport.filePath": "File path",
+  "batchExport.folderPath": "Folder path",
+  "batchExport.chooseFolder": "Select folder",
+  "batchExport.replaceFile": "Replace the existing file at {path}?",
+  "batchExport.replace": "Replace"
 }

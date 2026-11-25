@@ -259,7 +259,7 @@ export const TeamSharedResourcesTabs: React.FC<TeamSharedResourcesTabsProps> = (
           }`}
         >
           <Package className="h-3.5 w-3.5" />
-          Models ({modelsComparison.installed.length}/{modelsManifest?.models.length ?? 0})
+          Models ({modelsManifest?.models.length ?? 0})
         </button>
       </div>
 

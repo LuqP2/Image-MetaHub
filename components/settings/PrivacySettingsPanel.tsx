@@ -23,7 +23,7 @@ export const PrivacySettingsPanel: React.FC = () => {
   return (
     <SettingsPanel title={t("settings.privacy.privacy")} description={t("settings.privacy.hideOrBlurImagesThatMatchYour")}>
       <SettingsSectionCard title={t("settings.privacy.sensitiveContent")}>
-        <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+        <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950/60 px-4 py-3">
           <label className="text-sm font-medium text-gray-100" htmlFor="sensitive-tags-input">
             {t("settings.privacy.sensitiveTags")}
           </label>
@@ -42,7 +42,7 @@ export const PrivacySettingsPanel: React.FC = () => {
               );
             }}
             placeholder="nsfw, private, hidden"
-            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            className="ui-input w-full"
           />
           <p className="text-sm text-gray-400">{t("settings.privacy.separateTagsWithCommas")}</p>
         </div>
