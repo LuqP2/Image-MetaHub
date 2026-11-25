@@ -314,6 +314,8 @@ const Header: React.FC<HeaderProps> = ({
     : (licensePlan === 'monthly' || licensePlan === 'annual') && Number.isFinite(expiry)
       ? t('settings.license.validThrough', { date: expiry })
       : null;
+  const showComfyUIConnection = libraryView === 'comfyui' ||
+    (comfyUIServerUrl.trim().length > 0 && comfyUILastConnectionStatus === 'connected');
   const connectionStatus = comfyUILastConnectionStatus === 'connected'
     ? t('settings.integrations.connected')
     : comfyUILastConnectionStatus === 'error' ? t('shell.errorStatus') : t('libraryGallery.unknown');
@@ -438,7 +440,7 @@ const Header: React.FC<HeaderProps> = ({
                       title={isComfyUITab ? t('shell.comfyDrop') : undefined}
                     >
                       <span>{tab.label}</span>
-                      {isComfyUITab && libraryView === 'comfyui' && (
+                      {isComfyUITab && showComfyUIConnection && (
                         <span
                           role="status"
                           aria-label={t('shell.connection', { status: connectionStatus })}

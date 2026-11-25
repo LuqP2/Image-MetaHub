@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { formatMessage, languages } from '../i18n/messages.mjs';
 import Header from '../components/Header';
 import { useImageStore } from '../store/useImageStore';
@@ -91,6 +91,22 @@ describe('Header classic mode', () => {
     useImageStore.getState().resetState();
   });
   afterEach(() => cleanup());
+
+  it('shows the green ComfyUI indicator on another tab while connected', () => {
+    useSettingsStore.setState({
+      comfyUIServerUrl: 'http://127.0.0.1:8188',
+      comfyUILastConnectionStatus: 'connected',
+    });
+    renderHeader({ libraryView: 'models' });
+
+    const nav = screen.getByRole('navigation', { name: 'Workspaces' });
+    const tab = within(nav).getByRole('button', { name: /^ComfyUI/i });
+    expect(tab.getAttribute('aria-current')).toBeNull();
+    expect(within(tab).getByRole('status').classList.contains('bg-green-400')).toBe(true);
+
+    act(() => useSettingsStore.getState().setComfyUIConnectionStatus('error'));
+    expect(within(tab).queryByRole('status')).toBeNull();
+  });
 
   it('opens the dragged gallery image in ComfyUI from a native file drop', () => {
     vi.stubGlobal('electronAPI', { getPathForFile: () => 'D:/library/source.png' });
